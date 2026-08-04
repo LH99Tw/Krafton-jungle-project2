@@ -184,348 +184,189 @@
 - `status`는 `DRAFT | PUBLISHED`
 - `blogId`는 Blog를 참조한다.
 
-## 9. API 요구사항 초안
+## 9. Supabase API 요구사항
 
-상세 요청/응답 형식은 `instruction/API.md`에서 관리한다.
+상세 구현은 `instruction/API.md`를 기준으로 한다. 별도 Express 서버 없이 Supabase Edge Function `api`가 `/auth`, `/blogs`, `/posts` 경로를 제공한다.
 
-- `POST /api/auth/signup` 회원가입
-- `POST /api/auth/login` 로그인
-- `POST /api/auth/logout` 로그아웃
-- `GET /api/auth/csrf` 변경 요청용 CSRF 토큰 발급
-- `GET /api/me` 현재 사용자 조회
-- `POST /api/blogs` 블로그 생성
-- `GET /api/blogs/check-slug` slug 중복 확인
-- `GET /api/blogs/{slug}` 공개 블로그 조회
-- `GET /api/blogs/me` 내 블로그 조회
-- `GET /api/posts` 공개 글 피드/검색/정렬/페이지네이션
-- `POST /api/posts` 글 생성 또는 임시저장
-- `GET /api/posts/{id}` 글 상세 및 조회수 처리
-- `PATCH /api/posts/{id}` 글 수정/발행
-- `DELETE /api/posts/{id}` 글 삭제
+- `GET /auth/csrf` CSRF 토큰 발급
+- `POST /auth/signup` 회원가입
+- `POST /auth/login` 로그인
+- `POST /auth/logout` 로그아웃
+- `GET /me` 현재 사용자 조회
+- `users`, `sessions` 조회·생성·갱신
+- `blogs` 조회·생성 및 slug 중복 확인
+- `posts` 공개 피드·내 글 목록·상세·작성·수정·삭제
+- `search_public_posts` RPC 검색
+- `increment_post_view` RPC 상세 조회 및 조회수 증가
 
 공통 원칙:
 
-- `logout`, `post delete`의 `204 No Content`를 제외한 성공 응답은 JSON으로 반환한다.
-- 유효성 오류는 `400`, 인증 오류는 `401`, 권한 오류는 `403`, 리소스 없음은 `404`, 서버 오류는 `500`을 사용한다.
-- 목록 응답은 `data`와 `pagination(page, size, totalPages, totalItems)`를 포함한다.
-- 공개 글 검색은 제목, 본문, 작성자 닉네임, 블로그명을 대상으로 한다.
+- 인증과 세션은 Supabase Edge Function과 PostgreSQL `users`·`sessions` 테이블이 관리한다.
+- `service_role` 키는 Edge Function 환경 변수로만 사용하며, 비밀번호는 bcrypt 해시만 저장한다.
+- 상태 변경 요청은 CSRF 토큰을 검증한다.
+- 공개 글만 비로그인 사용자에게 노출하고, 초안은 소유자에게만 노출한다.
+- 목록은 Supabase의 `range`와 `count: 'exact'`를 사용하며 기본 10개, 최대 50개로 제한한다.
+- 상세 조회와 조회수 증가는 `increment_post_view` RPC에서 원자적으로 처리한다.
 
-## 10. 권장 기술 스택
+## 10. 데이터 접근 아키텍처
 
-3일 안에 MVP를 완성해야 하고 Windows와 macOS 개발 환경이 섞여 있으므로, 프론트엔드와 백엔드를 하나의 저장소에서 관리하며 단순한 Node.js 실행 명령을 기준으로 개발·배포한다. 복잡한 마이크로서비스나 외부 인프라는 사용하지 않는다.
+React 클라이언트가 Supabase Edge Function `api`를 호출하고, Edge Function이 PostgreSQL과 RPC를 사용한다.
+
+```text
+React SPA
+   │ /api
+   ▼
+Supabase Edge Function api
+   │ Supabase JS Client
+   ▼
+Supabase PostgreSQL / RPC
+```
+
+- 세션 쿠키는 Edge Function이 발급하고 세션은 PostgreSQL `sessions` 테이블에서 검증한다.
+- 사용자 식별자는 세션에서 가져오며 body/query로 받지 않는다.
+- 조회수 증가와 검색처럼 원자성·조인이 필요한 기능만 PostgreSQL RPC로 제공한다.
+- `service_role` 키와 관리자 권한은 클라이언트에서 사용하지 않는다.
+
+## 11. 권장 기술 스택 및 아키텍처
+
+별도 Express 백엔드 서버 없이 React 클라이언트가 Supabase Edge Function `api`를 호출한다. 인증·세션은 Edge Function과 PostgreSQL이 담당하고, 원자적 처리가 필요한 기능만 PostgreSQL RPC로 구현한다.
 
 ### 프론트엔드
 
-- **React + TypeScript**: 컴포넌트 기반 화면 개발과 타입 안정성 확보
-- **Vite**: 빠른 개발 서버와 단순한 빌드 설정
+- **React + TypeScript + Vite**: 화면과 라우팅 구현
 - **React Router**: 홈, 인증, 블로그, 글 관련 경로 관리
-- **TanStack Query**: 서버 데이터 조회, 캐시, 로딩·오류 상태 관리
-- **CSS Modules 또는 일반 CSS**: 별도 UI 프레임워크 없이 MVP 스타일 구현
-- **React Hook Form + Zod**: 폼 상태와 입력 검증 관리
+- **Supabase JS Client**: Auth, PostgREST, RPC 호출
+- **TanStack Query**: 서버 데이터 캐시, 로딩·오류 상태 관리
+- **React Hook Form + Zod**: 폼 상태와 클라이언트 입력 검증
+- **CSS Modules 또는 일반 CSS**: MVP 스타일 구현
 
-### 백엔드
+### Supabase
 
-- **Node.js + TypeScript**: 프론트엔드와 언어를 통일해 개발·리뷰 비용을 낮춘다.
-- **Express**: API 라우팅과 미들웨어 구성이 단순하고 문서화가 쉽다.
-- **Zod**: 요청 body와 query 입력을 서버에서 동일한 기준으로 검증한다.
-- **bcrypt**: 비밀번호 해시 처리
-- **express-session + connect-pg-simple**: API 문서에 정의된 서버 세션·HttpOnly 쿠키 인증 구현. 세션은 Supabase PostgreSQL에 저장한다.
-
-### 데이터베이스 및 개발 도구
-
-- **Supabase PostgreSQL**: User–Blog–Post 관계, unique 제약, 권한 검증, 발행 상태 변경을 안정적으로 처리할 수 있는 관계형 데이터베이스
-- **Prisma**: 타입 안전한 데이터 접근과 마이그레이션 관리
-- **Vitest**: 단위 테스트 및 API 테스트
-- **Supertest**: Express API 요청 테스트
-- **ESLint + Prettier**: 코드 스타일 통일
-- **npm scripts**: 통일된 개발·테스트 실행 명령
-- **GitHub**: 브랜치, PR, 이슈 관리 및 Vercel 자동 배포 연동
+- **Supabase Edge Function**: 인증·세션·블로그·글 API 실행
+- **Supabase PostgreSQL**: `users`, `sessions`, `blogs`, `posts` 테이블 저장
+- **PostgreSQL Function/RPC**: 회원가입·로그인·조회수·검색 등 원자적 처리
+- **Supabase CLI**: 로컬 개발, migration, 타입 생성
 
 ### 사용하지 않는 기술
 
-- 마이크로서비스, 별도 API 게이트웨이, 이벤트 브로커
-- Redis와 별도 세션 저장소
-- 이미지 저장소, 외부 검색 엔진, 소셜 로그인
-- 실시간 통신(WebSocket)
-
-### PostgreSQL을 선택한 이유
-
-- User, Blog, Post 사이의 명확한 관계를 foreign key로 보장할 수 있다.
-- 이메일과 블로그 주소의 중복을 unique 제약으로 막을 수 있다.
-- 글 발행과 조회수 갱신처럼 데이터 일관성이 필요한 작업에 트랜잭션을 사용할 수 있다.
-- Prisma와의 연동이 안정적이고, 이후 서비스 확장에도 적합하다.
-- MongoDB는 이번 MVP의 핵심 데이터가 관계형이고 조인·소유권·일관성 검증이 많아 우선순위에서 제외한다.
-
-## 11. 시스템 아키텍처
-
-### 아키텍처 방향
-
-**React SPA + Supabase Edge Functions + Supabase PostgreSQL을 사용하는 계층형 구조**로 구성한다.
-
-- 프론트엔드와 백엔드는 같은 저장소에서 관리한다.
-- 프론트엔드는 API를 통해서만 데이터를 읽고 변경한다.
-- Vercel은 React 정적 빌드 결과를 제공한다.
-- `/api/*` 요청은 Supabase Edge Functions로 전달한다.
-- 백엔드는 라우터에서 직접 DB를 조작하지 않고 Service를 거친다.
-- 인증·권한 검사는 API 진입점과 Service 양쪽에서 일관되게 적용한다.
-- 데이터베이스는 백엔드에서만 접근한다.
-
-### 선택한 디자인 패턴
-
-3일이라는 기간을 고려해 이해하기 쉽고 테스트하기 쉬운 패턴만 적용한다. 패턴 적용 자체를 목표로 하지 않으며, 코드 중복과 계층 간 결합을 줄이는 데 필요한 범위로 제한한다.
-
-#### 1. Layered Architecture
-
-전체 백엔드를 다음 계층으로 나눈다.
-
-```text
-Route/Controller → Middleware → Service → Repository → Database
-```
-
-- **Route/Controller**: HTTP 요청을 받고 Service를 호출한 뒤 응답을 반환한다.
-- **Middleware**: 인증, 권한 사전 확인, 입력 검증, 공통 오류 처리를 담당한다.
-- **Service**: 회원·블로그·글의 업무 규칙과 트랜잭션을 담당한다.
-- **Repository**: Prisma를 이용한 데이터 조회·저장만 담당한다.
-- **Database**: Supabase PostgreSQL에 데이터를 영속화한다.
-
-Controller에서 직접 Prisma를 호출하거나, Repository에서 권한을 판단하지 않는다.
-
-#### 2. Controller–Service–Repository 패턴
-
-기능별로 Controller, Service, Repository를 분리한다.
-
-```text
-auth.controller.ts
-auth.service.ts
-user.repository.ts
-
-blog.controller.ts
-blog.service.ts
-blog.repository.ts
-
-post.controller.ts
-post.service.ts
-post.repository.ts
-```
-
-- Controller는 얇게 유지한다.
-- Service에 업무 규칙을 정리해 단위 테스트가 가능하게 한다.
-- Repository는 재사용 가능한 데이터 접근 함수만 제공한다.
-- 여러 Repository를 함께 사용하거나 여러 변경을 묶어야 하는 경우 Service에서 트랜잭션을 시작한다.
-
-#### 3. DTO 및 Schema Validation
-
-- 요청 데이터는 Zod Schema로 검증한다.
-- Controller와 Service 사이에는 검증이 끝난 입력 객체만 전달한다.
-- DB 모델을 API 응답에 그대로 노출하지 않고 필요한 필드만 DTO로 변환한다.
-- `passwordHash`, 세션 값 등 민감한 필드는 DTO에 포함하지 않는다.
-- API의 상세 필드와 오류 형식은 `instruction/API.md`를 기준으로 한다.
-
-#### 4. Middleware 패턴
-
-공통 요청 처리는 Middleware로 분리한다.
-
-- `sessionMiddleware`: 세션 쿠키를 확인하고 현재 사용자 정보를 설정한다.
-- `requireAuth`: 로그인이 필요한 요청을 차단한다.
-- `validate`: body/query/params를 Schema로 검증한다.
-- `errorHandler`: 예외를 공통 오류 응답으로 변환한다.
-- `notFoundHandler`: 존재하지 않는 경로를 처리한다.
-
-리소스의 최종 소유권 확인은 Middleware에만 두지 않고 Service에서 다시 확인한다.
-
-#### 5. Feature-based Module 구조
-
-레이어만 나누지 않고 기능 단위로 관리해 개발자별 작업 경계를 명확히 한다.
-
-```text
-server/src/
-├── modules/
-│   ├── auth/
-│   │   ├── auth.controller.ts
-│   │   ├── auth.service.ts
-│   │   ├── auth.schema.ts
-│   │   └── auth.repository.ts
-│   ├── blog/
-│   └── post/
-├── middleware/
-├── database/
-└── app.ts
-```
-
-- `auth`는 회원가입·로그인·로그아웃을 담당한다.
-- `blog`는 블로그 생성·조회와 소유권을 담당한다.
-- `post`는 글·피드·검색을 담당한다.
-- 기능 모듈끼리 직접 Repository를 호출하지 않고 Service 또는 명확한 공통 인터페이스를 통해 협력한다.
-
-### 적용하지 않는 패턴
-
-이번 MVP에서는 다음 패턴을 적용하지 않는다.
-
-- 마이크로서비스: 배포와 통신 복잡도만 증가한다.
-- CQRS/Event Sourcing: 글·피드 규모에 비해 과하다.
-- 복잡한 DI Container: TypeScript 생성자 주입만으로 충분하다.
-- Repository 추상화 계층의 과도한 일반화: Prisma Repository를 감싸는 최소 구조만 사용한다.
-- 전역 Singleton 상태: 서버리스 환경에서 요청 간 상태 공유 문제가 생길 수 있으므로 사용하지 않는다.
-
-### 패턴 적용 판단 기준
-
-- 같은 코드가 두 번 이상 반복되고 변경 가능성이 있으면 공통 모듈로 분리한다.
-- 업무 규칙이 포함된 코드는 Service에 둔다.
-- 단순 조회·저장 함수까지 불필요하게 추상화하지 않는다.
-- 새 패턴을 추가할 때는 팀 전체가 이해할 수 있는지와 테스트 이점을 먼저 확인한다.
+- Express, 별도 `server/` 디렉터리, API Gateway
+- Redis
+- 별도 파일 저장소, 외부 검색 엔진, 소셜 로그인, WebSocket
 
 ### 요청 흐름
 
 ```text
-사용자 브라우저
-      │
-      ▼
-React 페이지/컴포넌트
-      │  fetch + credentials: include
-      ▼
-Express Router
-      │
-      ├── 인증 미들웨어
-      ├── 입력 검증(Zod)
-      ▼
-Service Layer
-      │
-      ├── 업무 규칙
-      ├── 권한 확인
-      └── 트랜잭션 처리
-      ▼
-Prisma Repository
-      ▼
-Supabase PostgreSQL
+React SPA
+   │ fetch + credentials: include
+   ▼
+Supabase Edge Function api
+   │ Supabase JS Client
+   ▼
+Supabase PostgreSQL / RPC
 ```
 
-### 계층별 책임
+### 인증 원칙
 
-| 계층 | 책임 | 포함하지 않는 것 |
-|---|---|---|
-| React UI | 사용자 입력, 화면 표시, 로딩·오류 상태 | DB 접근, 권한 판단의 최종 결정 |
-| API Router | HTTP 경로·메서드 연결, 응답 상태 코드 | 복잡한 업무 로직 |
-| Middleware | 세션 확인, 공통 오류 처리, 요청 검증 | 화면 상태 관리 |
-| Service | 회원·블로그·글의 업무 규칙, 권한 확인, 트랜잭션 | HTTP 객체에 직접 의존 |
-| Repository/Prisma | DB 조회·생성·수정·삭제 | 사용자에게 보여줄 메시지 결정 |
-| Supabase PostgreSQL | 관계형 데이터 및 세션 영속 저장 | 인증·업무 로직 |
+- 세션 쿠키는 `HttpOnly`, `SameSite=Lax`로 발급한다.
+- 상태 변경 요청은 `x-csrf-token`을 검증한다.
+- `service_role` 키는 Edge Function 환경 변수로만 사용한다.
+- 비밀번호는 `bcryptjs`로 해시하며 원문을 저장하지 않는다.
 
-### 인증 아키텍처
-
-- 로그인 성공 시 Express Session이 세션을 생성하고 `HttpOnly` 쿠키를 발급한다.
-- 세션 데이터는 Vercel 함수 메모리에 저장하지 않고 `connect-pg-simple`을 통해 Supabase PostgreSQL에 저장한다.
-- 프론트엔드는 인증 정보를 직접 저장하지 않고 요청 시 쿠키를 포함한다.
-- 백엔드는 `req.session.userId`를 기준으로 현재 사용자를 확인한다.
-- 글 수정·삭제와 비공개 글 조회는 Service에서 리소스 소유자를 재확인한다.
-- 로그아웃 시 세션을 폐기하고 쿠키를 만료시킨다.
-- 비밀번호와 세션 값은 응답 및 로그에 포함하지 않는다.
-
-### Redis 사용 여부
-
-- MVP에서는 Redis를 사용하지 않는다.
-- 세션 저장소로 Supabase PostgreSQL의 `Session` 테이블을 사용한다.
-- 이 서비스의 트래픽과 세션 규모에서는 PostgreSQL 세션 저장만으로 충분하다.
-- 향후 트래픽 증가, 세션 조회 부하, rate limit, 캐시 요구가 생길 때 Redis 도입을 검토한다.
-- 세션 테이블에는 만료 시간을 저장하고 만료된 세션을 정리한다.
-
-### 상태 관리 원칙
-
-- 로그인 사용자, 블로그, 글 목록 등 서버 데이터는 TanStack Query가 관리한다.
-- 입력 중인 제목·본문은 각 폼의 로컬 상태로 관리한다.
-- 전역 상태 라이브러리는 인증 사용자처럼 여러 화면에서 필요한 최소 상태에만 사용한다.
-- 로딩, 성공, 빈 결과, 오류 상태를 각 조회 단위에서 명시적으로 처리한다.
-
-## 12. 권장 디렉터리 구조
+### 권장 디렉터리 구조
 
 ```text
 project-root/
-├── client/                    # React + Vite
-│   └── src/
-│       ├── components/        # 재사용 UI
-│       ├── pages/             # 경로별 페이지
-│       ├── features/          # auth, blog, post 기능 단위
-│       ├── lib/               # query client, API client, 공통 유틸
-│       └── styles/
-├── server/                    # Express + TypeScript
-│   └── src/
-│       ├── modules/            # auth, blog, post 기능 단위
-│       ├── middleware/         # session, auth, error, validation
-│       ├── database/           # Prisma client, transaction 설정
-│       └── app.ts
-├── prisma/                    # PostgreSQL 스키마·마이그레이션
-│   ├── schema.prisma
-│   └── migrations/
-├── instruction/
+├── client/                              # React + Vite 프론트엔드
+│   ├── public/
+│   │   └── api-docs.html                 # API Swagger 문서 화면
+│   ├── src/
+│   │   ├── App.tsx                       # 화면·라우팅·API 호출
+│   │   ├── main.tsx                      # React 진입점
+│   │   ├── styles.css                    # 전역 스타일
+│   │   └── vite-env.d.ts
+│   ├── .env.example                      # VITE_API_URL
+│   ├── index.html
+│   ├── package.json
+│   ├── tsconfig.json
+│   ├── vite.config.ts
+│   └── vercel.json
+├── supabase/
+│   ├── config.toml                       # Supabase 로컬 설정
+│   ├── migrations/
+│   │   ├── 202608040001_auth_foundation.sql
+│   │   ├── 202608040002_signup_user.sql
+│   │   ├── 202608040003_login_session.sql
+│   │   ├── 202608040004_blogs.sql
+│   │   └── 202608040005_posts.sql
+│   └── functions/
+│       └── api/                          # 단일 Supabase Edge Function 백엔드
+│           ├── index.ts                  # 라우팅·블로그·글·OpenAPI·health
+│           ├── shared.ts                 # Supabase client·CORS·쿠키·세션 공통 처리
+│           ├── .env.example
+│           └── auth/
+│               ├── auth.routes.ts        # 인증 경로 라우팅
+│               ├── auth.service.ts       # 회원가입·로그인·로그아웃·현재 사용자
+│               └── auth.repository.ts   # users·sessions·DB·RPC 접근
+├── .github/
+│   └── workflows/
+│       └── ci-cd.yml                     # client 빌드·Vercel·Supabase 배포
+├── instruction/                         # 제품·API·협업 문서
 │   ├── PRD.md
 │   ├── API.md
 │   └── ROLE.md
-├── .env.example
-└── package.json
+├── DEPLOYMENT.md
+├── README.md
+├── package.json                          # 루트 실행·배포 scripts
+└── .gitignore
 ```
 
-### 디렉터리 규칙
+`client/dist`, `client/tsconfig.tsbuildinfo`, `node_modules`는 빌드·캐시 생성물이므로 권장 소스 구조와 커밋 대상에서 제외한다. 별도의 `server/` 디렉터리는 사용하지 않는다.
 
-- `client`에서 DB나 Prisma를 import하지 않는다.
-- `modules/*/*.controller.ts`에 복잡한 업무 로직을 작성하지 않는다.
-- `modules/*/*.service.ts`는 Express의 `req`, `res` 객체에 직접 의존하지 않는다.
-- `modules/*/*.repository.ts`는 데이터 접근만 담당하고 권한 정책은 Service에서 처리한다.
-- API 응답 형식은 `instruction/API.md`를 단일 기준으로 사용한다.
-- 환경 변수는 `.env`로 관리하고 `.env.example`만 저장소에 커밋한다.
+### 환경 변수
 
-## 13. 배포 아키텍처
+```text
+VITE_API_URL=http://127.0.0.1:54321/functions/v1
+```
+
+Edge Function 환경 변수는 `supabase/functions/api/.env.local`에서 관리한다.
+
+```text
+FRONTEND_ORIGIN=http://localhost:5173
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+SESSION_COOKIE_SECURE=false
+```
+
+`SUPABASE_SERVICE_ROLE_KEY`는 Edge Function 환경 변수에만 두고 클라이언트에 노출하지 않는다.
 
 ### 배포 구성
 
 | 구성 요소 | 서비스 | 담당 내용 |
 |---|---|---|
-| 웹 애플리케이션 | Vercel | React 정적 빌드 제공 |
-| API | Supabase Edge Functions | 서버리스 API 실행 |
-| 데이터베이스 | Supabase PostgreSQL | User, Blog, Post, Session 저장 |
-| 데이터베이스 관리 | Supabase Dashboard | 테이블 확인, SQL 실행, 로그 확인 |
-| 소스 저장소 | GitHub | 브랜치 병합 시 Vercel 자동 배포 |
-
-### 배포 요청 흐름
-
-```text
-브라우저
-  ├── 페이지 요청 ───────▶ Vercel 정적 파일
-  └── /api 요청 ────────▶ Supabase Edge Functions
-                              │
-                              └── Supabase PostgreSQL
-```
+| 웹 애플리케이션 | Vercel 또는 정적 호스팅 | React 빌드 결과 제공 |
+| 인증·데이터베이스 | Supabase | Auth, PostgreSQL, RLS, RPC |
+| 데이터베이스 관리 | Supabase CLI/Dashboard | migration, 함수, 데이터 확인 |
+| 소스 저장소 | GitHub | 코드와 migration 관리 |
 
 ### 배포 원칙
 
-- 프론트엔드와 API는 각각 Vercel과 Supabase에서 독립적으로 제공해 CORS 설정을 명시적으로 관리한다.
-- 프론트엔드와 백엔드는 각각 독립적으로 빌드·배포·로그 확인이 가능해야 한다.
-- API 경로는 항상 `/api` 아래에 둔다.
-- 서버리스 실행 환경은 상태를 유지하지 않으므로 세션·데이터를 전역 변수나 로컬 파일에 저장하지 않는다.
-- Prisma와 세션 저장소는 Supabase의 연결 풀링 또는 서버리스 환경에 맞는 연결 설정을 사용한다.
-- Supabase 데이터베이스의 직접 접근 권한은 서버 환경에만 둔다.
-- `DATABASE_URL`, `DIRECT_URL`, `SESSION_SECRET`, `FRONTEND_ORIGIN`은 Vercel 환경 변수로 등록한다.
-- `DATABASE_URL`은 런타임용 pooled connection, `DIRECT_URL`은 Prisma 마이그레이션용 direct connection으로 분리한다.
-- `SESSION_SECRET`은 충분히 긴 랜덤 값으로 설정하고 저장소에 커밋하지 않는다.
+- 프론트엔드는 Supabase URL과 `anon` 키로 Supabase에 직접 연결한다.
+- `service_role` 키는 클라이언트 환경 변수에 넣지 않는다.
+- 운영과 개발은 Supabase 프로젝트를 분리한다.
 
 ### 개발 및 배포 결정
 
 - 로컬 개발은 npm scripts와 Supabase CLI를 사용한다.
 - 로컬 PostgreSQL은 개발·테스트 전용이며, 운영 데이터베이스는 Supabase PostgreSQL을 사용한다.
 - Production 프론트엔드는 Vercel 정적 빌드로 배포한다.
-- Production 백엔드는 Supabase Edge Functions로 배포한다.
-
-결론적으로 이번 MVP의 기본 배포 조합은 다음과 같다.
-
-`Vite Build → Vercel`
-
-`PostgreSQL + Session Store → Supabase`
+- Supabase Edge Function과 PostgreSQL/RPC는 Supabase에서 관리한다.
 
 ### 프로젝트 구성
 
 ```text
 project-root/
 ├── client/                  # React + Vite 프론트엔드
-├── server/                  # 백엔드 개발 코드
-├── supabase/functions/      # Supabase Edge Functions
+├── supabase/migrations/     # Supabase 스키마·RLS·RPC
 └── instruction/             # API 및 제품 명세
 ```
 
@@ -538,11 +379,8 @@ npm run dev:client
 # 프론트엔드 production 빌드
 npm run build
 
-# 백엔드 테스트
-npm test
-
-# Supabase Edge Function 배포
-npx supabase functions deploy api --no-verify-jwt
+# Supabase migration 적용
+npx supabase db push
 ```
 
 개발자는 운영체제별 Node.js나 PostgreSQL 설치 방식에 의존하지 않고 위 명령을 기준으로 프로젝트를 실행한다. 환경 변수 설정만 각 개발 환경에서 선행한다.
@@ -551,7 +389,7 @@ npx supabase functions deploy api --no-verify-jwt
 
 | 환경 | 프론트엔드/API | 데이터베이스 | 목적 |
 |---|---|---|---|
-| 로컬 | Vite 개발 서버 + Express | Supabase 개발 프로젝트 또는 로컬 PostgreSQL | 기능 개발·테스트 |
+| 로컬 | Vite 개발 서버 + Supabase 개발 프로젝트 | Supabase 개발 프로젝트 | 기능 개발·테스트 |
 | Preview | Vercel Preview | Supabase 개발 프로젝트 | PR별 통합 확인 |
 | Production | Vercel Production | Supabase 운영 프로젝트 | 최종 서비스 |
 
