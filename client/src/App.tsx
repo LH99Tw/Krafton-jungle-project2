@@ -1,70 +1,79 @@
-import { useEffect, useMemo, useState } from 'react'
-import { ArrowRight, ChevronDown, Menu, Search, X } from 'lucide-react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { ArrowLeft, ArrowRight, Check, ChevronDown, Eye, FileText, Menu, PenLine, Search, Trash2, X } from 'lucide-react'
 
-type BestPost = { blog: string; domain: string; title: string }
+type User = { id: number; email: string; nickname: string }
+type Blog = { id: number; name: string; slug: string; description: string; owner?: { id: number; nickname: string } }
+type Post = { id: number; url?: string; title: string; content?: string; excerpt?: string; status: 'DRAFT' | 'PUBLISHED'; viewCount: number; author: { id: number; nickname: string }; blog: { id: number; name: string; slug: string }; publishedAt?: string | null; updatedAt?: string }
+type Page = { page: number; size: number; totalItems: number; totalPages: number }
 
-const bestPosts: BestPost[] = [
-  { blog: '건강생활 연구소', domain: 'chamber9.tistory.com', title: '대장암 초기증상 10가지, 몸이 보내는 신호를 놓치지 마세요' },
-  { blog: '프레임속 풍경', domain: 'yobo1700.tistory.com', title: '명옥헌원림 백일홍꽃' },
-  { blog: '은벼리파파의 얼렁뚱땅 육아일기', domain: 'ribi.tistory.com', title: '카페 같은 분위기에서 즐기는 만두샤브전골 한상' },
-  { blog: '황금냥이', domain: 'cholrangtokki.tistory.com', title: '비내린 뒤 엄청 돌아다니는 강아지들' },
-  { blog: '빵 이야기 by 다온브레드', domain: 'livraison.tistory.com', title: '샌드위치가 맛있는 카페는 왜 빵부터 다를까요?' },
+const API = import.meta.env.VITE_API_URL ?? ''
+const bestPosts = [
+  ['건강생활 연구소', '대장암 초기증상 10가지, 몸이 보내는 신호를 놓치지 마세요', 'chamber9.tistory.com', 'HEALTH'],
+  ['프레임속 풍경', '명옥헌원림 백일홍꽃', 'yobo1700.tistory.com', 'TRAVEL'],
+  ['은벼리파파의 얼렁뚱땅 육아일기', '카페 같은 분위기에서 즐기는 만두샤브전골 한상', 'ribi.tistory.com', 'FOOD'],
+  ['황금냥이', '비내린 뒤 엄청 돌아다니는 강아지들', 'cholrangtokki.tistory.com', 'LIFE'],
+  ['빵 이야기 by 다온브레드', '샌드위치가 맛있는 카페는 왜 빵부터 다를까요?', 'livraison.tistory.com', 'BAKERY'],
 ]
 
-const footerGroups = [
-  { title: '메뉴가 궁금할 땐', links: ['홈', '피드', '스킨', '포럼'] },
-  { title: '사용하다 궁금할 땐', links: ['스킨가이드', '고객센터', '공지사항'] },
-  { title: '정책이 궁금할 땐', links: ['이용약관', '이전 이용약관', '운영정책', '개인정보처리방침', '청소년보호정책', 'Email 수집거부정책'] },
-]
-
-function App() {
-  const [query, setQuery] = useState('')
-  const [searchOpen, setSearchOpen] = useState(false)
-  const [loginOpen, setLoginOpen] = useState(false)
-  const [mobileOpen, setMobileOpen] = useState(false)
-  const [activeGroup, setActiveGroup] = useState(0)
-  const [apiStatus, setApiStatus] = useState<'checking' | 'connected' | 'offline'>('checking')
-  const results = useMemo(() => bestPosts.filter((post) => `${post.blog} ${post.title}`.toLowerCase().includes(query.toLowerCase())), [query])
-
-  useEffect(() => {
-    const apiUrl = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '')
-    fetch(`${apiUrl}/health`)
-      .then((response) => {
-        if (!response.ok) throw new Error('API request failed')
-        return response.json()
-      })
-      .then(() => setApiStatus('connected'))
-      .catch(() => setApiStatus('offline'))
-  }, [])
-
-  return <div className="tistory-page">
-    <a className="skip-link" href="#main">본문 바로가기</a>
-    <header className="tistory-header">
-      <div className="header-inner">
-        <button className="tistory-logo" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>티스토리</button>
-        <nav className={mobileOpen ? 'main-nav open' : 'main-nav'} aria-label="메뉴">
-          <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>홈</button>
-          <button onClick={() => document.getElementById('best')?.scrollIntoView({ behavior: 'smooth' })}>피드</button>
-          <button onClick={() => setLoginOpen(true)}>내 티스토리</button>
-        </nav>
-        <div className="header-actions"><button className="search-trigger" onClick={() => setSearchOpen(true)} aria-label="검색"><Search size={20} /></button><button className="start-button" onClick={() => setLoginOpen(true)}>시작하기</button><button className="mobile-trigger" onClick={() => setMobileOpen(!mobileOpen)} aria-label="메뉴"><Menu size={22} /></button></div>
-      </div>
-    </header>
-
-    <main id="main">
-      <section className="search-section">
-        <div className="search-content"><h1>티스토리</h1><p>당신의 이야기가 콘텐츠가 됩니다.</p><form className="home-search" onSubmit={(event) => { event.preventDefault(); setSearchOpen(true) }}><Search size={20} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="티스토리 검색" aria-label="티스토리 검색" /><button type="submit">검색</button></form></div>
-      </section>
-
-      <section className="best-section" id="best"><div className="section-inner"><div className="section-title"><h2>인기글 베스트</h2><button onClick={() => setActiveGroup(activeGroup === 0 ? 1 : 0)}>전체보기 <ArrowRight size={16} /></button></div><div className="best-list">{results.map((post, index) => <article className="best-row" key={post.title}><div className="best-number">{index + 1}</div><div className={`best-thumb thumb-${index + 1}`}><span>{['HEALTH', 'TRAVEL', 'FOOD', 'LIFE', 'BAKERY'][index]}</span></div><div className="best-info"><a className="blog-name" href={`https://${post.domain}`} onClick={(event) => event.preventDefault()}>{post.blog}</a><h3><a href="#post" onClick={(event) => event.preventDefault()}>{post.title}</a></h3><p>{post.domain}</p></div><button className="row-arrow" aria-label="글 보기"><ArrowRight size={17} /></button></article>)}</div>{results.length === 0 && <div className="no-results">검색 결과가 없습니다.</div>}</div></section>
-
-      <section className="my-section"><div className="section-inner my-inner"><div><p className="section-label">나의 티스토리</p><h2>티스토리에 로그인하시고<br />더 많은 기능을 이용해보세요!</h2></div><button className="kakao-button" onClick={() => setLoginOpen(true)}><span className="kakao-symbol">●</span> 카카오계정으로 시작하기 <ArrowRight size={16} /></button></div></section>
-    </main>
-
-    <footer className="tistory-footer"><div className="footer-inner"><div className="footer-brand"><strong>TISTORY</strong><p>티스토리는 Daum에서 <span className="heart">♥</span> 을 담아 만듭니다.</p><small>© Daum Corp. · API {apiStatus === 'connected' ? '연결됨' : apiStatus === 'offline' ? '연결 대기' : '확인 중'}</small></div><div className="footer-links">{footerGroups.map((group, index) => <div className="footer-group" key={group.title}><button className="footer-group-title" onClick={() => setActiveGroup(activeGroup === index ? -1 : index)}>{group.title}<ChevronDown size={14} className={activeGroup === index ? 'rotated' : ''} /></button><div className={activeGroup === index ? 'footer-link-list expanded' : 'footer-link-list'}>{group.links.map((link) => <a key={link} href="#footer" onClick={(event) => event.preventDefault()}>{link}</a>)}</div></div>)}</div></div></footer>
-    {searchOpen && <div className="dialog-backdrop" onMouseDown={() => setSearchOpen(false)}><div className="search-dialog" onMouseDown={(event) => event.stopPropagation()}><button className="dialog-close" onClick={() => setSearchOpen(false)} aria-label="닫기"><X /></button><h2>티스토리 검색</h2><div className="dialog-search"><Search size={19} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="검색어를 입력하세요" /><button onClick={() => setSearchOpen(false)}>검색</button></div><p>{query ? `${results.length}개의 글을 찾았습니다.` : '블로그와 글을 검색해보세요.'}</p></div></div>}
-    {loginOpen && <div className="dialog-backdrop" onMouseDown={() => setLoginOpen(false)}><div className="login-dialog" onMouseDown={(event) => event.stopPropagation()}><button className="dialog-close" onClick={() => setLoginOpen(false)} aria-label="닫기"><X /></button><div className="login-logo">티스토리</div><p>당신의 이야기가 콘텐츠가 됩니다.</p><button className="kakao-login" onClick={() => setLoginOpen(false)}>카카오계정으로 로그인</button><button className="login-help">내 티스토리 계정을 모르겠어요</button></div></div>}
-  </div>
+let csrfToken = ''
+async function request<T>(path: string, options: RequestInit = {}) {
+  const method = (options.method ?? 'GET').toUpperCase()
+  if (method !== 'GET' && method !== 'HEAD' && !csrfToken) { const csrf = await fetch(`${API}/api/auth/csrf`, { credentials: 'include' }).then((r) => r.json()).catch(() => null); csrfToken = csrf?.data?.csrfToken ?? '' }
+  const response = await fetch(`${API}/api${path}`, { credentials: 'include', headers: { 'Content-Type': 'application/json', ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}), ...(options.headers ?? {}) }, ...options })
+  if (response.status === 204) return undefined as T
+  const body = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(body.error?.message ?? '요청을 처리하지 못했습니다.')
+  return body.data as T
 }
+
+function useRoute() {
+  const [path, setPath] = useState(window.location.pathname)
+  useEffect(() => { const onPop = () => setPath(window.location.pathname); window.addEventListener('popstate', onPop); return () => window.removeEventListener('popstate', onPop) }, [])
+  const go = (to: string) => { window.history.pushState({}, '', to); setPath(to); window.scrollTo(0, 0) }
+  return { path, go }
+}
+
+function Header({ go, user, onLogin }: { go: (to: string) => void; user: User | null; onLogin: () => void }) {
+  const [mobile, setMobile] = useState(false)
+  return <header className="site-header"><div className="header-inner"><button className="brand" onClick={() => go('/')}>티스토리</button><nav className={mobile ? 'main-nav open' : 'main-nav'}><button onClick={() => go('/')}>홈</button><button onClick={() => go('/feed')}>피드</button><button onClick={() => user ? go('/blog/me/manage') : onLogin()}>내 티스토리</button></nav><div className="header-actions"><button className="icon-button" onClick={() => go('/feed')} aria-label="검색"><Search size={19} /></button>{user ? <button className="account-button" onClick={() => go('/blog/me/manage')}>{user.nickname}</button> : <button className="outline-button" onClick={onLogin}>시작하기</button>}<button className="mobile-trigger" onClick={() => setMobile(!mobile)} aria-label="메뉴"><Menu size={21} /></button></div></div></header>
+}
+
+function Shell({ children, go, user, onLogin }: { children: React.ReactNode; go: (to: string) => void; user: User | null; onLogin: () => void }) {
+  return <><a className="skip-link" href="#main">본문 바로가기</a><Header go={go} user={user} onLogin={onLogin} />{children}<Footer go={go} /></>
+}
+
+function Footer({ go }: { go: (to: string) => void }) {
+  const groups = [['메뉴가 궁금할 땐', [['홈', '/'], ['피드', '/feed']]], ['사용하다 궁금할 땐', [['고객센터', '#'], ['공지사항', '#']]], ['정책이 궁금할 땐', [['이용약관', '#'], ['개인정보처리방침', '#'], ['청소년보호정책', '#']]]]
+  return <footer className="site-footer"><div className="footer-inner"><div className="footer-brand"><strong>TISTORY</strong><p>티스토리는 Daum에서 <span>♥</span> 을 담아 만듭니다.</p><small>© Daum Corp.</small></div><div className="footer-links">{groups.map(([title, links]) => <FooterGroup key={title as string} title={title as string} links={links as string[][]} go={go} />)}</div></div></footer>
+}
+function FooterGroup({ title, links, go }: { title: string; links: string[][]; go: (to: string) => void }) { const [open, setOpen] = useState(false); return <div className="footer-group"><button className="footer-title" onClick={() => setOpen(!open)}>{title}<ChevronDown size={14} className={open ? 'rotated' : ''} /></button><div className={open ? 'footer-list expanded' : 'footer-list'}>{links.map(([name, path]) => <button key={name} onClick={() => path.startsWith('/') && go(path)}>{name}</button>)}</div></div> }
+
+function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | null; onLogin: () => void }) {
+  const [query, setQuery] = useState(''); const filtered = bestPosts.filter((p) => p.join(' ').toLowerCase().includes(query.toLowerCase()))
+  return <Shell go={go} user={user} onLogin={onLogin}><main id="main"><section className="home-hero"><div className="hero-inner"><p className="eyebrow">TISTORY</p><h1>당신의 이야기가<br />콘텐츠가 됩니다.</h1><p className="hero-copy">나만의 관점과 기록을 자유롭게 남겨보세요.</p><form className="home-search" onSubmit={(e) => { e.preventDefault(); go(`/feed${query ? `?q=${encodeURIComponent(query)}` : ''}`) }}><Search size={19} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="티스토리 검색" /><button>검색</button></form></div></section><section className="best-section"><div className="section-inner"><div className="section-heading"><div><p className="eyebrow">DISCOVER</p><h2>인기글 베스트</h2></div><button className="text-link" onClick={() => go('/feed')}>전체보기 <ArrowRight size={15} /></button></div><div className="best-list">{filtered.map((p, i) => <article className="best-row" key={p[1]}><b>{String(i + 1).padStart(2, '0')}</b><div className={`post-thumb thumb-${i + 1}`}><span>{p[3]}</span></div><div className="post-meta"><button onClick={() => go('/feed')}>{p[0]}</button><h3><button onClick={() => go('/feed')}>{p[1]}</button></h3><small>{p[2]}</small></div><ArrowRight className="row-arrow" size={17} /></article>)}</div>{filtered.length === 0 && <Empty text="검색 결과가 없습니다." />}</div></section><section className="start-strip"><div className="section-inner start-inner"><div><p className="eyebrow">MY TISTORY</p><h2>티스토리에 로그인하시고<br />더 많은 기능을 이용해보세요!</h2></div><button className="kakao-button" onClick={onLogin}>카카오계정으로 시작하기 <ArrowRight size={15} /></button></div></section></main></Shell>
+}
+
+function Feed({ go, user, onLogin }: { go: (to: string) => void; user: User | null; onLogin: () => void }) {
+  const [query, setQuery] = useState(new URLSearchParams(window.location.search).get('q') ?? ''); const [sort, setSort] = useState<'latest' | 'popular'>('latest'); const [posts, setPosts] = useState<Post[]>([]); const [page, setPage] = useState<Page | null>(null); const [error, setError] = useState('')
+  useEffect(() => { request<Post[]>(`/posts?q=${encodeURIComponent(query)}&sort=${sort}&page=1&size=10`).then((res) => { setPosts(res ?? []); setPage(null) }).catch((e) => setError(e.message)) }, [query, sort])
+  return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="page-main"><div className="section-inner"><div className="page-intro"><p className="eyebrow">TISTORY FEED</p><h1>새로운 이야기를<br />발견해보세요.</h1><div className="feed-search"><Search size={18} /><input value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setQuery(query.trim())} placeholder="제목, 본문, 블로그 검색" /></div></div><div className="feed-toolbar"><strong>전체 글 <em>{page?.totalItems ?? posts.length}</em></strong><div><button className={sort === 'latest' ? 'active' : ''} onClick={() => setSort('latest')}>최신순</button><button className={sort === 'popular' ? 'active' : ''} onClick={() => setSort('popular')}>인기순</button></div></div>{error ? <Empty text="아직 발행된 글이 없습니다." detail="API 서버가 연결되면 공개 글이 표시됩니다." /> : posts.length ? <div className="feed-list">{posts.map((post) => <PostRow key={post.id} post={post} go={go} />)}</div> : <Empty text={query ? `‘${query}’에 대한 글이 없습니다.` : '아직 발행된 글이 없습니다.'} />}</div></main></Shell>
+}
+
+function PostRow({ post, go, mine = false }: { post: Post; go: (to: string) => void; mine?: boolean }) { return <article className="feed-row"><div><p className="post-blog">{post.blog.name}</p><h2><button onClick={() => go(`/post/${post.id}`)}>{post.title}</button></h2><p className="excerpt">{post.excerpt ?? post.content ?? '내용이 없습니다.'}</p><small>{post.author.nickname} · {post.status === 'DRAFT' ? '임시저장' : new Date(post.publishedAt ?? post.updatedAt ?? '').toLocaleDateString('ko-KR')} {mine && `· ${post.status}`}</small></div><div className="row-stat"><Eye size={15} /> {post.viewCount}</div></article> }
+function Empty({ text, detail }: { text: string; detail?: string }) { return <div className="empty-state"><FileText size={24} /><strong>{text}</strong>{detail && <p>{detail}</p>}</div> }
+
+function Auth({ mode, go, onSuccess }: { mode: 'login' | 'signup'; go: (to: string) => void; onSuccess: (user: User) => void }) { const [form, setForm] = useState({ email: '', nickname: '', password: '', passwordConfirm: '' }); const [error, setError] = useState(''); const [busy, setBusy] = useState(false); const signup = mode === 'signup'; const submit = async (e: FormEvent) => { e.preventDefault(); setBusy(true); setError(''); try { const data = await request<{ user: User }>(`/auth/${signup ? 'signup' : 'login'}`, { method: 'POST', body: JSON.stringify(form) }); onSuccess(data.user) } catch (err) { setError((err as Error).message) } finally { setBusy(false) } }; return <main id="main" className="auth-page"><div className="auth-panel"><button className="auth-brand" onClick={() => go('/')}>티스토리</button><p className="eyebrow">{signup ? 'CREATE YOUR SPACE' : 'WELCOME BACK'}</p><h1>{signup ? '나만의 이야기를<br />시작해보세요.' : '다시 만나서<br />반가워요.'}</h1><form onSubmit={submit}>{signup && <label>닉네임<input required minLength={2} value={form.nickname} onChange={(e) => setForm({ ...form, nickname: e.target.value })} placeholder="닉네임을 입력하세요" /></label>}<label>이메일<input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="email@example.com" /></label><label>비밀번호<input required minLength={8} type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="8자 이상 입력하세요" /></label>{signup && <label>비밀번호 확인<input required type="password" value={form.passwordConfirm} onChange={(e) => setForm({ ...form, passwordConfirm: e.target.value })} placeholder="비밀번호를 한 번 더 입력하세요" /></label>}{error && <p className="form-error">{error}</p>}<button className="primary-button" disabled={busy}>{busy ? '처리 중…' : signup ? '회원가입' : '로그인'} <ArrowRight size={16} /></button></form><p className="auth-switch">{signup ? '이미 계정이 있나요?' : '아직 계정이 없나요?'} <button onClick={() => go(signup ? '/login' : '/signup')}>{signup ? '로그인' : '회원가입'}</button></p></div></main> }
+
+function BlogSetup({ go, onDone }: { go: (to: string) => void; onDone: (blog: Blog) => void }) { const [form, setForm] = useState({ name: '', slug: '', description: '' }); const [available, setAvailable] = useState<boolean | null>(null); const [error, setError] = useState(''); const check = async () => { try { const data = await request<{ slug: string; available: boolean }>(`/blogs/check-slug?slug=${encodeURIComponent(form.slug)}`); setAvailable(data.available) } catch (e) { setError((e as Error).message) } }; const submit = async (e: FormEvent) => { e.preventDefault(); try { const blog = await request<Blog>('/blogs', { method: 'POST', body: JSON.stringify(form) }); onDone(blog) } catch (e) { setError((e as Error).message) } }; return <main id="main" className="setup-page"><div className="setup-panel"><button className="back-button" onClick={() => go('/')}><ArrowLeft size={16} /> 홈으로</button><p className="eyebrow">SET UP YOUR BLOG</p><h1>이제 블로그를<br />만들어볼까요?</h1><p className="muted">공개 주소와 이름은 나중에 변경할 수 없으니 신중하게 정해주세요.</p><form onSubmit={submit}><label>블로그 이름<input required minLength={2} maxLength={30} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="예: 정글 개발 기록" /></label><label>블로그 주소<div className="slug-field"><input required pattern="[a-z0-9-]{3,30}" value={form.slug} onChange={(e) => { setForm({ ...form, slug: e.target.value }); setAvailable(null) }} placeholder="jungle-dev" /><span>.tistory.com</span><button type="button" onClick={check}>중복 확인</button></div>{available !== null && <small className={available ? 'available' : 'unavailable'}>{available ? '사용할 수 있는 주소입니다.' : '이미 사용 중인 주소입니다.'}</small>}</label><label>블로그 소개 <span className="counter">{form.description.length}/160</span><textarea maxLength={160} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="블로그를 한 줄로 소개해보세요." /></label>{error && <p className="form-error">{error}</p>}<button className="primary-button" disabled={available === false}>블로그 만들기 <ArrowRight size={16} /></button></form></div></main> }
+
+function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) => void; user: User | null; onLogin: () => void }) { const [data, setData] = useState<{ blog: Blog; posts: { items: Post[]; pagination: Page } } | null>(null); useEffect(() => { request<typeof data>(`/blogs/${slug}?page=1&size=50`).then(setData).catch(() => setData(null)) }, [slug]); const mine = user && data?.blog.owner?.id === user.id; return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="blog-page"><div className="blog-cover"><div className="section-inner"><p className="eyebrow">MY BLOG</p><h1>{data?.blog.name ?? slug}</h1><p>{data?.blog.description ?? '이 블로그의 이야기를 불러오는 중입니다.'}</p>{mine && <button className="outline-button light" onClick={() => go(`/blog/${slug}/manage`)}>관리하기</button>}</div></div><div className="section-inner blog-content"><div className="blog-heading"><h2>최근 글</h2>{mine && <button className="primary-button compact" onClick={() => go('/write')}><PenLine size={15} /> 새 글 쓰기</button>}</div>{data?.posts.items.length ? data.posts.items.map((post) => <PostRow key={post.id} post={post} go={go} />) : <Empty text="아직 발행된 글이 없습니다." detail={mine ? '첫 글을 작성해 블로그를 채워보세요.' : undefined} />}</div></main></Shell> }
+
+function Editor({ id, go }: { id?: string; go: (to: string) => void }) { const [title, setTitle] = useState(''); const [content, setContent] = useState(''); const [status, setStatus] = useState<'DRAFT' | 'PUBLISHED'>('DRAFT'); const [error, setError] = useState(''); const [busy, setBusy] = useState(false); useEffect(() => { if (id) request<Post>(`/posts/${id}`).then((p) => { setTitle(p.title); setContent(p.content ?? ''); setStatus(p.status) }).catch((e) => setError(e.message)) }, [id]); const save = async (nextStatus: 'DRAFT' | 'PUBLISHED') => { setBusy(true); setError(''); try { const data = id ? await request<Post>(`/posts/${id}`, { method: 'PATCH', body: JSON.stringify({ title, content, status: nextStatus }) }) : await request<Post>('/posts', { method: 'POST', body: JSON.stringify({ title, content, status: nextStatus }) }); go(nextStatus === 'PUBLISHED' ? `/post/${data.id}` : '/blog/me/manage') } catch (e) { setError((e as Error).message) } finally { setBusy(false) } }; return <main id="main" className="editor-page"><div className="editor-top"><button onClick={() => go('/blog/me/manage')}><ArrowLeft size={17} /> 나가기</button><div><button className="save-button" disabled={busy} onClick={() => save('DRAFT')}>임시저장</button><button className="publish-button" disabled={busy} onClick={() => save('PUBLISHED')}>발행하기</button></div></div><div className="editor-body"><input className="title-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목을 입력하세요" maxLength={100} /><div className="editor-meta"><span>{title.length}/100</span><span>{content.length.toLocaleString()}/20,000</span></div><textarea className="content-editor" value={content} onChange={(e) => setContent(e.target.value)} maxLength={20000} placeholder="여기에 이야기를 적어보세요." />{error && <p className="form-error">{error}</p>}</div></main> }
+
+function PostDetail({ id, go, user, onLogin }: { id: string; go: (to: string) => void; user: User | null; onLogin: () => void }) { const [post, setPost] = useState<Post | null>(null); const [error, setError] = useState(''); useEffect(() => { request<Post>(`/posts/${id}`).then(setPost).catch((e) => setError(e.message)) }, [id]); const mine = post && user?.id === post.author.id; const remove = async () => { if (!post || !confirm('이 글을 삭제할까요?')) return; try { await request(`/posts/${post.id}`, { method: 'DELETE' }); go(`/blog/${post.blog.slug}`) } catch (e) { setError((e as Error).message) } }; return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="detail-page"><div className="detail-inner">{error ? <Empty text={error} /> : post && <><p className="eyebrow">{post.blog.name}</p><h1>{post.title}</h1><div className="detail-info"><span>{post.author.nickname}</span><span>{new Date(post.publishedAt ?? post.updatedAt ?? '').toLocaleDateString('ko-KR')}</span><span><Eye size={14} /> {post.viewCount}</span></div><div className="detail-content">{post.content}</div><div className="detail-actions">{mine && <><button className="outline-button" onClick={() => go(`/post/${post.id}/edit`)}>수정하기</button><button className="danger-button" onClick={remove}><Trash2 size={15} /> 삭제</button></>}</div></>}</div></main></Shell> }
+
+function Manage({ go, user, onLogin }: { go: (to: string) => void; user: User | null; onLogin: () => void }) { const [blog, setBlog] = useState<Blog | null>(null); const [posts, setPosts] = useState<Post[]>([]); const [filter, setFilter] = useState('ALL'); useEffect(() => { request<Blog>('/blogs/me').then(setBlog).catch(() => {}); request<Post[]>('/posts?scope=mine&size=50').then((r) => setPosts(r ?? [])).catch(() => {}) }, []); const shown = useMemo(() => filter === 'ALL' ? posts : posts.filter((p) => p.status === filter), [filter, posts]); return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="manage-page"><div className="section-inner"><div className="manage-head"><div><p className="eyebrow">MY TISTORY</p><h1>{blog?.name ?? '내 블로그 관리'}</h1><p>{blog?.description}</p></div><button className="primary-button compact" onClick={() => go('/write')}><PenLine size={15} /> 새 글 쓰기</button></div><div className="manage-tabs"><div>{['ALL', 'PUBLISHED', 'DRAFT'].map((tab) => <button className={filter === tab ? 'active' : ''} onClick={() => setFilter(tab)} key={tab}>{tab === 'ALL' ? '전체' : tab === 'PUBLISHED' ? '발행됨' : '임시저장'}</button>)}</div><button onClick={() => blog && go(`/blog/${blog.slug}`)}>내 블로그 보기 <ArrowRight size={15} /></button></div>{shown.length ? <div className="feed-list">{shown.map((post) => <PostRow key={post.id} post={post} go={go} mine />)}</div> : <Empty text="작성한 글이 없습니다." detail="첫 글을 작성해보세요." />}</div></main></Shell> }
+
+function App() { const { path, go } = useRoute(); const [user, setUser] = useState<User | null>(null); const [loginOpen, setLoginOpen] = useState(false); useEffect(() => { request<{ user: User }>('/me').then((d) => setUser(d.user)).catch(() => {}) }, []); const onLogin = () => setLoginOpen(true); const authSuccess = (u: User) => { setUser(u); setLoginOpen(false); go('/blog/new') }; let content: React.ReactNode; if (path === '/login' || path === '/signup') content = <Auth mode={path.slice(1) as 'login' | 'signup'} go={go} onSuccess={(u) => { setUser(u); go('/blog/new') }} />; else if (path === '/blog/new') content = <BlogSetup go={go} onDone={(b) => go(`/blog/${b.slug}/manage`)} />; else if (path === '/feed') content = <Feed go={go} user={user} onLogin={onLogin} />; else if (path === '/write') content = user ? <Editor go={go} /> : <Auth mode="login" go={go} onSuccess={(u) => { setUser(u); go('/write') }} />; else if (path === '/blog/me/manage' || path.endsWith('/manage')) content = <Manage go={go} user={user} onLogin={onLogin} />; else if (path.startsWith('/post/') && path.endsWith('/edit')) content = <Editor id={path.split('/')[2]} go={go} />; else if (path.startsWith('/post/')) content = <PostDetail id={path.split('/')[2]} go={go} user={user} onLogin={onLogin} />; else if (path.startsWith('/blog/')) content = <BlogPage slug={path.split('/')[2]} go={go} user={user} onLogin={onLogin} />; else content = <Home go={go} user={user} onLogin={onLogin} />; return <>{content}{loginOpen && <div className="modal-backdrop" onMouseDown={() => setLoginOpen(false)}><div className="login-modal" onMouseDown={(e) => e.stopPropagation()}><button className="modal-close" onClick={() => setLoginOpen(false)}><X size={18} /></button><p className="eyebrow">WELCOME TO TISTORY</p><h2>당신의 이야기가<br />콘텐츠가 됩니다.</h2><button className="kakao-button full" onClick={() => { setLoginOpen(false); go('/login') }}>로그인하기 <ArrowRight size={15} /></button><button className="modal-signup" onClick={() => { setLoginOpen(false); go('/signup') }}>처음이라면 회원가입</button></div></div>}</> }
 
 export default App
