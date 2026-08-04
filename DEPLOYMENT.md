@@ -7,6 +7,7 @@
 1. client 빌드와 server 테스트
 2. Vercel production 배포
 3. `supabase/migrations`가 존재할 때만 Supabase 마이그레이션 적용
+4. Supabase `api` Edge Function 배포
 
 ## GitHub Secrets
 
@@ -20,3 +21,12 @@ Repository Settings → Secrets and variables → Actions에 다음 값을 등�
 - `SUPABASE_DB_PASSWORD`: Supabase 데이터베이스 비밀번호
 
 Supabase 마이그레이션이 아직 없으면 Supabase job은 자동으로 건너뜁니다.
+
+## Supabase Edge Function 환경 변수
+
+Supabase Dashboard → Edge Functions → Secrets에 다음 값을 등록합니다.
+
+- `FRONTEND_ORIGIN`: 실제 Vercel 배포 주소
+- `SESSION_COOKIE_SECURE`: production에서는 `true`
+
+`SUPABASE_URL`과 `SUPABASE_SERVICE_ROLE_KEY`은 Supabase가 기본으로 제공합니다.
