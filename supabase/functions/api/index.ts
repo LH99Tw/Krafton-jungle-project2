@@ -54,6 +54,32 @@ const openApiDocument = {
         },
       },
     },
+    '/auth/login': {
+      post: {
+        summary: 'Sign in with email and password',
+        responses: {
+          '200': { description: 'Signed in' },
+          '400': { description: 'Validation error' },
+          '401': { description: 'Invalid credentials' },
+          '403': { description: 'Invalid CSRF token' },
+        },
+      },
+    },
+    '/auth/logout': {
+      post: {
+        summary: 'Destroy the current session',
+        responses: { '204': { description: 'Signed out' } },
+      },
+    },
+    '/me': {
+      get: {
+        summary: 'Get the current user and blog',
+        responses: {
+          '200': { description: 'Current user' },
+          '401': { description: 'Unauthenticated' },
+        },
+      },
+    },
     '/auth/csrf': {
       get: {
         summary: 'Issue a CSRF token',
@@ -151,6 +177,36 @@ const sessionCookie = (sessionId: string) => {
   ]
   if (secureCookie) parts.push('Secure')
   return parts.join('; ')
+}
+
+const expiredSessionCookie = () => {
+  const parts = ['session_id=', 'Path=/', 'HttpOnly', 'SameSite=Lax', 'Max-Age=0']
+  if (secureCookie) parts.push('Secure')
+  return parts.join('; ')
+}
+
+const getSession = async (request: Request) => {
+  const sessionId = readCookie(request, 'session_id')
+  if (!sessionId) return null
+  const sessionHash = await sha256(sessionId)
+  const { data, error } = await supabase
+    .from('sessions')
+    .select('session_hash, user_id, csrf_token, expires_at')
+    .eq('session_hash', sessionHash)
+    .gt('expires_at', new Date().toISOString())
+    .maybeSingle()
+  if (error) {
+    console.error('Failed to read session', error)
+    return null
+  }
+  return data ? { ...data, sessionId, sessionHash } : null
+}
+
+const requireCsrfSession = async (request: Request) => {
+  const session = await getSession(request)
+  const csrfToken = request.headers.get('x-csrf-token')
+  if (!session || !csrfToken || session.csrf_token !== csrfToken) return null
+  return session
 }
 
 type SignupBody = {
@@ -262,6 +318,116 @@ const signup = async (request: Request) => {
   }, 201, { 'Set-Cookie': sessionCookie(sessionId) })
 }
 
+const login = async (request: Request) => {
+  const body = await request.json().catch(() => null)
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return apiError(400, 'VALIDATION_ERROR', '입력값을 확인해 주세요.')
+  }
+
+  const input = body as Record<string, unknown>
+  const email = typeof input.email === 'string' ? input.email.trim().toLowerCase() : ''
+  const password = typeof input.password === 'string' ? input.password : ''
+  const fields: Record<string, string> = {}
+  if (!email || email.length > 255 || !emailPattern.test(email)) {
+    fields.email = '올바른 이메일을 입력해 주세요.'
+  }
+  if (!password) fields.password = '비밀번호를 입력해 주세요.'
+  if (Object.keys(fields).length > 0) {
+    return apiError(400, 'VALIDATION_ERROR', '입력값을 확인해 주세요.', fields)
+  }
+
+  const csrfSession = await requireCsrfSession(request)
+  if (!csrfSession) {
+    return apiError(403, 'CSRF_TOKEN_INVALID', 'CSRF 토큰이 유효하지 않습니다.')
+  }
+
+  const { data: user, error } = await supabase
+    .from('users')
+    .select('id, email, nickname, password_hash, created_at, updated_at')
+    .eq('email', email)
+    .maybeSingle()
+  const validPassword = user && !error
+    ? await bcrypt.compare(password, user.password_hash)
+    : false
+  if (!validPassword || !user) {
+    return apiError(401, 'INVALID_CREDENTIALS', '이메일 또는 비밀번호가 올바르지 않습니다.')
+  }
+
+  const newSessionId = randomToken()
+  const newSessionHash = await sha256(newSessionId)
+  const csrfToken = request.headers.get('x-csrf-token')!
+  const { error: sessionError } = await supabase.rpc('login_user_session', {
+    p_user_id: user.id,
+    p_old_session_hash: csrfSession.sessionHash,
+    p_new_session_hash: newSessionHash,
+    p_csrf_token: csrfToken,
+  })
+  if (sessionError) {
+    if (sessionError.message?.includes('CSRF_TOKEN_INVALID')) {
+      return apiError(403, 'CSRF_TOKEN_INVALID', 'CSRF 토큰이 유효하지 않습니다.')
+    }
+    console.error('Failed to create login session', sessionError)
+    return apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
+  }
+
+  return json({ data: {
+    user: { id: user.id, email: user.email, nickname: user.nickname },
+    message: '로그인되었습니다.',
+  } }, 200, { 'Set-Cookie': sessionCookie(newSessionId) })
+}
+
+const logout = async (request: Request) => {
+  const sessionId = readCookie(request, 'session_id')
+  if (!sessionId) {
+    return new Response(null, { status: 204, headers: { ...corsHeaders, 'Set-Cookie': expiredSessionCookie() } })
+  }
+
+  const session = await requireCsrfSession(request)
+  if (!session) {
+    return apiError(403, 'CSRF_TOKEN_INVALID', 'CSRF 토큰이 유효하지 않습니다.')
+  }
+  const { error } = await supabase.from('sessions').delete().eq('session_hash', session.sessionHash)
+  if (error) {
+    console.error('Failed to delete session', error)
+    return apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
+  }
+  return new Response(null, { status: 204, headers: { ...corsHeaders, 'Set-Cookie': expiredSessionCookie() } })
+}
+
+const me = async (request: Request) => {
+  const session = await getSession(request)
+  if (!session?.user_id) {
+    return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
+  }
+  const { data: user, error } = await supabase
+    .from('users')
+    .select('id, email, nickname, created_at, updated_at')
+    .eq('id', session.user_id)
+    .maybeSingle()
+  if (error || !user) {
+    return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
+  }
+  const { data: blog, error: blogError } = await supabase
+    .from('blogs')
+    .select('id, name, slug')
+    .eq('owner_id', user.id)
+    .maybeSingle()
+  if (blogError && blogError.code !== '42P01') {
+    console.error('Failed to read current blog', blogError)
+    return apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
+  }
+  return json({ data: {
+    user: {
+      id: user.id,
+      email: user.email,
+      nickname: user.nickname,
+      createdAt: user.created_at,
+      updatedAt: user.updated_at,
+    },
+    blog: blog ?? null,
+  } })
+}
+
 const issueCsrfToken = async (request: Request) => {
   if (!supabaseUrl || !serviceRoleKey) {
     console.error('SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is missing')
@@ -315,6 +481,10 @@ Deno.serve(async (request) => {
   if (request.method === 'POST' && path === '/auth/signup') {
     return signup(request)
   }
+
+  if (request.method === 'POST' && path === '/auth/login') return login(request)
+  if (request.method === 'POST' && path === '/auth/logout') return logout(request)
+  if (request.method === 'GET' && path === '/me') return me(request)
 
   if (request.method === 'GET' && path === '/swagger-ui.css') {
     return swaggerAsset('swagger-ui.css')
