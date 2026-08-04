@@ -1,0 +1,11 @@
+{
+  "name": "jungle-blog-clone",
+  "private": true,
+  "scripts": {
+    "dev": "npm run dev:client",
+    "dev:client": "npm --prefix client run dev -- --host 0.0.0.0",
+    "dev:server": "npm --prefix server run dev",
+    "build": "npm --prefix client run build",
+    "test": "npm --prefix server test"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "jungle-blog-server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": { "dev": "tsx watch src/index.ts", "start": "tsx src/index.ts", "test": "node -e \"console.log('server tests: pending')\"" },
+  "dependencies": { "cors": "latest", "express": "latest" },
+  "devDependencies": { "tsx": "latest", "typescript": "latest", "@types/express": "latest", "@types/node": "latest", "@types/cors": "latest" }
+}
