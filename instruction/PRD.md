@@ -212,7 +212,7 @@
 
 ## 10. 권장 기술 스택
 
-3일 안에 MVP를 완성해야 하고 Windows와 macOS 개발 환경이 섞여 있으므로, 프론트엔드와 백엔드를 하나의 저장소에서 관리하며 개발부터 배포까지 Docker를 기준으로 실행한다. 복잡한 마이크로서비스나 외부 인프라는 사용하지 않는다.
+3일 안에 MVP를 완성해야 하고 Windows와 macOS 개발 환경이 섞여 있으므로, 프론트엔드와 백엔드를 하나의 저장소에서 관리하며 단순한 Node.js 실행 명령을 기준으로 개발·배포한다. 복잡한 마이크로서비스나 외부 인프라는 사용하지 않는다.
 
 ### 프론트엔드
 
@@ -238,7 +238,7 @@
 - **Vitest**: 단위 테스트 및 API 테스트
 - **Supertest**: Express API 요청 테스트
 - **ESLint + Prettier**: 코드 스타일 통일
-- **Docker + Docker Compose**: 운영체제와 무관한 개발·테스트 실행 환경
+- **npm scripts**: 통일된 개발·테스트 실행 명령
 - **GitHub**: 브랜치, PR, 이슈 관리 및 Vercel 자동 배포 연동
 
 ### 사용하지 않는 기술
@@ -260,12 +260,12 @@
 
 ### 아키텍처 방향
 
-**React SPA + Vercel Docker Containers(Express REST API) + Prisma/Supabase PostgreSQL을 사용하는 계층형 모놀리식 구조**로 구성한다.
+**React SPA + Supabase Edge Functions + Supabase PostgreSQL을 사용하는 계층형 구조**로 구성한다.
 
 - 프론트엔드와 백엔드는 같은 저장소에서 관리한다.
 - 프론트엔드는 API를 통해서만 데이터를 읽고 변경한다.
-- Vercel은 Docker 이미지 기반의 프론트엔드와 API 컨테이너를 제공한다.
-- `/api/*` 요청은 Vercel의 API 컨테이너로 전달하고, 일반 페이지 요청은 프론트엔드 컨테이너로 처리한다.
+- Vercel은 React 정적 빌드 결과를 제공한다.
+- `/api/*` 요청은 Supabase Edge Functions로 전달한다.
 - 백엔드는 라우터에서 직접 DB를 조작하지 않고 Service를 거친다.
 - 인증·권한 검사는 API 진입점과 Service 양쪽에서 일관되게 적용한다.
 - 데이터베이스는 백엔드에서만 접근한다.
@@ -309,7 +309,7 @@ post.repository.ts
 ```
 
 - Controller는 얇게 유지한다.
-- Service에 업무 규칙을 모아 단위 테스트가 가능하게 한다.
+- Service에 업무 규칙을 정리해 단위 테스트가 가능하게 한다.
 - Repository는 재사용 가능한 데이터 접근 함수만 제공한다.
 - 여러 Repository를 함께 사용하거나 여러 변경을 묶어야 하는 경우 Service에서 트랜잭션을 시작한다.
 
@@ -335,7 +335,7 @@ post.repository.ts
 
 #### 5. Feature-based Module 구조
 
-레이어만 모아두지 않고 기능 단위로 관리해 개발자별 작업 경계를 명확히 한다.
+레이어만 나누지 않고 기능 단위로 관리해 개발자별 작업 경계를 명확히 한다.
 
 ```text
 server/src/
@@ -479,7 +479,7 @@ project-root/
 | 구성 요소 | 서비스 | 담당 내용 |
 |---|---|---|
 | 웹 애플리케이션 | Vercel | React 정적 빌드 제공 |
-| API | Vercel Docker Container | Docker 이미지 기반 Express API 실행 |
+| API | Supabase Edge Functions | 서버리스 API 실행 |
 | 데이터베이스 | Supabase PostgreSQL | User, Blog, Post, Session 저장 |
 | 데이터베이스 관리 | Supabase Dashboard | 테이블 확인, SQL 실행, 로그 확인 |
 | 소스 저장소 | GitHub | 브랜치 병합 시 Vercel 자동 배포 |
@@ -489,80 +489,63 @@ project-root/
 ```text
 브라우저
   ├── 페이지 요청 ───────▶ Vercel 정적 파일
-  └── /api 요청 ────────▶ Vercel API Container
+  └── /api 요청 ────────▶ Supabase Edge Functions
                               │
-                              ├── Supabase PostgreSQL
-                              └── Session 테이블
+                              └── Supabase PostgreSQL
 ```
 
 ### 배포 원칙
 
-- 프론트엔드와 API는 컨테이너를 분리하되 동일한 Vercel 프로젝트의 서비스로 제공해 CORS 설정을 최소화한다.
-- 프론트엔드 컨테이너와 백엔드 컨테이너는 각각 독립적으로 빌드·배포·로그 확인이 가능해야 한다.
+- 프론트엔드와 API는 각각 Vercel과 Supabase에서 독립적으로 제공해 CORS 설정을 명시적으로 관리한다.
+- 프론트엔드와 백엔드는 각각 독립적으로 빌드·배포·로그 확인이 가능해야 한다.
 - API 경로는 항상 `/api` 아래에 둔다.
-- Vercel 컨테이너는 상태를 유지하지 않으므로 세션·데이터를 전역 변수나 로컬 파일에 저장하지 않는다.
+- 서버리스 실행 환경은 상태를 유지하지 않으므로 세션·데이터를 전역 변수나 로컬 파일에 저장하지 않는다.
 - Prisma와 세션 저장소는 Supabase의 연결 풀링 또는 서버리스 환경에 맞는 연결 설정을 사용한다.
 - Supabase 데이터베이스의 직접 접근 권한은 서버 환경에만 둔다.
 - `DATABASE_URL`, `DIRECT_URL`, `SESSION_SECRET`, `FRONTEND_ORIGIN`은 Vercel 환경 변수로 등록한다.
 - `DATABASE_URL`은 런타임용 pooled connection, `DIRECT_URL`은 Prisma 마이그레이션용 direct connection으로 분리한다.
 - `SESSION_SECRET`은 충분히 긴 랜덤 값으로 설정하고 저장소에 커밋하지 않는다.
 
-### Docker 실행 및 배포 결정
+### 개발 및 배포 결정
 
-- Windows와 macOS 모두 Docker Desktop을 사용한다.
-- 로컬 개발은 `docker compose`로 프론트엔드, 백엔드, PostgreSQL을 함께 실행한다.
+- 로컬 개발은 npm scripts와 Supabase CLI를 사용한다.
 - 로컬 PostgreSQL은 개발·테스트 전용이며, 운영 데이터베이스는 Supabase PostgreSQL을 사용한다.
-- 프론트엔드와 백엔드는 각각 Dockerfile을 갖고 동일한 Node.js 버전과 의존성 환경에서 실행한다.
-- Production은 Vercel에 Docker 이미지로 배포한다.
-- Vercel 컨테이너는 상태를 보존하지 않으므로 데이터와 세션을 컨테이너 내부에 저장하지 않는다.
-- Docker 이미지 빌드 시 테스트와 타입 검사를 통과해야 배포한다.
+- Production 프론트엔드는 Vercel 정적 빌드로 배포한다.
+- Production 백엔드는 Supabase Edge Functions로 배포한다.
 
 결론적으로 이번 MVP의 기본 배포 조합은 다음과 같다.
 
-`Docker Compose(개발·테스트) → Docker Image → Vercel`
+`Vite Build → Vercel`
 
 `PostgreSQL + Session Store → Supabase`
 
-### Docker 구성
+### 프로젝트 구성
 
 ```text
 project-root/
-├── docker-compose.yml       # 로컬 전체 실행
-├── client/
-│   ├── Dockerfile            # 로컬 개발용
-│   └── Dockerfile.vercel     # Vercel 배포용
-├── server/
-│   ├── Dockerfile            # 로컬 개발용
-│   └── Dockerfile.vercel     # Vercel 배포용
-├── vercel.json               # client/server 서비스 라우팅
-└── prisma/
+├── client/                  # React + Vite 프론트엔드
+├── server/                  # 백엔드 개발 코드
+├── supabase/functions/      # Supabase Edge Functions
+└── instruction/             # API 및 제품 명세
 ```
 
-로컬 서비스 구성:
-
-| 서비스 | 컨테이너 역할 | 기본 포트 |
-|---|---|---:|
-| `client` | React 개발 서버 또는 빌드 결과 제공 | `5173` |
-| `server` | Express API 서버 | `4000` |
-| `postgres` | 로컬 개발·테스트용 PostgreSQL | `5432` |
-
-### Docker 명령 기준
+### 개발 명령 기준
 
 ```bash
-# 전체 개발 환경 실행
-docker compose up --build
+# 프론트엔드 개발 서버
+npm run dev:client
 
-# 백그라운드 실행
-docker compose up -d --build
+# 프론트엔드 production 빌드
+npm run build
 
-# 테스트 실행
-docker compose exec server npm test
+# 백엔드 테스트
+npm test
 
-# 전체 환경 종료
-docker compose down
+# Supabase Edge Function 배포
+npx supabase functions deploy api --no-verify-jwt
 ```
 
-개발자는 운영체제별 Node.js나 PostgreSQL 설치 방식에 의존하지 않고 위 명령을 기준으로 프로젝트를 실행한다. Docker Desktop 설치와 프로젝트 환경 변수 설정만 각 개발 환경에서 선행한다.
+개발자는 운영체제별 Node.js나 PostgreSQL 설치 방식에 의존하지 않고 위 명령을 기준으로 프로젝트를 실행한다. 환경 변수 설정만 각 개발 환경에서 선행한다.
 
 ### 환경별 구성
 

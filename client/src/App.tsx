@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ArrowRight, ChevronDown, Menu, Search, X } from 'lucide-react'
 
 type BestPost = { blog: string; domain: string; title: string }
@@ -23,7 +23,19 @@ function App() {
   const [loginOpen, setLoginOpen] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [activeGroup, setActiveGroup] = useState(0)
+  const [apiStatus, setApiStatus] = useState<'checking' | 'connected' | 'offline'>('checking')
   const results = useMemo(() => bestPosts.filter((post) => `${post.blog} ${post.title}`.toLowerCase().includes(query.toLowerCase())), [query])
+
+  useEffect(() => {
+    const apiUrl = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '')
+    fetch(`${apiUrl}/health`)
+      .then((response) => {
+        if (!response.ok) throw new Error('API request failed')
+        return response.json()
+      })
+      .then(() => setApiStatus('connected'))
+      .catch(() => setApiStatus('offline'))
+  }, [])
 
   return <div className="tistory-page">
     <a className="skip-link" href="#main">본문 바로가기</a>
@@ -49,7 +61,7 @@ function App() {
       <section className="my-section"><div className="section-inner my-inner"><div><p className="section-label">나의 티스토리</p><h2>티스토리에 로그인하시고<br />더 많은 기능을 이용해보세요!</h2></div><button className="kakao-button" onClick={() => setLoginOpen(true)}><span className="kakao-symbol">●</span> 카카오계정으로 시작하기 <ArrowRight size={16} /></button></div></section>
     </main>
 
-    <footer className="tistory-footer"><div className="footer-inner"><div className="footer-brand"><strong>TISTORY</strong><p>티스토리는 Daum에서 <span className="heart">♥</span> 을 담아 만듭니다.</p><small>© Daum Corp.</small></div><div className="footer-links">{footerGroups.map((group, index) => <div className="footer-group" key={group.title}><button className="footer-group-title" onClick={() => setActiveGroup(activeGroup === index ? -1 : index)}>{group.title}<ChevronDown size={14} className={activeGroup === index ? 'rotated' : ''} /></button><div className={activeGroup === index ? 'footer-link-list expanded' : 'footer-link-list'}>{group.links.map((link) => <a key={link} href="#footer" onClick={(event) => event.preventDefault()}>{link}</a>)}</div></div>)}</div></div></footer>
+    <footer className="tistory-footer"><div className="footer-inner"><div className="footer-brand"><strong>TISTORY</strong><p>티스토리는 Daum에서 <span className="heart">♥</span> 을 담아 만듭니다.</p><small>© Daum Corp. · API {apiStatus === 'connected' ? '연결됨' : apiStatus === 'offline' ? '연결 대기' : '확인 중'}</small></div><div className="footer-links">{footerGroups.map((group, index) => <div className="footer-group" key={group.title}><button className="footer-group-title" onClick={() => setActiveGroup(activeGroup === index ? -1 : index)}>{group.title}<ChevronDown size={14} className={activeGroup === index ? 'rotated' : ''} /></button><div className={activeGroup === index ? 'footer-link-list expanded' : 'footer-link-list'}>{group.links.map((link) => <a key={link} href="#footer" onClick={(event) => event.preventDefault()}>{link}</a>)}</div></div>)}</div></div></footer>
     {searchOpen && <div className="dialog-backdrop" onMouseDown={() => setSearchOpen(false)}><div className="search-dialog" onMouseDown={(event) => event.stopPropagation()}><button className="dialog-close" onClick={() => setSearchOpen(false)} aria-label="닫기"><X /></button><h2>티스토리 검색</h2><div className="dialog-search"><Search size={19} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="검색어를 입력하세요" /><button onClick={() => setSearchOpen(false)}>검색</button></div><p>{query ? `${results.length}개의 글을 찾았습니다.` : '블로그와 글을 검색해보세요.'}</p></div></div>}
     {loginOpen && <div className="dialog-backdrop" onMouseDown={() => setLoginOpen(false)}><div className="login-dialog" onMouseDown={(event) => event.stopPropagation()}><button className="dialog-close" onClick={() => setLoginOpen(false)} aria-label="닫기"><X /></button><div className="login-logo">티스토리</div><p>당신의 이야기가 콘텐츠가 됩니다.</p><button className="kakao-login" onClick={() => setLoginOpen(false)}>카카오계정으로 로그인</button><button className="login-help">내 티스토리 계정을 모르겠어요</button></div></div>}
   </div>
