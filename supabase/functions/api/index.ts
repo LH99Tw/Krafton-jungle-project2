@@ -92,6 +92,15 @@ const openApiDocument = {
     '/blogs/{slug}': {
       get: { summary: 'Get public blog and posts', responses: { '200': { description: 'Public blog' } } },
     },
+    '/posts': {
+      get: { summary: 'List public or owned posts', responses: { '200': { description: 'Post list' } } },
+      post: { summary: 'Create a draft or published post', responses: { '201': { description: 'Post created' } } },
+    },
+    '/posts/{id}': {
+      get: { summary: 'Read a post', responses: { '200': { description: 'Post detail' } } },
+      patch: { summary: 'Update an owned post', responses: { '200': { description: 'Post updated' } } },
+      delete: { summary: 'Delete an owned post', responses: { '204': { description: 'Post deleted' } } },
+    },
     '/auth/csrf': {
       get: {
         summary: 'Issue a CSRF token',
@@ -582,6 +591,191 @@ const getPublicBlog = async (slugValue: string, url: URL) => {
   } })
 }
 
+const postJson = (post: Record<string, any>, includeContent = false) => ({
+  id: post.id,
+  url: `/post/${post.id}`,
+  title: post.title,
+  ...(includeContent ? { content: post.content } : {
+    excerpt: post.content.length > 160 ? `${post.content.slice(0, 160)}…` : post.content,
+  }),
+  status: post.status,
+  viewCount: post.view_count,
+  author: { id: post.owner_id, nickname: post.author_nickname },
+  blog: { id: post.blog_id, name: post.blog_name, slug: post.blog_slug },
+  publishedAt: post.published_at,
+  createdAt: post.created_at,
+  updatedAt: post.updated_at,
+})
+
+const postInput = (body: Record<string, unknown>, partial = false) => {
+  const fields: Record<string, string> = {}
+  const result: Record<string, string> = {}
+  const hasTitle = Object.prototype.hasOwnProperty.call(body, 'title')
+  const hasContent = Object.prototype.hasOwnProperty.call(body, 'content')
+  const hasStatus = Object.prototype.hasOwnProperty.call(body, 'status')
+  if (!partial || hasTitle) {
+    const title = typeof body.title === 'string' ? body.title.trim() : ''
+    if (!title || title.length > 100) fields.title = '제목은 1~100자로 입력해 주세요.'
+    else result.title = title
+  }
+  if (!partial || hasContent) {
+    const content = typeof body.content === 'string' ? body.content.trim() : ''
+    if (!content || content.length > 20000) fields.content = '본문은 1~20,000자로 입력해 주세요.'
+    else result.content = content
+  }
+  if (!partial || hasStatus) {
+    const status = body.status === undefined && !partial ? 'DRAFT' : body.status
+    if (status !== 'DRAFT' && status !== 'PUBLISHED') fields.status = '상태 값을 확인해 주세요.'
+    else result.status = status
+  }
+  if (partial && !hasTitle && !hasContent && !hasStatus) fields.request = '수정할 값을 입력해 주세요.'
+  return { fields, values: result }
+}
+
+const listPosts = async (request: Request, url: URL) => {
+  const scope = url.searchParams.get('scope') ?? 'public'
+  const sort = url.searchParams.get('sort') ?? 'latest'
+  const page = positiveInteger(url.searchParams.get('page'), 1)
+  const size = positiveInteger(url.searchParams.get('size'), 10, 50)
+  const q = (url.searchParams.get('q') ?? '').trim()
+  const requestedStatus = url.searchParams.get('status')
+  if (!['public', 'mine'].includes(scope) || !['latest', 'popular'].includes(sort) || !page || !size) {
+    return apiError(400, 'VALIDATION_ERROR', '목록 조건을 확인해 주세요.')
+  }
+  if (scope === 'public' && requestedStatus !== null) {
+    return apiError(400, 'VALIDATION_ERROR', '공개 피드에는 status를 지정할 수 없습니다.')
+  }
+
+  let ownerId: number | null = null
+  let status = 'PUBLISHED'
+  if (scope === 'mine') {
+    const session = await getSession(request)
+    if (!session?.user_id) return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
+    ownerId = session.user_id
+    status = requestedStatus ?? 'ALL'
+    if (!['ALL', 'DRAFT', 'PUBLISHED'].includes(status)) {
+      return apiError(400, 'VALIDATION_ERROR', '글 상태를 확인해 주세요.')
+    }
+  }
+
+  let query = supabase.from('post_details').select('*', { count: 'exact' })
+  query = scope === 'public' ? query.eq('status', 'PUBLISHED') : query.eq('owner_id', ownerId!)
+  if (scope === 'mine' && status !== 'ALL') query = query.eq('status', status)
+  if (q) {
+    const safe = q.replaceAll(',', ' ')
+    query = query.or(`title.ilike.%${safe}%,content.ilike.%${safe}%,author_nickname.ilike.%${safe}%,blog_name.ilike.%${safe}%`)
+  }
+  if (sort === 'popular') {
+    query = query.order('view_count', { ascending: false })
+    if (scope === 'public') query = query.order('published_at', { ascending: false })
+  } else {
+    query = query.order(scope === 'public' ? 'published_at' : 'updated_at', { ascending: false })
+  }
+  query = query.order('id', { ascending: false })
+  const from = (page - 1) * size
+  const { data, count, error } = await query.range(from, from + size - 1)
+  if (error) {
+    console.error('Failed to list posts', error)
+    return apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
+  }
+  const totalItems = count ?? 0
+  return json({
+    data: (data ?? []).map((post: Record<string, any>) => postJson(post)),
+    pagination: { page, size, totalItems, totalPages: totalItems ? Math.ceil(totalItems / size) : 0 },
+  })
+}
+
+const createPost = async (request: Request) => {
+  const session = await requireCsrfSession(request)
+  if (!session) return apiError(403, 'CSRF_TOKEN_INVALID', 'CSRF 토큰이 유효하지 않습니다.')
+  if (!session.user_id) return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
+  const body = await request.json().catch(() => null)
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return apiError(400, 'VALIDATION_ERROR', '입력값을 확인해 주세요.')
+  }
+  const { fields, values } = postInput(body as Record<string, unknown>)
+  if (Object.keys(fields).length) return apiError(400, 'VALIDATION_ERROR', '입력값을 확인해 주세요.', fields)
+  const { data: blog } = await supabase.from('blogs').select('id, name, slug').eq('owner_id', session.user_id).maybeSingle()
+  if (!blog) return apiError(409, 'BLOG_REQUIRED', '먼저 블로그를 만들어 주세요.')
+  const publishedAt = values.status === 'PUBLISHED' ? new Date().toISOString() : null
+  const { data, error } = await supabase.from('posts').insert({
+    blog_id: blog.id,
+    title: values.title,
+    content: values.content,
+    status: values.status,
+    published_at: publishedAt,
+  }).select('*').single()
+  if (error) {
+    console.error('Failed to create post', error)
+    return apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
+  }
+  const { data: user } = await supabase.from('users').select('nickname').eq('id', session.user_id).single()
+  return json({ data: postJson({
+    ...data,
+    blog_name: blog.name,
+    blog_slug: blog.slug,
+    owner_id: session.user_id,
+    author_nickname: user?.nickname,
+  }, true) }, 201)
+}
+
+const readPost = async (request: Request, id: number) => {
+  const session = await getSession(request)
+  const { data, error } = await supabase.rpc('read_post', {
+    p_post_id: id,
+    p_request_user_id: session?.user_id ?? null,
+  })
+  if (error) {
+    console.error('Failed to read post', error)
+    return apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
+  }
+  const post = data?.[0]
+  if (!post) return apiError(404, 'NOT_FOUND', '글을 찾을 수 없습니다.')
+  return json({ data: postJson(post, true) })
+}
+
+const ownedPost = async (userId: number, id: number) => {
+  const { data, error } = await supabase.from('post_details').select('*').eq('id', id).maybeSingle()
+  if (error) return { error: apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.') }
+  if (!data) return { error: apiError(404, 'NOT_FOUND', '글을 찾을 수 없습니다.') }
+  if (data.owner_id !== userId) return { error: apiError(403, 'FORBIDDEN', '글을 수정하거나 삭제할 권한이 없습니다.') }
+  return { data }
+}
+
+const updatePost = async (request: Request, id: number) => {
+  const session = await requireCsrfSession(request)
+  if (!session) return apiError(403, 'CSRF_TOKEN_INVALID', 'CSRF 토큰이 유효하지 않습니다.')
+  if (!session.user_id) return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
+  const ownership = await ownedPost(session.user_id, id)
+  if (ownership.error) return ownership.error
+  const body = await request.json().catch(() => null)
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return apiError(400, 'VALIDATION_ERROR', '입력값을 확인해 주세요.')
+  const { fields, values } = postInput(body as Record<string, unknown>, true)
+  if (Object.keys(fields).length) return apiError(400, 'VALIDATION_ERROR', '입력값을 확인해 주세요.', fields)
+  const previous = ownership.data!
+  let publishedAt = previous.published_at
+  if (values.status === 'PUBLISHED' && previous.status === 'DRAFT') publishedAt = new Date().toISOString()
+  if (values.status === 'DRAFT') publishedAt = null
+  const { data, error } = await supabase.from('posts').update({
+    ...values,
+    published_at: publishedAt,
+    updated_at: new Date().toISOString(),
+  }).eq('id', id).select('*').single()
+  if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
+  return json({ data: postJson({ ...previous, ...data }, true) })
+}
+
+const deletePost = async (request: Request, id: number) => {
+  const session = await requireCsrfSession(request)
+  if (!session) return apiError(403, 'CSRF_TOKEN_INVALID', 'CSRF 토큰이 유효하지 않습니다.')
+  if (!session.user_id) return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
+  const ownership = await ownedPost(session.user_id, id)
+  if (ownership.error) return ownership.error
+  const { error } = await supabase.from('posts').delete().eq('id', id)
+  if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
+  return new Response(null, { status: 204, headers: corsHeaders })
+}
+
 const issueCsrfToken = async (request: Request) => {
   if (!supabaseUrl || !serviceRoleKey) {
     console.error('SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is missing')
@@ -644,6 +838,16 @@ Deno.serve(async (request) => {
   if (request.method === 'GET' && path === '/blogs/me') return getMyBlog(request)
   const blogMatch = path.match(/^\/blogs\/([^/]+)$/)
   if (request.method === 'GET' && blogMatch) return getPublicBlog(blogMatch[1], url)
+  if (request.method === 'GET' && path === '/posts') return listPosts(request, url)
+  if (request.method === 'POST' && path === '/posts') return createPost(request)
+  const postMatch = path.match(/^\/posts\/(\d+)$/)
+  if (postMatch) {
+    const postId = Number(postMatch[1])
+    if (!Number.isSafeInteger(postId) || postId < 1) return apiError(404, 'NOT_FOUND', '글을 찾을 수 없습니다.')
+    if (request.method === 'GET') return readPost(request, postId)
+    if (request.method === 'PATCH') return updatePost(request, postId)
+    if (request.method === 'DELETE') return deletePost(request, postId)
+  }
 
   if (request.method === 'GET' && path === '/swagger-ui.css') {
     return swaggerAsset('swagger-ui.css')
