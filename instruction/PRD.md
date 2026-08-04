@@ -95,12 +95,13 @@
 - 로그인: 이메일과 비밀번호 입력, 로그인 버튼, 회원가입 이동 링크
 - 회원가입: 이메일, 닉네임, 비밀번호, 비밀번호 확인 입력
 - 필수 입력값 누락, 이메일 형식 오류, 비밀번호 불일치, 잘못된 인증 정보에 대한 메시지를 표시한다.
+- 회원가입 성공 시 자동 로그인하며 블로그 생성 화면으로 이동한다.
 - 로그인 성공 시 요청 전 페이지로 돌아가며, 없으면 홈으로 이동한다.
 - 비밀번호는 서버에 평문으로 저장하지 않는다.
 
 ### 6.3 블로그 생성 `/blog/new`
 
-- 블로그 이름(필수, 2~30자)과 주소(slug, 필수, 영문/숫자/하이픈)를 입력한다.
+- 블로그 이름(필수, 2~30자), 소개(선택, 최대 160자)와 주소(slug, 필수, 영문 소문자/숫자/하이픈)를 입력한다.
 - 주소 중복 확인 결과를 즉시 안내한다.
 - 생성 성공 시 `/blog/{slug}/manage`로 이동한다.
 - 이미 블로그를 가진 사용자가 재접근하면 생성 화면 대신 자신의 블로그 관리 화면으로 이동한다.
@@ -190,8 +191,10 @@
 - `POST /api/auth/signup` 회원가입
 - `POST /api/auth/login` 로그인
 - `POST /api/auth/logout` 로그아웃
+- `GET /api/auth/csrf` 변경 요청용 CSRF 토큰 발급
 - `GET /api/me` 현재 사용자 조회
 - `POST /api/blogs` 블로그 생성
+- `GET /api/blogs/check-slug` slug 중복 확인
 - `GET /api/blogs/{slug}` 공개 블로그 조회
 - `GET /api/blogs/me` 내 블로그 조회
 - `GET /api/posts` 공개 글 피드/검색/정렬/페이지네이션
@@ -202,11 +205,376 @@
 
 공통 원칙:
 
-- 성공 응답은 JSON으로 반환한다.
+- `logout`, `post delete`의 `204 No Content`를 제외한 성공 응답은 JSON으로 반환한다.
 - 유효성 오류는 `400`, 인증 오류는 `401`, 권한 오류는 `403`, 리소스 없음은 `404`, 서버 오류는 `500`을 사용한다.
-- 목록 응답은 `items`, `page`, `size`, `totalPages`, `totalItems`를 포함한다.
+- 목록 응답은 `data`와 `pagination(page, size, totalPages, totalItems)`를 포함한다.
+- 공개 글 검색은 제목, 본문, 작성자 닉네임, 블로그명을 대상으로 한다.
 
-## 10. 비기능 요구사항
+## 10. 권장 기술 스택
+
+3일 안에 MVP를 완성해야 하고 Windows와 macOS 개발 환경이 섞여 있으므로, 프론트엔드와 백엔드를 하나의 저장소에서 관리하며 개발부터 배포까지 Docker를 기준으로 실행한다. 복잡한 마이크로서비스나 외부 인프라는 사용하지 않는다.
+
+### 프론트엔드
+
+- **React + TypeScript**: 컴포넌트 기반 화면 개발과 타입 안정성 확보
+- **Vite**: 빠른 개발 서버와 단순한 빌드 설정
+- **React Router**: 홈, 인증, 블로그, 글 관련 경로 관리
+- **TanStack Query**: 서버 데이터 조회, 캐시, 로딩·오류 상태 관리
+- **CSS Modules 또는 일반 CSS**: 별도 UI 프레임워크 없이 MVP 스타일 구현
+- **React Hook Form + Zod**: 폼 상태와 입력 검증 관리
+
+### 백엔드
+
+- **Node.js + TypeScript**: 프론트엔드와 언어를 통일해 개발·리뷰 비용을 낮춘다.
+- **Express**: API 라우팅과 미들웨어 구성이 단순하고 문서화가 쉽다.
+- **Zod**: 요청 body와 query 입력을 서버에서 동일한 기준으로 검증한다.
+- **bcrypt**: 비밀번호 해시 처리
+- **express-session + connect-pg-simple**: API 문서에 정의된 서버 세션·HttpOnly 쿠키 인증 구현. 세션은 Supabase PostgreSQL에 저장한다.
+
+### 데이터베이스 및 개발 도구
+
+- **Supabase PostgreSQL**: User–Blog–Post 관계, unique 제약, 권한 검증, 발행 상태 변경을 안정적으로 처리할 수 있는 관계형 데이터베이스
+- **Prisma**: 타입 안전한 데이터 접근과 마이그레이션 관리
+- **Vitest**: 단위 테스트 및 API 테스트
+- **Supertest**: Express API 요청 테스트
+- **ESLint + Prettier**: 코드 스타일 통일
+- **Docker + Docker Compose**: 운영체제와 무관한 개발·테스트 실행 환경
+- **GitHub**: 브랜치, PR, 이슈 관리 및 Vercel 자동 배포 연동
+
+### 사용하지 않는 기술
+
+- 마이크로서비스, 별도 API 게이트웨이, 이벤트 브로커
+- Redis와 별도 세션 저장소
+- 이미지 저장소, 외부 검색 엔진, 소셜 로그인
+- 실시간 통신(WebSocket)
+
+### PostgreSQL을 선택한 이유
+
+- User, Blog, Post 사이의 명확한 관계를 foreign key로 보장할 수 있다.
+- 이메일과 블로그 주소의 중복을 unique 제약으로 막을 수 있다.
+- 글 발행과 조회수 갱신처럼 데이터 일관성이 필요한 작업에 트랜잭션을 사용할 수 있다.
+- Prisma와의 연동이 안정적이고, 이후 서비스 확장에도 적합하다.
+- MongoDB는 이번 MVP의 핵심 데이터가 관계형이고 조인·소유권·일관성 검증이 많아 우선순위에서 제외한다.
+
+## 11. 시스템 아키텍처
+
+### 아키텍처 방향
+
+**React SPA + Vercel Docker Containers(Express REST API) + Prisma/Supabase PostgreSQL을 사용하는 계층형 모놀리식 구조**로 구성한다.
+
+- 프론트엔드와 백엔드는 같은 저장소에서 관리한다.
+- 프론트엔드는 API를 통해서만 데이터를 읽고 변경한다.
+- Vercel은 Docker 이미지 기반의 프론트엔드와 API 컨테이너를 제공한다.
+- `/api/*` 요청은 Vercel의 API 컨테이너로 전달하고, 일반 페이지 요청은 프론트엔드 컨테이너로 처리한다.
+- 백엔드는 라우터에서 직접 DB를 조작하지 않고 Service를 거친다.
+- 인증·권한 검사는 API 진입점과 Service 양쪽에서 일관되게 적용한다.
+- 데이터베이스는 백엔드에서만 접근한다.
+
+### 선택한 디자인 패턴
+
+3일이라는 기간을 고려해 이해하기 쉽고 테스트하기 쉬운 패턴만 적용한다. 패턴 적용 자체를 목표로 하지 않으며, 코드 중복과 계층 간 결합을 줄이는 데 필요한 범위로 제한한다.
+
+#### 1. Layered Architecture
+
+전체 백엔드를 다음 계층으로 나눈다.
+
+```text
+Route/Controller → Middleware → Service → Repository → Database
+```
+
+- **Route/Controller**: HTTP 요청을 받고 Service를 호출한 뒤 응답을 반환한다.
+- **Middleware**: 인증, 권한 사전 확인, 입력 검증, 공통 오류 처리를 담당한다.
+- **Service**: 회원·블로그·글의 업무 규칙과 트랜잭션을 담당한다.
+- **Repository**: Prisma를 이용한 데이터 조회·저장만 담당한다.
+- **Database**: Supabase PostgreSQL에 데이터를 영속화한다.
+
+Controller에서 직접 Prisma를 호출하거나, Repository에서 권한을 판단하지 않는다.
+
+#### 2. Controller–Service–Repository 패턴
+
+기능별로 Controller, Service, Repository를 분리한다.
+
+```text
+auth.controller.ts
+auth.service.ts
+user.repository.ts
+
+blog.controller.ts
+blog.service.ts
+blog.repository.ts
+
+post.controller.ts
+post.service.ts
+post.repository.ts
+```
+
+- Controller는 얇게 유지한다.
+- Service에 업무 규칙을 모아 단위 테스트가 가능하게 한다.
+- Repository는 재사용 가능한 데이터 접근 함수만 제공한다.
+- 여러 Repository를 함께 사용하거나 여러 변경을 묶어야 하는 경우 Service에서 트랜잭션을 시작한다.
+
+#### 3. DTO 및 Schema Validation
+
+- 요청 데이터는 Zod Schema로 검증한다.
+- Controller와 Service 사이에는 검증이 끝난 입력 객체만 전달한다.
+- DB 모델을 API 응답에 그대로 노출하지 않고 필요한 필드만 DTO로 변환한다.
+- `passwordHash`, 세션 값 등 민감한 필드는 DTO에 포함하지 않는다.
+- API의 상세 필드와 오류 형식은 `instruction/API.md`를 기준으로 한다.
+
+#### 4. Middleware 패턴
+
+공통 요청 처리는 Middleware로 분리한다.
+
+- `sessionMiddleware`: 세션 쿠키를 확인하고 현재 사용자 정보를 설정한다.
+- `requireAuth`: 로그인이 필요한 요청을 차단한다.
+- `validate`: body/query/params를 Schema로 검증한다.
+- `errorHandler`: 예외를 공통 오류 응답으로 변환한다.
+- `notFoundHandler`: 존재하지 않는 경로를 처리한다.
+
+리소스의 최종 소유권 확인은 Middleware에만 두지 않고 Service에서 다시 확인한다.
+
+#### 5. Feature-based Module 구조
+
+레이어만 모아두지 않고 기능 단위로 관리해 개발자별 작업 경계를 명확히 한다.
+
+```text
+server/src/
+├── modules/
+│   ├── auth/
+│   │   ├── auth.controller.ts
+│   │   ├── auth.service.ts
+│   │   ├── auth.schema.ts
+│   │   └── auth.repository.ts
+│   ├── blog/
+│   └── post/
+├── middleware/
+├── database/
+└── app.ts
+```
+
+- `auth`는 회원가입·로그인·로그아웃을 담당한다.
+- `blog`는 블로그 생성·조회와 소유권을 담당한다.
+- `post`는 글·피드·검색을 담당한다.
+- 기능 모듈끼리 직접 Repository를 호출하지 않고 Service 또는 명확한 공통 인터페이스를 통해 협력한다.
+
+### 적용하지 않는 패턴
+
+이번 MVP에서는 다음 패턴을 적용하지 않는다.
+
+- 마이크로서비스: 배포와 통신 복잡도만 증가한다.
+- CQRS/Event Sourcing: 글·피드 규모에 비해 과하다.
+- 복잡한 DI Container: TypeScript 생성자 주입만으로 충분하다.
+- Repository 추상화 계층의 과도한 일반화: Prisma Repository를 감싸는 최소 구조만 사용한다.
+- 전역 Singleton 상태: 서버리스 환경에서 요청 간 상태 공유 문제가 생길 수 있으므로 사용하지 않는다.
+
+### 패턴 적용 판단 기준
+
+- 같은 코드가 두 번 이상 반복되고 변경 가능성이 있으면 공통 모듈로 분리한다.
+- 업무 규칙이 포함된 코드는 Service에 둔다.
+- 단순 조회·저장 함수까지 불필요하게 추상화하지 않는다.
+- 새 패턴을 추가할 때는 팀 전체가 이해할 수 있는지와 테스트 이점을 먼저 확인한다.
+
+### 요청 흐름
+
+```text
+사용자 브라우저
+      │
+      ▼
+React 페이지/컴포넌트
+      │  fetch + credentials: include
+      ▼
+Express Router
+      │
+      ├── 인증 미들웨어
+      ├── 입력 검증(Zod)
+      ▼
+Service Layer
+      │
+      ├── 업무 규칙
+      ├── 권한 확인
+      └── 트랜잭션 처리
+      ▼
+Prisma Repository
+      ▼
+Supabase PostgreSQL
+```
+
+### 계층별 책임
+
+| 계층 | 책임 | 포함하지 않는 것 |
+|---|---|---|
+| React UI | 사용자 입력, 화면 표시, 로딩·오류 상태 | DB 접근, 권한 판단의 최종 결정 |
+| API Router | HTTP 경로·메서드 연결, 응답 상태 코드 | 복잡한 업무 로직 |
+| Middleware | 세션 확인, 공통 오류 처리, 요청 검증 | 화면 상태 관리 |
+| Service | 회원·블로그·글의 업무 규칙, 권한 확인, 트랜잭션 | HTTP 객체에 직접 의존 |
+| Repository/Prisma | DB 조회·생성·수정·삭제 | 사용자에게 보여줄 메시지 결정 |
+| Supabase PostgreSQL | 관계형 데이터 및 세션 영속 저장 | 인증·업무 로직 |
+
+### 인증 아키텍처
+
+- 로그인 성공 시 Express Session이 세션을 생성하고 `HttpOnly` 쿠키를 발급한다.
+- 세션 데이터는 Vercel 함수 메모리에 저장하지 않고 `connect-pg-simple`을 통해 Supabase PostgreSQL에 저장한다.
+- 프론트엔드는 인증 정보를 직접 저장하지 않고 요청 시 쿠키를 포함한다.
+- 백엔드는 `req.session.userId`를 기준으로 현재 사용자를 확인한다.
+- 글 수정·삭제와 비공개 글 조회는 Service에서 리소스 소유자를 재확인한다.
+- 로그아웃 시 세션을 폐기하고 쿠키를 만료시킨다.
+- 비밀번호와 세션 값은 응답 및 로그에 포함하지 않는다.
+
+### Redis 사용 여부
+
+- MVP에서는 Redis를 사용하지 않는다.
+- 세션 저장소로 Supabase PostgreSQL의 `Session` 테이블을 사용한다.
+- 이 서비스의 트래픽과 세션 규모에서는 PostgreSQL 세션 저장만으로 충분하다.
+- 향후 트래픽 증가, 세션 조회 부하, rate limit, 캐시 요구가 생길 때 Redis 도입을 검토한다.
+- 세션 테이블에는 만료 시간을 저장하고 만료된 세션을 정리한다.
+
+### 상태 관리 원칙
+
+- 로그인 사용자, 블로그, 글 목록 등 서버 데이터는 TanStack Query가 관리한다.
+- 입력 중인 제목·본문은 각 폼의 로컬 상태로 관리한다.
+- 전역 상태 라이브러리는 인증 사용자처럼 여러 화면에서 필요한 최소 상태에만 사용한다.
+- 로딩, 성공, 빈 결과, 오류 상태를 각 조회 단위에서 명시적으로 처리한다.
+
+## 12. 권장 디렉터리 구조
+
+```text
+project-root/
+├── client/                    # React + Vite
+│   └── src/
+│       ├── components/        # 재사용 UI
+│       ├── pages/             # 경로별 페이지
+│       ├── features/          # auth, blog, post 기능 단위
+│       ├── lib/               # query client, API client, 공통 유틸
+│       └── styles/
+├── server/                    # Express + TypeScript
+│   └── src/
+│       ├── modules/            # auth, blog, post 기능 단위
+│       ├── middleware/         # session, auth, error, validation
+│       ├── database/           # Prisma client, transaction 설정
+│       └── app.ts
+├── prisma/                    # PostgreSQL 스키마·마이그레이션
+│   ├── schema.prisma
+│   └── migrations/
+├── instruction/
+│   ├── PRD.md
+│   ├── API.md
+│   └── ROLE.md
+├── .env.example
+└── package.json
+```
+
+### 디렉터리 규칙
+
+- `client`에서 DB나 Prisma를 import하지 않는다.
+- `modules/*/*.controller.ts`에 복잡한 업무 로직을 작성하지 않는다.
+- `modules/*/*.service.ts`는 Express의 `req`, `res` 객체에 직접 의존하지 않는다.
+- `modules/*/*.repository.ts`는 데이터 접근만 담당하고 권한 정책은 Service에서 처리한다.
+- API 응답 형식은 `instruction/API.md`를 단일 기준으로 사용한다.
+- 환경 변수는 `.env`로 관리하고 `.env.example`만 저장소에 커밋한다.
+
+## 13. 배포 아키텍처
+
+### 배포 구성
+
+| 구성 요소 | 서비스 | 담당 내용 |
+|---|---|---|
+| 웹 애플리케이션 | Vercel | React 정적 빌드 제공 |
+| API | Vercel Docker Container | Docker 이미지 기반 Express API 실행 |
+| 데이터베이스 | Supabase PostgreSQL | User, Blog, Post, Session 저장 |
+| 데이터베이스 관리 | Supabase Dashboard | 테이블 확인, SQL 실행, 로그 확인 |
+| 소스 저장소 | GitHub | 브랜치 병합 시 Vercel 자동 배포 |
+
+### 배포 요청 흐름
+
+```text
+브라우저
+  ├── 페이지 요청 ───────▶ Vercel 정적 파일
+  └── /api 요청 ────────▶ Vercel API Container
+                              │
+                              ├── Supabase PostgreSQL
+                              └── Session 테이블
+```
+
+### 배포 원칙
+
+- 프론트엔드와 API는 컨테이너를 분리하되 동일한 Vercel 프로젝트의 서비스로 제공해 CORS 설정을 최소화한다.
+- 프론트엔드 컨테이너와 백엔드 컨테이너는 각각 독립적으로 빌드·배포·로그 확인이 가능해야 한다.
+- API 경로는 항상 `/api` 아래에 둔다.
+- Vercel 컨테이너는 상태를 유지하지 않으므로 세션·데이터를 전역 변수나 로컬 파일에 저장하지 않는다.
+- Prisma와 세션 저장소는 Supabase의 연결 풀링 또는 서버리스 환경에 맞는 연결 설정을 사용한다.
+- Supabase 데이터베이스의 직접 접근 권한은 서버 환경에만 둔다.
+- `DATABASE_URL`, `DIRECT_URL`, `SESSION_SECRET`, `FRONTEND_ORIGIN`은 Vercel 환경 변수로 등록한다.
+- `DATABASE_URL`은 런타임용 pooled connection, `DIRECT_URL`은 Prisma 마이그레이션용 direct connection으로 분리한다.
+- `SESSION_SECRET`은 충분히 긴 랜덤 값으로 설정하고 저장소에 커밋하지 않는다.
+
+### Docker 실행 및 배포 결정
+
+- Windows와 macOS 모두 Docker Desktop을 사용한다.
+- 로컬 개발은 `docker compose`로 프론트엔드, 백엔드, PostgreSQL을 함께 실행한다.
+- 로컬 PostgreSQL은 개발·테스트 전용이며, 운영 데이터베이스는 Supabase PostgreSQL을 사용한다.
+- 프론트엔드와 백엔드는 각각 Dockerfile을 갖고 동일한 Node.js 버전과 의존성 환경에서 실행한다.
+- Production은 Vercel에 Docker 이미지로 배포한다.
+- Vercel 컨테이너는 상태를 보존하지 않으므로 데이터와 세션을 컨테이너 내부에 저장하지 않는다.
+- Docker 이미지 빌드 시 테스트와 타입 검사를 통과해야 배포한다.
+
+결론적으로 이번 MVP의 기본 배포 조합은 다음과 같다.
+
+`Docker Compose(개발·테스트) → Docker Image → Vercel`
+
+`PostgreSQL + Session Store → Supabase`
+
+### Docker 구성
+
+```text
+project-root/
+├── docker-compose.yml       # 로컬 전체 실행
+├── client/
+│   ├── Dockerfile            # 로컬 개발용
+│   └── Dockerfile.vercel     # Vercel 배포용
+├── server/
+│   ├── Dockerfile            # 로컬 개발용
+│   └── Dockerfile.vercel     # Vercel 배포용
+├── vercel.json               # client/server 서비스 라우팅
+└── prisma/
+```
+
+로컬 서비스 구성:
+
+| 서비스 | 컨테이너 역할 | 기본 포트 |
+|---|---|---:|
+| `client` | React 개발 서버 또는 빌드 결과 제공 | `5173` |
+| `server` | Express API 서버 | `4000` |
+| `postgres` | 로컬 개발·테스트용 PostgreSQL | `5432` |
+
+### Docker 명령 기준
+
+```bash
+# 전체 개발 환경 실행
+docker compose up --build
+
+# 백그라운드 실행
+docker compose up -d --build
+
+# 테스트 실행
+docker compose exec server npm test
+
+# 전체 환경 종료
+docker compose down
+```
+
+개발자는 운영체제별 Node.js나 PostgreSQL 설치 방식에 의존하지 않고 위 명령을 기준으로 프로젝트를 실행한다. Docker Desktop 설치와 프로젝트 환경 변수 설정만 각 개발 환경에서 선행한다.
+
+### 환경별 구성
+
+| 환경 | 프론트엔드/API | 데이터베이스 | 목적 |
+|---|---|---|---|
+| 로컬 | Vite 개발 서버 + Express | Supabase 개발 프로젝트 또는 로컬 PostgreSQL | 기능 개발·테스트 |
+| Preview | Vercel Preview | Supabase 개발 프로젝트 | PR별 통합 확인 |
+| Production | Vercel Production | Supabase 운영 프로젝트 | 최종 서비스 |
+
+개발 데이터와 운영 데이터는 Supabase 프로젝트를 분리한다. 운영 데이터베이스에 로컬 테스트 데이터를 직접 입력하지 않는다.
+
+## 14. 비기능 요구사항
 
 - 모바일 375px부터 데스크톱까지 레이아웃이 깨지지 않아야 한다.
 - 주요 인터랙션은 키보드만으로도 사용할 수 있어야 한다.
@@ -216,7 +584,7 @@
 - 목록 API는 기본 10개 단위로 응답하고 과도한 전체 조회를 막는다.
 - 주요 API와 핵심 사용자 흐름에 대한 테스트를 작성한다.
 
-## 11. 완료 기준(Definition of Done)
+## 15. 완료 기준(Definition of Done)
 
 - [ ] 비로그인 사용자가 홈/피드/공개 블로그/공개 글 상세를 조회할 수 있다.
 - [ ] 신규 사용자가 회원가입 후 블로그를 생성할 수 있다.
@@ -228,7 +596,7 @@
 - [ ] 새로고침 후에도 회원/블로그/글 데이터가 유지된다.
 - [ ] 모바일/데스크톱 주요 화면을 확인하고 API 테스트가 통과한다.
 
-## 12. 후속 확장 후보
+## 16. 후속 확장 후보
 
 1. 카카오계정 로그인 및 계정 연동
 2. 댓글, 좋아요, 구독, 알림
@@ -236,4 +604,3 @@
 4. 스킨 선택 및 사용자 정의
 5. 다중 블로그와 관리자 통계
 6. 개인화 피드와 추천 알고리즘
-

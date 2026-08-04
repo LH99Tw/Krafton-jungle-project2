@@ -1,0 +1,10 @@
+{
+  "services": [
+    { "name": "client", "root": "client", "entrypoint": "Dockerfile.vercel" },
+    { "name": "server", "root": "server", "entrypoint": "Dockerfile.vercel" }
+  ],
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": { "service": "server" } },
+    { "source": "/(.*)", "destination": { "service": "client" } }
+  ]
+}
