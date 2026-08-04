@@ -5,6 +5,7 @@
 - **기준 문서**: `instruction/PRD.md`
 - **참고 서비스**: [티스토리](https://www.tistory.com/)
 - **API 기본 경로**: `/api`
+- **로컬 API 서버**: `http://localhost:4001` (기본 포트 `4000`)
 - **콘텐츠 타입**: `application/json`
 - **문자 인코딩**: UTF-8
 - **시간 형식**: ISO 8601 UTC 문자열 (예: `2026-08-04T09:30:00Z`)
@@ -26,6 +27,21 @@
 | `page`, `count`, `totalCount` | `pagination.page`, `size`, `totalItems` |
 
 티스토리의 보호글(`visibility=1` 또는 일부 문서의 `15`)은 PRD 범위에 없으므로 구현하지 않는다. 카테고리, 태그, 댓글, 첨부파일도 공식 API에는 존재하지만 MVP에서는 제외한다.
+
+## 1.2 구현 아키텍처와 실행 경계
+
+이 API는 여러 마이크로서비스가 아니라 하나의 모놀리식 Node.js 애플리케이션에서 제공한다. 인증·블로그·게시글은 기능별 모듈로 분리하지만 동일한 프로세스와 런타임 저장소를 공유한다.
+
+```text
+client (5175) → Vite /api proxy → server (4001) → /api/{resource}
+```
+
+- 인증: `/api/auth/*`, `/api/me`
+- 블로그: `/api/blogs/*`
+- 게시글: `/api/posts/*`
+- 모든 모듈은 동일한 세션 쿠키와 공통 에러 포맷을 사용한다.
+- 클라이언트는 내부 모듈명이나 포트가 아닌 `/api`만 호출한다.
+- 개발 저장소는 메모리 기반이며 서버 재시작 시 데이터가 초기화된다.
 
 ## 2. 공통 규칙
 
@@ -56,6 +72,8 @@
 ```
 
 `POST`, `PATCH`, `DELETE` 요청은 `X-CSRF-Token: generated-token` 헤더를 포함해야 한다. 토큰이 없거나 일치하지 않으면 `403 CSRF_TOKEN_INVALID`를 반환한다.
+
+개발 서버에서는 CSRF 발급 시 `session_id` HttpOnly 쿠키도 함께 발급한다. 회원가입 또는 로그인 성공 시 인증 세션을 재발급한다.
 
 ### 2.3 요청 규칙
 
