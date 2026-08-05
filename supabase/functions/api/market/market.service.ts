@@ -18,6 +18,7 @@ const itemJson = (item: Record<string, any>, seller?: Record<string, any>) => ({
   title: item.title,
   description: item.description,
   category: item.category,
+  tags: item.tags ?? [],
   condition: item.condition,
   pricePoints: item.price_points,
   status: item.status,
@@ -27,7 +28,7 @@ const itemJson = (item: Record<string, any>, seller?: Record<string, any>) => ({
 
 const marketInput = (body: Record<string, unknown>, partial = false) => {
   const fields: Record<string, string> = {}
-  const values: Record<string, string | number> = {}
+  const values: Record<string, string | number | string[]> = {}
   const definitions = [
     ['title', 100, '상품명은 1~100자로 입력해 주세요.'],
     ['description', 5000, '설명은 1~5,000자로 입력해 주세요.'],
@@ -64,6 +65,16 @@ const marketInput = (body: Record<string, unknown>, partial = false) => {
     } else values.status = body.status
   }
 
+  const hasTags = Object.prototype.hasOwnProperty.call(body, 'tags')
+  if (!partial || hasTags) {
+    if (!Array.isArray(body.tags)) fields.tags = '키워드는 배열로 입력해 주세요.'
+    else {
+      const tags = [...new Set(body.tags.map((tag) => typeof tag === 'string' ? tag.trim().replace(/^#/, '').toLowerCase() : ''))]
+      if (tags.some((tag) => !tag || tag.length > 20) || tags.length > 5) fields.tags = '키워드는 1~20자로 최대 5개까지 입력할 수 있습니다.'
+      else values.tags = tags
+    }
+  }
+
   if (partial && Object.keys(values).length === 0 && Object.keys(fields).length === 0) {
     fields.request = '수정할 값을 입력해 주세요.'
   }
@@ -76,6 +87,7 @@ export const listMarketItems = async (request: Request, url: URL) => {
   const sort = url.searchParams.get('sort') ?? 'latest'
   const scope = url.searchParams.get('scope') ?? 'public'
   const q = (url.searchParams.get('q') ?? '').trim()
+  const tag = q.startsWith('#') ? q.slice(1).trim().toLowerCase() : ''
   const category = (url.searchParams.get('category') ?? '').trim()
   const condition = url.searchParams.get('condition')
   const status = url.searchParams.get('status') ?? (scope === 'public' ? 'SELLING' : 'ALL')
@@ -100,7 +112,9 @@ export const listMarketItems = async (request: Request, url: URL) => {
   if (status !== 'ALL') query = query.eq('status', status)
   if (category) query = query.eq('category', category)
   if (condition) query = query.eq('condition', condition)
-  if (q) {
+  if (tag) {
+    query = query.contains('tags', [tag])
+  } else if (q) {
     const safe = q.replaceAll(',', ' ')
     query = query.or(`title.ilike.%${safe}%,description.ilike.%${safe}%,category.ilike.%${safe}%`)
   }

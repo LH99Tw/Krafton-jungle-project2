@@ -4,6 +4,7 @@ create table if not exists public.market_items (
   title text not null,
   description text not null,
   category text not null,
+  tags text[] not null default '{}',
   condition text not null,
   price_points bigint not null,
   status text not null default 'SELLING',
@@ -12,6 +13,7 @@ create table if not exists public.market_items (
   constraint market_items_title_length check (char_length(title) between 1 and 100),
   constraint market_items_description_length check (char_length(description) between 1 and 5000),
   constraint market_items_category_length check (char_length(category) between 1 and 50),
+  constraint market_items_tags_count check (cardinality(tags) <= 5),
   constraint market_items_condition check (condition in ('NEW', 'LIKE_NEW', 'USED')),
   constraint market_items_price_positive check (price_points between 1 and 1000000000),
   constraint market_items_status check (status in ('SELLING', 'RESERVED', 'SOLD'))
@@ -23,6 +25,8 @@ create index if not exists market_items_seller_idx
   on public.market_items (seller_id, updated_at desc, id desc);
 create index if not exists market_items_filters_idx
   on public.market_items (status, category, condition);
+create index if not exists market_items_tags_idx
+  on public.market_items using gin (tags);
 
 alter table public.market_items enable row level security;
 

@@ -91,6 +91,32 @@ const getMyBlog = async (request: Request) => {
   return json({ data: blogJson(data, owner ?? undefined) })
 }
 
+const listBlogs = async (url: URL) => {
+  const page = positiveInteger(url.searchParams.get('page'), 1)
+  const size = positiveInteger(url.searchParams.get('size'), 10, 50)
+  const q = (url.searchParams.get('q') ?? '').trim()
+  if (!page || !size) return apiError(400, 'VALIDATION_ERROR', '페이지 값을 확인해 주세요.')
+
+  let query = supabase.from('blogs').select('*', { count: 'exact' })
+  if (q) {
+    const safe = q.replaceAll(',', ' ')
+    query = query.or(`name.ilike.%${safe}%,description.ilike.%${safe}%,slug.ilike.%${safe}%`)
+  }
+  const from = (page - 1) * size
+  const { data, count, error } = await query.order('created_at', { ascending: false }).order('id', { ascending: false }).range(from, from + size - 1)
+  if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '블로그를 불러오지 못했습니다.')
+  const ownerIds = [...new Set((data ?? []).map((blog: Record<string, any>) => blog.owner_id))]
+  const { data: owners } = ownerIds.length
+    ? await supabase.from('users').select('id, nickname').in('id', ownerIds)
+    : { data: [] }
+  const ownerMap = new Map((owners ?? []).map((owner: Record<string, any>) => [owner.id, owner]))
+  const totalItems = count ?? 0
+  return json({
+    data: (data ?? []).map((blog: Record<string, any>) => blogJson(blog, ownerMap.get(blog.owner_id))),
+    pagination: { page, size, totalItems, totalPages: totalItems ? Math.ceil(totalItems / size) : 0 },
+  })
+}
+
 const positiveInteger = (value: string | null, fallback: number, max?: number) => {
   if (value === null) return fallback
   const parsed = Number(value)
@@ -385,6 +411,7 @@ Deno.serve(async (request) => {
   if (marketResponse) return marketResponse
 
   if (request.method === 'POST' && path === '/blogs') return createBlog(request)
+  if (request.method === 'GET' && path === '/blogs') return listBlogs(url)
   if (request.method === 'GET' && path === '/blogs/check-slug') return checkSlug(url)
   if (request.method === 'GET' && path === '/blogs/me') return getMyBlog(request)
   const blogMatch = path.match(/^\/blogs\/([^/]+)$/)
