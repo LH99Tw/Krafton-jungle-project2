@@ -35,7 +35,33 @@ function useRoute() {
 
 function Header({ go, user, onLogin }: { go: (to: string) => void; user: User | null; onLogin: () => void }) {
   const [mobile, setMobile] = useState(false)
-  return <header className="site-header"><div className="header-inner"><button className="brand" onClick={() => go('/')}>티스토리</button><nav className={mobile ? 'main-nav open' : 'main-nav'}><button onClick={() => go('/')}>홈</button><button onClick={() => go('/feed')}>피드</button><button onClick={() => go('/feed')}>스킨</button><button onClick={() => go('/feed')}>포럼</button></nav><div className="header-actions"><form className="header-search" onSubmit={(e) => { e.preventDefault(); go('/feed') }}><input aria-label="검색어 입력" placeholder="검색어 입력" /><button aria-label="검색"><Search size={17} /></button></form>{user ? <button className="account-button" onClick={() => go('/blog/me/manage')}>{user.nickname}</button> : <button className="outline-button" onClick={onLogin}>시작하기</button>}<button className="mobile-trigger" onClick={() => setMobile(!mobile)} aria-label="메뉴"><Menu size={21} /></button></div></div></header>
+  return <header className="site-header"><div className="header-inner"><button className="brand" onClick={() => go('/')}>티스토리</button><nav className={mobile ? 'main-nav open' : 'main-nav'}><button onClick={() => go('/')}>홈</button><button onClick={() => go('/feed')}>피드</button><button onClick={() => go('/feed')}>스킨</button><button onClick={() => go('/feed')}>포럼</button></nav><div className="header-actions"><form className="header-search" onSubmit={(e) => { e.preventDefault(); go('/feed') }}><input aria-label="검색어 입력" placeholder="검색어 입력" /><button aria-label="검색"><Search size={17} /></button></form>{user ? <AccountMenu user={user} go={go} /> : <button className="outline-button" onClick={onLogin}>시작하기</button>}<button className="mobile-trigger" onClick={() => setMobile(!mobile)} aria-label="메뉴"><Menu size={21} /></button></div></div></header>
+}
+
+function AccountMenu({ user, go }: { user: User; go: (to: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const logout = async () => {
+    setBusy(true)
+    try {
+      await request('/auth/logout', { method: 'POST' })
+      csrfToken = ''
+      window.location.assign('/')
+    } finally {
+      setBusy(false)
+    }
+  }
+  return <div className="account-menu">
+    <button className="account-button" aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen(!open)}>
+      <span className="account-avatar">{user.nickname.slice(0, 1)}</span><span>{user.nickname}</span>
+      <ChevronDown size={13} className={open ? 'rotated' : ''} />
+    </button>
+    {open && <div className="account-dropdown" role="menu">
+      <div className="account-profile"><strong>{user.nickname}</strong><small>{user.email}</small></div>
+      <button role="menuitem" onClick={() => { setOpen(false); go('/blog/me/manage') }}>내 블로그 관리</button>
+      <button role="menuitem" disabled={busy} onClick={logout}>{busy ? '로그아웃 중…' : '로그아웃'}</button>
+    </div>}
+  </div>
 }
 
 function Shell({ children, go, user, onLogin }: { children: React.ReactNode; go: (to: string) => void; user: User | null; onLogin: () => void }) {
