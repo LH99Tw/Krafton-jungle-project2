@@ -1,134 +1,6 @@
 import { apiError, corsHeaders, getSession, json, requireCsrfSession, supabase } from './shared.ts'
 import { handleAuthRoute } from './auth/auth.routes.ts'
-
-const openApiDocument = {
-  openapi: '3.0.3',
-  info: {
-    title: 'Tistory API',
-    version: '1.0.0',
-    description: 'Tistory clone backend API deployed on Supabase Edge Functions.',
-  },
-  paths: {
-    '/auth/signup': {
-      post: {
-        summary: 'Create a user and sign in',
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object',
-                required: ['email', 'nickname', 'password', 'passwordConfirm'],
-                properties: {
-                  email: { type: 'string', format: 'email', maxLength: 255 },
-                  nickname: { type: 'string', minLength: 2, maxLength: 30 },
-                  password: { type: 'string', minLength: 8, maxLength: 72 },
-                  passwordConfirm: { type: 'string' },
-                },
-              },
-            },
-          },
-        },
-        responses: {
-          '201': { description: 'User created and signed in' },
-          '400': { description: 'Validation error' },
-          '403': { description: 'Invalid CSRF token' },
-          '409': { description: 'Email already exists' },
-        },
-      },
-    },
-    '/auth/login': {
-      post: {
-        summary: 'Sign in with email and password',
-        responses: {
-          '200': { description: 'Signed in' },
-          '400': { description: 'Validation error' },
-          '401': { description: 'Invalid credentials' },
-          '403': { description: 'Invalid CSRF token' },
-        },
-      },
-    },
-    '/auth/logout': {
-      post: {
-        summary: 'Destroy the current session',
-        responses: { '204': { description: 'Signed out' } },
-      },
-    },
-    '/me': {
-      get: {
-        summary: 'Get the current user and blog',
-        responses: {
-          '200': { description: 'Current user' },
-          '401': { description: 'Unauthenticated' },
-        },
-      },
-    },
-    '/blogs': {
-      post: { summary: 'Create a blog', responses: { '201': { description: 'Blog created' } } },
-    },
-    '/blogs/check-slug': {
-      get: { summary: 'Check blog slug availability', responses: { '200': { description: 'Availability' } } },
-    },
-    '/blogs/me': {
-      get: { summary: 'Get current user blog', responses: { '200': { description: 'Current blog' } } },
-    },
-    '/blogs/{slug}': {
-      get: { summary: 'Get public blog and posts', responses: { '200': { description: 'Public blog' } } },
-    },
-    '/posts': {
-      get: { summary: 'List public or owned posts', responses: { '200': { description: 'Post list' } } },
-      post: { summary: 'Create a draft or published post', responses: { '201': { description: 'Post created' } } },
-    },
-    '/posts/{id}': {
-      get: { summary: 'Read a post', responses: { '200': { description: 'Post detail' } } },
-      patch: { summary: 'Update an owned post', responses: { '200': { description: 'Post updated' } } },
-      delete: { summary: 'Delete an owned post', responses: { '204': { description: 'Post deleted' } } },
-    },
-    '/auth/csrf': {
-      get: {
-        summary: 'Issue a CSRF token',
-        responses: {
-          '200': {
-            description: 'CSRF token issued',
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: {
-                    data: {
-                      type: 'object',
-                      properties: { csrfToken: { type: 'string' } },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-    '/health': {
-      get: {
-        summary: 'Check API health',
-        responses: { '200': { description: 'API is healthy' } },
-      },
-    },
-  },
-}
-
-const swaggerAsset = async (path: 'swagger-ui.css' | 'swagger-ui-bundle.js') => {
-  const response = await fetch(`https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.32.12/${path}`)
-  return new Response(response.body, {
-    status: response.status,
-    headers: {
-      ...corsHeaders,
-      'Content-Type': path.endsWith('.css')
-        ? 'text/css; charset=utf-8'
-        : 'text/javascript; charset=utf-8',
-      'Cache-Control': 'public, max-age=3600',
-    },
-  })
-}
+import { handleSystemRoute } from './system/system.routes.ts'
 
 const reservedSlugs = new Set(['api', 'login', 'signup', 'feed', 'post', 'blog', 'me', 'new'])
 const slugPattern = /^[a-z0-9-]{3,30}$/
@@ -470,6 +342,9 @@ Deno.serve(async (request) => {
   const authResponse = handleAuthRoute(request, path)
   if (authResponse) return authResponse
 
+  const systemResponse = handleSystemRoute(request, path)
+  if (systemResponse) return systemResponse
+
   if (request.method === 'POST' && path === '/blogs') return createBlog(request)
   if (request.method === 'GET' && path === '/blogs/check-slug') return checkSlug(url)
   if (request.method === 'GET' && path === '/blogs/me') return getMyBlog(request)
@@ -484,29 +359,6 @@ Deno.serve(async (request) => {
     if (request.method === 'GET') return readPost(request, postId)
     if (request.method === 'PATCH') return updatePost(request, postId)
     if (request.method === 'DELETE') return deletePost(request, postId)
-  }
-
-  if (request.method === 'GET' && path === '/swagger-ui.css') {
-    return swaggerAsset('swagger-ui.css')
-  }
-
-  if (request.method === 'GET' && path === '/swagger-ui-bundle.js') {
-    return swaggerAsset('swagger-ui-bundle.js')
-  }
-
-  if (request.method === 'GET' && path === '/openapi.json') {
-    return json(openApiDocument)
-  }
-
-  if (request.method === 'GET' && (path === '/docs' || path === '/docs/')) {
-    return Response.redirect(
-      'https://krafton-jungle-project2-client.vercel.app/api-docs.html',
-      302,
-    )
-  }
-
-  if (request.method === 'GET' && (path === '/health' || path === '/')) {
-    return json({ status: 'ok', service: 'tistory-api', runtime: 'supabase-edge-functions' })
   }
 
   return apiError(404, 'NOT_FOUND', '요청한 API를 찾을 수 없습니다.')

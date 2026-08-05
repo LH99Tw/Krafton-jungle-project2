@@ -31,6 +31,12 @@ Supabase Dashboard → Edge Functions → Secrets에 다음 값을 등록합니�
 
 ## 로컬 실행
 
+Docker Desktop을 실행한 뒤 Supabase 로컬 서비스를 시작한다.
+
+```bash
+npm run supabase:start
+```
+
 Supabase Edge Function을 로컬에서 실행한다.
 
 ```bash
@@ -50,5 +56,11 @@ VITE_API_URL=http://127.0.0.1:54321/functions/v1
 ```
 
 프론트엔드는 `/api/*` 경로를 사용하고, Vercel에서는 rewrite를 통해 Supabase Edge Function으로 전달한다.
+
+로컬 작업을 마치면 Docker 컨테이너를 종료한다.
+
+```bash
+npm run supabase:stop
+```
 
 `SUPABASE_URL`과 `SUPABASE_SERVICE_ROLE_KEY`은 Supabase가 기본으로 제공합니다.
