@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "dev": "npm run dev:client",
-    "dev:client": "npm --prefix client run dev -- --host 0.0.0.0",
+    "dev:client": "npm --prefix client run dev",
     "supabase:start": "npx supabase start",
     "supabase:stop": "npx supabase stop",
     "supabase:status": "npx supabase status",

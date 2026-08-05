@@ -3,11 +3,49 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f4f0e8" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="description" content="이야기가 작품이 되는 공간, 티스토리 클론" />
+    <meta name="api-base" content="" />
     <title>Tistory — 당신의 이야기가 콘텐츠가 됩니다.</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+    <link rel="stylesheet" href="./static-pages.css" />
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <div id="root">
+      <a class="skip-link" href="#main">본문 바로가기</a>
+      <div class="site-header-slot"><header class="site-header" data-od-id="site-header"><div class="header-inner">
+        <button class="brand" data-od-id="brand">티스토리</button>
+        <nav class="main-nav" aria-label="주요 메뉴"><button class="active">홈</button><button>피드</button><button>스킨</button><button>포럼</button></nav>
+        <form class="header-search"><input aria-label="검색어 입력" placeholder="검색어 입력"><button>⌕</button></form>
+        <div class="header-actions"><button class="header-notice"><span>◖</span><span>불법촬영물 유통 방지 조치 대상 확대 안내</span></button><button class="outline-button">시작하기</button><button class="mobile-trigger">☰</button></div>
+      </div></header></div>
+      <main id="main" class="home-main" data-od-id="home-page"><div class="home-frame"><div class="home-content">
+        <section class="today-tistory" data-od-id="home-hero"><div class="today-card od-hero"><div><p>오늘의 티스토리</p><h1>청계산 맛집 한소반쭈꾸미<br>대왕저수지 앞 불향 가득 쭈꾸미볶음 포장 후기</h1><button>맛집 이야기</button></div></div><div class="today-dots"><i></i><i></i><b></b><i></i></div></section>
+        <section class="best-popularity" data-od-id="popular-posts"><div class="best-list">
+          <article class="best-row"><b>1/</b><div class="best-copy"><button>부산 토박이 아저씨의 맛집 에세이</button><h3><button>야채값이 비싸서 리필이 안 된다는 물회집</button></h3></div><div class="post-thumb od-thumb-1"></div></article>
+          <article class="best-row"><b>2/</b><div class="best-copy"><button>즐거운 인생</button><h3><button>라면과 함께 먹으면 안 되는 식품</button></h3></div><div class="post-thumb od-thumb-2"></div></article>
+          <article class="best-row"><b>3/</b><div class="best-copy"><button>느낌 올 때 여행을 떠나자!!</button><h3><button>무더위 시원한 국내 여행지 BEST 7</button></h3></div><div class="post-thumb od-thumb-3"></div></article>
+          <article class="best-row"><b>4/</b><div class="best-copy"><button>생활전략노트</button><h3><button>에어컨 전기세 아끼면서 시원하게 쓰는 방법</button></h3></div><div class="post-thumb od-thumb-4"></div></article>
+        </div></section>
+        <section class="category-popularity" data-od-id="category-posts"><div class="category-tabs"><button class="active">전체</button><button>라이프</button><button>여행</button><button>맛집</button><button>IT·테크</button></div><div class="category-grid">
+          <article><div><b>일상의 작은 기록</b><h3>매직쉐프 가전제품 전시와 새로운 주방 이야기</h3><p>티스토리에서 만나는 오늘의 새로운 이야기입니다.</p><small>♡ 7　□ 5　5일 전</small></div><div class="post-thumb od-thumb-5"></div></article>
+          <article><div><b>행복한 하루</b><h3>혼자 발견한 숨은 맛집과 여름날의 기록</h3><p>티스토리에서 만나는 오늘의 새로운 이야기입니다.</p><small>♡ 8　□ 6　5일 전</small></div><div class="post-thumb od-thumb-6"></div></article>
+          <article><div><b>프레임속 풍경</b><h3>명옥헌원림 백일홍꽃이 피었습니다</h3><p>티스토리에서 만나는 오늘의 새로운 이야기입니다.</p><small>♡ 12　□ 4　3일 전</small></div><div class="post-thumb od-thumb-7"></div></article>
+          <article><div><b>건강생활 연구소</b><h3>몸이 보내는 작은 신호를 놓치지 마세요</h3><p>티스토리에서 만나는 오늘의 새로운 이야기입니다.</p><small>♡ 15　□ 8　2일 전</small></div><div class="post-thumb od-thumb-8"></div></article>
+        </div><div class="tistory-pager"><button>‹</button><span><b>1</b>/ 7</span><button>›</button></div></section>
+        <section class="home-editorial" data-od-id="editorial"><div class="editorial-heading"><div><p>FOCUS</p><h2>J의 주말 계획 🏃</h2><span>진정한 쉼과 이야기를 담은 계획을 세워보아요.</span></div></div><div class="editorial-list">
+          <article><span>●　tour of wind</span><h3><button>구름 위에 핀 꽃-지리산 노고단 야생화</button></h3><p>티스토리에서 만나는 새로운 이야기와 기록입니다.</p><div class="editorial-thumb od-thumb-3"></div><small>♡ 18　□ 7　1일 전</small></article>
+          <article><span>●　국립고궁박물관</span><h3><button>국수와 함께 즐기는 국립고궁박물관</button></h3><p>일상 속 소소한 순간을 함께 나눠요.</p><div class="editorial-thumb od-thumb-5"></div><small>♡ 27　□ 8　2일 전</small></article>
+        </div></section>
+      </div><aside class="tistory-right" data-od-id="home-sidebar">
+        <section class="my-tistory"><p>티스토리에 로그인하시고 더 많은 기능을 이용해보세요!</p><button>●　카카오계정으로 시작하기</button></section>
+        <section class="sidebar-module story-creator"><div class="sidebar-heading"><h2>스토리 크리에이터 ⓘ</h2></div><div class="creator-page"><article class="creator-card"><div class="creator-profile"><button class="creator-name"><strong>은벼리파파의 얼렁뚱땅 육아일기</strong><span>맛집 분야 크리에이터 · 1,467명 구독</span></button><button class="creator-subscribe">+ 구독</button></div><div class="creator-posts"><button class="creator-post"><span><strong>오늘 발견한 특별한 이야기</strong><small>♡ 17　□ 6　8시간 전</small></span><span class="creator-color od-thumb-1"></span></button></div></article></div><div class="tistory-pager"><button>‹</button><span><b>1</b>/ 16</span><button>›</button></div></section>
+        <section class="sidebar-module rising-module"><div class="sidebar-heading"><h2>구독 급상승 💕</h2></div><div class="rising-card"><b>노병의 맛집 기행</b><strong>구독하고 싶은 이야기를 만나보세요</strong><button>+ 구독</button></div></section>
+        <section class="sidebar-module tip-module"><div class="sidebar-heading"><h2>티스토리 운영 Tip 💡</h2></div><div class="tip-grid"><button class="od-thumb-2"><span>티스토리 로그인 및 가입하기</span></button><button class="od-thumb-4"><span>카테고리 설정하기</span></button><button class="od-thumb-6"><span>마크다운, HTML 모드로 작성하기</span></button><button class="od-thumb-8"><span>제작한 스킨 적용하기</span></button></div></section>
+      </aside></div></main>
+      <footer class="site-footer" data-od-id="site-footer"><div class="footer-inner"><div class="footer-brand"><strong>TISTORY</strong><p>티스토리는 Daum에서 ♥ 을 담아 만듭니다.</p><small>© Daum Corp.</small></div><div class="footer-links"><div class="footer-group"><button class="footer-title">메뉴가 궁금할 땐</button><div class="footer-list expanded"><button>홈</button><button>피드</button><button>스킨</button><button>포럼</button></div></div><div class="footer-group"><button class="footer-title">사용하다 궁금할 땐</button></div><div class="footer-group"><button class="footer-title">정책이 궁금할 땐</button></div></div></div></footer>
+    </div>
+    <noscript>이 사이트의 기능을 사용하려면 JavaScript를 활성화해주세요.</noscript>
+    <script src="./app.js" defer></script>
   </body>
 </html>
