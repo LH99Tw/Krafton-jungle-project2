@@ -1,6 +1,7 @@
 const http = require('node:http')
 const fs = require('node:fs')
 const path = require('node:path')
+const { renderHtml } = require('./lib/render-layout')
 
 const root = __dirname
 const port = Number(process.env.PORT || 5173)
@@ -40,9 +41,13 @@ http.createServer((request, response) => {
   const relative = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '')
   const candidate = path.resolve(root, relative)
   const safe = candidate.startsWith(root + path.sep)
-  const file = safe && fs.existsSync(candidate) && fs.statSync(candidate).isFile()
-    ? candidate
-    : path.join(root, 'index.html')
+  const file = safe && fs.existsSync(candidate) && fs.statSync(candidate).isFile() ? candidate : null
+
+  if (!file) {
+    response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' })
+    response.end('페이지를 찾을 수 없습니다.')
+    return
+  }
 
   fs.readFile(file, (error, data) => {
     if (error) {
@@ -50,8 +55,9 @@ http.createServer((request, response) => {
       response.end('서버에서 파일을 읽지 못했습니다.')
       return
     }
+    const body = path.extname(file) === '.html' ? renderHtml(data.toString('utf8')) : data
     response.writeHead(200, { 'Content-Type': mime[path.extname(file)] || 'application/octet-stream' })
-    response.end(data)
+    response.end(body)
   })
 }).listen(port, '0.0.0.0', () => {
   console.log(`Static client: http://localhost:${port}`)

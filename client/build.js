@@ -1,5 +1,6 @@
 const fs = require('node:fs')
 const path = require('node:path')
+const { renderHtml } = require('./lib/render-layout')
 
 const projectRoot = __dirname
 const outputRoot = path.join(projectRoot, 'dist')
@@ -23,10 +24,11 @@ fs.rmSync(outputRoot, { recursive: true, force: true })
 fs.mkdirSync(path.join(outputRoot, 'src'), { recursive: true })
 
 for (const page of pages) {
-  fs.copyFileSync(path.join(projectRoot, page), path.join(outputRoot, page))
+  const source = fs.readFileSync(path.join(projectRoot, page), 'utf8')
+  fs.writeFileSync(path.join(outputRoot, page), renderHtml(source))
 }
 
-for (const asset of ['app.js', 'static-pages.css']) {
+for (const asset of ['app.js', 'layout-client.js', 'static-pages.css']) {
   fs.copyFileSync(path.join(projectRoot, asset), path.join(outputRoot, asset))
 }
 

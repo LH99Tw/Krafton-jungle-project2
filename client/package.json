@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "scripts": {
     "dev": "node server.js",
-    "build": "node build.js && node --check app.js && node --check server.js",
+    "build": "node build.js && node --check app.js && node --check layout-client.js && node --check lib/render-layout.js && node --check server.js",
     "preview": "node server.js"
   }
 }

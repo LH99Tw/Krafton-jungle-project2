@@ -2,14 +2,14 @@
 
 ## 1. 실행 구조
 
-- **프론트엔드**: `client`의 React + Vite
+- **프론트엔드**: `client`의 페이지별 HTML + Vanilla JavaScript + CSS
 - **백엔드**: Supabase Edge Function `api`
 - **데이터베이스**: Supabase PostgreSQL
 - **인증**: Edge Function의 `users`·`sessions`·HttpOnly 쿠키
 - **별도 서버**: 없음. Express `server/` 디렉터리는 사용하지 않는다.
 
 ```text
-React client
+Multi-page HTML client
    │ fetch('/api/...') + credentials: include
    ▼
 Supabase Edge Function: api
@@ -20,7 +20,9 @@ Supabase Edge Function: api
    Supabase PostgreSQL + RPC
 ```
 
-로컬 Function 주소는 `http://127.0.0.1:54321/functions/v1/api`이며, 클라이언트는 `VITE_API_URL`로 주입한다. 배포 시 Vercel rewrite가 `/api/*`를 Function으로 전달한다.
+로컬 Function 주소는 `http://127.0.0.1:54321/functions/v1/api`이다. 브라우저 코드는 항상
+상대 경로 `/api/*`를 호출하며, 로컬에서는 `client/server.js`, 배포 시에는 Vercel rewrite가
+Function으로 전달한다.
 
 ## 2. 공통 규칙
 
@@ -340,7 +342,7 @@ CSRF 토큰과 초기 세션 쿠키를 발급한다. 로그인 전 회원가입�
 - `supabase/functions/api`의 공통 CORS·쿠키·세션 처리는 `shared.ts`에서 담당한다.
 - auth 기능은 `auth.routes.ts → auth.service.ts → auth.repository.ts` 흐름을 유지한다.
 - `SUPABASE_SERVICE_ROLE_KEY`는 Edge Function Secret으로만 관리한다.
-- `client/.env.local`에는 `VITE_API_URL`만 둔다.
+- 클라이언트에는 Supabase URL이나 키를 두지 않고 상대 경로 `/api/*`만 사용한다.
 - migration 파일은 파일명 순서대로 적용한다.
 - RLS가 켜진 테이블은 Edge Function의 service role 접근과 일반 클라이언트 접근을 구분한다.
 - 코드와 API 문서의 경로·상태 코드·필드명이 달라지면 API 문서를 먼저 갱신한다.
