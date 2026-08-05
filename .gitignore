@@ -8,3 +8,4 @@ client/.env.local
 supabase/functions/api/.env.local
 .DS_Store
 supabase/.temp/
+supabase/.branches/
