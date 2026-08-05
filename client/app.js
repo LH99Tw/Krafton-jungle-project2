@@ -13,6 +13,11 @@
     ['일상의 작은 기록', '매직쉐프 가전제품 전시와 새로운 주방 이야기', 'LIFE'],
     ['행복한 하루', '혼자 발견한 숨은 맛집과 여름날의 기록', 'FOOD'],
   ]
+  const sampleMarketItems = [
+    { id: 'sample-1', title: '최애 캐릭터 한정 아크릴 스탠드', description: '개봉 후 진열만 한 상품입니다. 구성품은 본체와 받침대이며 눈에 띄는 흠집 없이 깨끗하게 보관했습니다.', category: '애니메이션 굿즈', tags: ['최애캐', '아크릴스탠드'], condition: 'LIKE_NEW', pricePoints: 18000, status: 'SELLING', seller: { id: 'sample-seller-1', nickname: '굿즈수집가' }, createdAt: '2026-08-05T10:00:00Z' },
+    { id: 'sample-2', title: '공식 캐릭터 봉제인형', description: '미개봉 새 상품이며 태그가 포함되어 있습니다.', category: '인형', tags: ['공식굿즈', '봉제인형'], condition: 'NEW', pricePoints: 32000, status: 'SELLING', seller: { id: 'sample-seller-2', nickname: '덕질하는정글러' }, createdAt: '2026-08-05T09:00:00Z' },
+    { id: 'sample-3', title: '극장판 특전 포토카드 세트', description: '슬리브에 보관해 상태가 좋습니다.', category: '포토카드', tags: ['극장판', '특전', '포토카드'], condition: 'LIKE_NEW', pricePoints: 9500, status: 'SELLING', seller: { id: 'sample-seller-3', nickname: '애니기록소' }, createdAt: '2026-08-04T14:00:00Z' },
+  ]
   const editorial = [
     ['구름 위에 핀 꽃-지리산 노고단 야생화', 'tour of wind'],
     ['국수와 함께 즐기는 국립고궁박물관', '국립고궁박물관'],
@@ -23,7 +28,7 @@
   const state = {
     user: null, csrf: '', modal: false, profile: false, mobile: false,
     category: '', categoryPage: 1, creatorPage: 1, risingPage: 1, tipPage: 1,
-    feedSort: 'latest', feedPosts: [], feedError: '', marketItems: [], marketError: '', searchTab: 'posts', searchResults: { posts: [], market: [], blogs: [] }, searchError: '', pageData: null, manageFilter: 'ALL',
+    feedSort: 'latest', feedPosts: [], feedError: '', marketItems: [], marketError: '', searchTab: 'posts', searchResults: { posts: [], market: [], blogs: [] }, searchError: '', chatOpen: false, conversation: null, chatMessages: [], chatError: '', pageData: null, manageFilter: 'ALL',
   }
 
   const esc = (value = '') => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;')
@@ -49,7 +54,7 @@
 
   function go(url) {
     history.pushState({}, '', url)
-    Object.assign(state, { modal: false, profile: false, mobile: false, pageData: null })
+    Object.assign(state, { modal: false, profile: false, mobile: false, chatOpen: false, conversation: null, chatMessages: [], chatError: '', pageData: null })
     scrollTo(0, 0)
     render()
   }
@@ -114,12 +119,7 @@
   }
 
   function market() {
-    const sampleItems = [
-      { id: 'sample-1', title: '최애 캐릭터 한정 아크릴 스탠드', description: '개봉 후 진열만 한 상품입니다.', category: '애니메이션 굿즈', tags: ['최애캐', '아크릴스탠드'], condition: 'LIKE_NEW', pricePoints: 18000, status: 'SELLING', seller: { nickname: '굿즈수집가' } },
-      { id: 'sample-2', title: '공식 캐릭터 봉제인형', description: '미개봉 새 상품이며 태그가 포함되어 있습니다.', category: '인형', tags: ['공식굿즈', '봉제인형'], condition: 'NEW', pricePoints: 32000, status: 'SELLING', seller: { nickname: '덕질하는정글러' } },
-      { id: 'sample-3', title: '극장판 특전 포토카드 세트', description: '슬리브에 보관해 상태가 좋습니다.', category: '포토카드', tags: ['극장판', '특전', '포토카드'], condition: 'LIKE_NEW', pricePoints: 9500, status: 'SELLING', seller: { nickname: '애니기록소' } },
-    ]
-    const items = state.marketItems.length ? state.marketItems : sampleItems
+    const items = state.marketItems.length ? state.marketItems : sampleMarketItems
     const condition = { NEW: '새 상품', LIKE_NEW: '거의 새 상품', USED: '사용감 있음' }
     return shell(`<main id="main" class="page-main"><div class="section-inner"><div class="page-intro"><p class="eyebrow">FANDOM GOODS MARKET</p><h1>좋아하는 작품의 굿즈를<br>팬들과 안전하게 거래해보세요.</h1><p class="muted">블로그 글과 분리된 1:1 팬덤 굿즈 마켓입니다. MVP에서는 포인트로 거래합니다.</p></div><form class="feed-search" id="market-search"><span>⌕</span><input name="query" placeholder="작품, 캐릭터, 상품명 또는 #키워드 검색"></form><div class="feed-toolbar"><strong>판매 중인 상품 <em>${items.length}</em></strong><div><button class="active">최신순</button><button>낮은 가격순</button><button data-go="/market/new">상품 등록</button></div></div>${state.marketError ? `<p class="form-error">API 연결 전이라 샘플 상품을 표시하고 있습니다. ${esc(state.marketError)}</p>` : ''}<div class="feed-list">${items.map((item) => `<article class="feed-row"><div><p class="post-blog">${esc(item.category)} · ${condition[item.condition] || esc(item.condition)}</p><h2><button data-go="/market/${item.id}">${esc(item.title)}</button></h2><p class="excerpt">${esc(item.description)}</p><p class="market-tags">${(item.tags || []).map((tag) => `<button data-go="/search?tab=market&q=${encodeURIComponent(`#${tag}`)}">#${esc(tag)}</button>`).join(' ')}</p><small>${esc(item.seller?.nickname || '판매자')} · ${item.status === 'SELLING' ? '판매 중' : esc(item.status)}</small></div><div class="row-stat"><strong>${Number(item.pricePoints || 0).toLocaleString()} P</strong></div></article>`).join('')}</div></div></main>`)
   }
@@ -138,6 +138,39 @@
 
   function marketEditor() {
     return shell(`<main id="main" class="setup-page"><div class="setup-panel"><button class="back-button" data-go="/market">← 마켓으로</button><p class="eyebrow">SELL YOUR GOODS</p><h1>팬덤 굿즈를<br>등록해보세요.</h1><form id="market-item-form"><label>상품명<input required maxlength="100" name="title" placeholder="상품명을 입력하세요"></label><label>상품 설명<textarea required maxlength="5000" name="description" placeholder="상품 상태와 구성품을 자세히 적어주세요."></textarea></label><label>카테고리<input required maxlength="50" name="category" placeholder="예: 포토카드, 인형"></label><label>상품 상태<select name="condition"><option value="NEW">새 상품</option><option value="LIKE_NEW">거의 새 상품</option><option value="USED">사용감 있음</option></select></label><label>가격 포인트<input required min="1" max="1000000000" type="number" name="pricePoints" placeholder="예: 18000"></label><label>검색 키워드 <span class="counter" id="tag-count">0/5</span><input name="tags" placeholder="#작품명 #캐릭터명 #굿즈종류"></label><small>띄어쓰기로 구분하며 최대 5개, 키워드당 20자까지 입력할 수 있습니다.</small><p class="form-error" hidden></p><button class="primary-button">상품 등록　→</button></form></div></main>`)
+  }
+
+  function marketDetail(id) {
+    const item = state.pageData || sampleMarketItems.find((entry) => String(entry.id) === String(id))
+    if (!item?.title) return shell(`<main class="page-main"><div class="section-inner">${empty('상품을 불러오는 중입니다.')}</div></main>`)
+    const condition = { NEW: '새 상품', LIKE_NEW: '거의 새 상품', USED: '사용감 있음' }
+    const messages = state.chatMessages.length ? state.chatMessages : [{ id: 'sample-message', senderId: item.seller?.id, body: '안녕하세요! 상품에 대해 궁금한 점을 편하게 물어보세요.', createdAt: new Date().toISOString() }]
+    const chat = state.chatOpen ? `<aside class="market-chat-panel" aria-label="판매자와 채팅"><div class="market-chat-head"><div><strong>${esc(item.seller?.nickname || '판매자')}</strong><span>${esc(item.title)}</span></div><button data-action="chat-close" aria-label="채팅 닫기">×</button></div><div class="market-chat-messages">${messages.map((message) => `<div class="chat-message ${message.senderId === state.user?.id ? 'mine' : ''}"><p>${esc(message.body)}</p><time>${new Date(message.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</time></div>`).join('')}</div>${state.chatError ? `<p class="form-error">${esc(state.chatError)}</p>` : ''}<form id="chat-form" class="market-chat-form"><input name="body" maxlength="1000" placeholder="메시지를 입력하세요" autocomplete="off"><button>전송</button></form></aside>` : ''
+    return shell(`<main id="main" class="market-detail-page"><div class="section-inner"><button class="back-button" data-go="/market">← 마켓으로</button><div class="market-product"><section class="market-product-gallery"><div class="market-image-placeholder"><span>FANDOM GOODS</span><strong>${esc(item.category)}</strong></div><div class="market-image-dots"><b></b><i></i><i></i></div></section><section class="market-product-info"><p class="post-blog">${esc(item.category)} · ${condition[item.condition] || esc(item.condition)}</p><h1>${esc(item.title)}</h1><strong class="market-price">${Number(item.pricePoints || 0).toLocaleString()} <small>P</small></strong><div class="market-tags">${(item.tags || []).map((tag) => `<button data-go="/search?tab=market&q=${encodeURIComponent(`#${tag}`)}">#${esc(tag)}</button>`).join('')}</div><p class="market-description">${esc(item.description)}</p><div class="market-seller"><span class="market-seller-avatar">${esc((item.seller?.nickname || '판')[0])}</span><div><strong>${esc(item.seller?.nickname || '판매자')}</strong><span>본인 인증 완료 · 판매 상품</span></div></div><div class="market-actions"><button class="market-like" aria-label="찜하기">♡</button><button class="market-chat-button" data-chat-item="${esc(item.id)}">채팅하기</button><button class="market-buy-button" disabled>포인트 구매 준비 중</button></div><p class="market-safety">안전한 거래를 위해 결제 전 개인정보나 외부 메신저 ID를 보내지 마세요.</p></section></div></div>${chat}</main>`)
+  }
+
+  async function loadMarketDetail(id) {
+    try { state.pageData = await api(`/market/items/${id}`) }
+    catch (error) { state.pageData = sampleMarketItems.find((item) => String(item.id) === String(id)) || { error: error.message }; state.marketError = error.message }
+    if (path() === `/market/${id}`) render(false)
+  }
+
+  async function startChat(itemId) {
+    if (!state.user) { state.modal = true; render(false); return }
+    state.chatError = ''
+    if (String(itemId).startsWith('sample-')) {
+      state.conversation = { id: `conversation-${itemId}` }
+      state.chatMessages = []
+      state.chatOpen = true
+      render(false)
+      return
+    }
+    try {
+      state.conversation = await api(`/market/items/${itemId}/conversations`, { method: 'POST' })
+      state.chatMessages = await api(`/market/conversations/${state.conversation.id}/messages`) || []
+      state.chatOpen = true
+      render(false)
+    } catch (error) { state.chatError = error.message; state.chatOpen = true; render(false) }
   }
 
   function hub(kind) {
@@ -247,6 +280,7 @@
     else if (route === '/search') { root.innerHTML = searchPage(); if (load) loadSearch() }
     else if (route === '/market/new') root.innerHTML = state.user ? marketEditor() : auth('login')
     else if (route === '/market') { root.innerHTML = market(); if (load) loadMarket() }
+    else if (/^\/market\/[^/]+$/.test(route)) { const id = route.split('/')[2]; root.innerHTML = marketDetail(id); if (load) loadMarketDetail(id) }
     else if (route === '/skin') go('/market')
     else if (route === '/forum') root.innerHTML = hub('forum')
     else if (route === '/write') root.innerHTML = state.user ? editor() : auth('login')
@@ -264,6 +298,7 @@
     const action = event.target.closest('[data-action]')?.dataset.action
     if (action === 'modal-open') { state.modal = true; render(false) }
     if (action === 'modal-close') { state.modal = false; render(false) }
+    if (action === 'chat-close') { state.chatOpen = false; render(false) }
     if (action === 'profile') { state.profile = !state.profile; render(false) }
     if (action === 'profile-close') { state.profile = false; render(false) }
     if (action === 'mobile') { state.mobile = !state.mobile; render(false) }
@@ -305,6 +340,8 @@
       await api(`/blogs/${subscribe.dataset.subscribe}/subscription`, { method: item.isSubscribed ? 'DELETE' : 'POST' })
       item.isSubscribed = !item.isSubscribed; render(false)
     }
+    const chatItem = event.target.closest('[data-chat-item]')
+    if (chatItem) await startChat(chatItem.dataset.chatItem)
   })
 
   root.addEventListener('submit', async (event) => {
@@ -337,6 +374,19 @@
         const item = await api('/market/items', { method: 'POST', body: JSON.stringify({ ...raw, pricePoints: Number(raw.pricePoints), tags }) })
         go('/market')
       } catch (error) { errorNode.hidden = false; errorNode.textContent = error.message }
+    }
+    if (event.target.id === 'chat-form') {
+      const input = event.target.elements.body
+      const body = input.value.trim()
+      if (!body) return
+      try {
+        const message = String(state.conversation?.id).startsWith('conversation-sample-')
+          ? { id: `sample-${Date.now()}`, senderId: state.user.id, body, createdAt: new Date().toISOString() }
+          : await api(`/market/conversations/${state.conversation.id}/messages`, { method: 'POST', body: JSON.stringify({ body }) })
+        state.chatMessages.push(message)
+        input.value = ''
+        render(false)
+      } catch (error) { state.chatError = error.message; render(false) }
     }
   })
 
