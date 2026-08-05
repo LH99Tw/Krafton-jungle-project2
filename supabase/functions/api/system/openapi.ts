@@ -40,6 +40,10 @@ export const openApiDocument = {
     '/blogs/check-slug': { get: { summary: 'Check blog slug availability', responses: { '200': { description: 'Availability' } } } },
     '/blogs/me': { get: { summary: 'Get current user blog', responses: { '200': { description: 'Current blog' } } } },
     '/blogs/{slug}': { get: { summary: 'Get public blog and posts', responses: { '200': { description: 'Public blog' } } } },
+    '/blogs/{slug}/subscription': {
+      post: { summary: 'Subscribe to a blog', responses: { '201': { description: 'Subscribed' } } },
+      delete: { summary: 'Unsubscribe from a blog', responses: { '204': { description: 'Unsubscribed' } } },
+    },
     '/posts': {
       get: { summary: 'List public or owned posts', responses: { '200': { description: 'Post list' } } },
       post: { summary: 'Create a draft or published post', responses: { '201': { description: 'Post created' } } },

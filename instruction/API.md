@@ -249,7 +249,7 @@ CSRF 토큰과 초기 세션 쿠키를 발급한다. 로그인 전 회원가입�
 
 | query | 기본값 | 설명 |
 |---|---|---|
-| `scope` | `public` | `public` 또는 `mine` |
+| `scope` | `public` | `public`, `mine`, `following` |
 | `q` | 없음 | 제목·본문·작성자 닉네임·블로그명 검색 |
 | `sort` | `latest` | `latest` 또는 `popular` |
 | `page` | `1` | 페이지 번호 |
@@ -258,6 +258,7 @@ CSRF 토큰과 초기 세션 쿠키를 발급한다. 로그인 전 회원가입�
 
 - `public`: 비로그인 허용, `PUBLISHED`만 반환
 - `mine`: 인증 필수, 현재 사용자의 블로그 글만 반환
+- `following`: 인증 필수, 구독한 블로그의 `PUBLISHED` 글만 반환
 - `public`에서 `status`를 보내면 `400`이다.
 - 공개 최신순은 `published_at desc, id desc`다.
 - 인기순은 `view_count desc, published_at desc, id desc`다.
@@ -303,7 +304,21 @@ CSRF 토큰과 초기 세션 쿠키를 발급한다. 로그인 전 회원가입�
 
 작성자 본인만 물리 삭제할 수 있다. 성공 시 `204 No Content`다.
 
-## 7. 시스템 API
+## 7. 구독 API
+
+### POST `/blogs/{slug}/subscription`
+
+로그인 사용자가 다른 사용자의 블로그를 구독한다. 이미 구독 중이면 그대로 성공하며, 내 블로그는 구독할 수 없다.
+
+```json
+{ "data": { "subscribed": true } }
+```
+
+### DELETE `/blogs/{slug}/subscription`
+
+구독을 취소한다. 성공 시 `204 No Content`다.
+
+## 8. 시스템 API
 
 ### GET `/health`
 
@@ -319,7 +334,7 @@ CSRF 토큰과 초기 세션 쿠키를 발급한다. 로그인 전 회원가입�
 
 클라이언트의 `api-docs.html`로 이동한다. `/swagger-ui.css`, `/swagger-ui-bundle.js`는 문서 화면용 정적 리소스다.
 
-## 8. 구현 체크리스트
+## 9. 구현 체크리스트
 
 - `server/` Express 백엔드는 사용하지 않는다.
 - `supabase/functions/api`의 공통 CORS·쿠키·세션 처리는 `shared.ts`에서 담당한다.
