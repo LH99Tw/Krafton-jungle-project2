@@ -33,6 +33,10 @@
   .account-button>span:not(.account-avatar),.account-button>svg{display:none}
   .account-dropdown{right:-38px}
 }
+
+.subscribe-button{min-width:92px;padding:10px 17px;border:1px solid #fff;border-radius:3px;background:#fff;color:#222;font-size:12px;font-weight:700}
+.subscribe-button.subscribed{border-color:#888;background:transparent;color:#fff}
+.subscribe-button:disabled{opacity:.55}
 .header-search{display:flex;width:190px;height:36px;align-items:center;border:1px solid #ddd;border-radius:19px;padding-left:14px}
 .header-search input{width:100%;border:0;outline:0;font-size:12px;color:#222}
 .header-search button{display:grid;place-items:center;width:36px;color:#222}
