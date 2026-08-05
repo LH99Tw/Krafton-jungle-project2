@@ -23,7 +23,7 @@
   const state = {
     user: null, csrf: '', modal: false, profile: false, mobile: false,
     category: '', categoryPage: 1, creatorPage: 1, risingPage: 1, tipPage: 1,
-    feedSort: 'latest', feedPosts: [], feedError: '', pageData: null, manageFilter: 'ALL',
+    feedSort: 'latest', feedPosts: [], feedError: '', marketItems: [], marketError: '', pageData: null, manageFilter: 'ALL',
   }
 
   const esc = (value = '') => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;')
@@ -55,13 +55,13 @@
   }
 
   function header() {
-    const nav = [['홈', '/'], ['피드', '/feed'], ['스킨', '/skin'], ['포럼', '/forum']]
+    const nav = [['홈', '/'], ['피드', '/feed'], ['마켓', '/market'], ['포럼', '/forum']]
     const account = state.user ? `<div class="signed-header-actions"><button class="header-icon-button" aria-label="알림">●</button><button class="profile-trigger" data-action="profile">${esc(state.user.nickname[0].toUpperCase())}</button>${state.profile ? `<button class="profile-menu-scrim" data-action="profile-close"></button><div class="profile-popover"><div class="profile-summary"><span class="profile-avatar">${esc(state.user.nickname[0])}</span><div><strong>${esc(state.user.nickname)}</strong><span>${esc(state.user.email)}</span><button data-go="/blog/me/manage">계정관리</button></div></div><div class="profile-blog"><p>운영중인 블로그</p><div><button data-go="/blog/me/manage">${esc(state.user.nickname)}</button><span><button data-go="/write">✎</button><button data-go="/blog/me/manage">⚙</button></span></div></div><button class="profile-logout" data-action="logout">로그아웃</button></div>` : ''}</div>` : '<button class="outline-button" data-action="modal-open">시작하기</button>'
     return `<a class="skip-link" href="#main">본문 바로가기</a><div class="site-header-slot"><header class="site-header" data-od-id="site-header"><div class="header-inner"><button class="brand" data-go="/">티스토리</button><nav class="main-nav ${state.mobile ? 'open' : ''}">${nav.map(([label, url]) => `<button data-go="${url}" class="${path() === url ? 'active' : ''}">${label}</button>`).join('')}</nav><form class="header-search" id="header-search"><input name="query" placeholder="검색어 입력" aria-label="검색어 입력"><button>⌕</button></form><div class="header-actions"><button class="header-notice" data-go="/notice/2702"><span>◖</span><span>불법촬영물 유통 방지 조치 대상 확대 안내</span></button>${account}<button class="mobile-trigger" data-action="mobile">☰</button></div></div></header></div>`
   }
 
   function footer() {
-    const groups = [['메뉴가 궁금할 땐', [['홈', '/'], ['피드', '/feed'], ['스킨', '/skin'], ['포럼', '/forum']]], ['사용하다 궁금할 땐', [['스킨가이드', '#'], ['고객센터', '#'], ['공지사항', '/notice/2702']]], ['정책이 궁금할 땐', [['이용약관', '#'], ['운영정책', '#'], ['개인정보처리방침', '#']]], ['도움이 필요할 땐', [['권리침해신고', '#'], ['상거래 피해 구제신청', '#']]]]
+    const groups = [['메뉴가 궁금할 땐', [['홈', '/'], ['피드', '/feed'], ['마켓', '/market'], ['포럼', '/forum']]], ['사용하다 궁금할 땐', [['마켓 이용안내', '/market'], ['고객센터', '#'], ['공지사항', '/notice/2702']]], ['정책이 궁금할 땐', [['이용약관', '#'], ['운영정책', '#'], ['개인정보처리방침', '#']]], ['도움이 필요할 땐', [['권리침해신고', '#'], ['상거래 피해 구제신청', '#']]]]
     return `<footer class="site-footer"><div class="footer-inner"><div class="footer-brand"><strong>TISTORY</strong><p>티스토리는 Daum에서 <img src="/assets/tistory/heart.png" alt="사랑"> 을 담아 만듭니다.</p><small>© Daum Corp.</small></div><div class="footer-links">${groups.map(([title, links]) => `<div class="footer-group"><button class="footer-title" data-action="footer">${title}<span>⌄</span></button><div class="footer-list">${links.map(([label, url]) => `<button ${url.startsWith('/') ? `data-go="${url}"` : ''}>${label}</button>`).join('')}</div></div>`).join('')}</div></div></footer>`
   }
 
@@ -111,6 +111,29 @@
 
   function setup() {
     return `<main id="main" class="setup-page"><div class="setup-panel"><button class="back-button" data-go="/">← 홈으로</button><p class="eyebrow">SET UP YOUR BLOG</p><h1>이제 블로그를<br>만들어볼까요?</h1><p class="muted">공개 주소와 이름은 신중하게 정해주세요.</p><form id="setup-form"><label>블로그 이름<input required minlength="2" maxlength="30" name="name" placeholder="예: 정글 개발 기록"></label><label>블로그 주소<div class="slug-field"><input required pattern="[a-z0-9-]{3,30}" name="slug" placeholder="jungle-dev"><span>.tistory.com</span><button type="button" data-action="slug">중복 확인</button></div><small id="slug-result"></small></label><label>블로그 소개 <span class="counter" id="description-count">0/160</span><textarea maxlength="160" name="description" placeholder="블로그를 한 줄로 소개해보세요."></textarea></label><p class="form-error" hidden></p><button class="primary-button">블로그 만들기　→</button></form></div></main>`
+  }
+
+  function market() {
+    const sampleItems = [
+      { id: 'sample-1', title: '최애 캐릭터 한정 아크릴 스탠드', description: '개봉 후 진열만 한 상품입니다.', category: '애니메이션 굿즈', condition: 'LIKE_NEW', pricePoints: 18000, status: 'SELLING', seller: { nickname: '굿즈수집가' } },
+      { id: 'sample-2', title: '공식 캐릭터 봉제인형', description: '미개봉 새 상품이며 태그가 포함되어 있습니다.', category: '인형', condition: 'NEW', pricePoints: 32000, status: 'SELLING', seller: { nickname: '덕질하는정글러' } },
+      { id: 'sample-3', title: '극장판 특전 포토카드 세트', description: '슬리브에 보관해 상태가 좋습니다.', category: '포토카드', condition: 'LIKE_NEW', pricePoints: 9500, status: 'SELLING', seller: { nickname: '애니기록소' } },
+    ]
+    const items = state.marketItems.length ? state.marketItems : sampleItems
+    const condition = { NEW: '새 상품', LIKE_NEW: '거의 새 상품', USED: '사용감 있음' }
+    return shell(`<main id="main" class="page-main"><div class="section-inner"><div class="page-intro"><p class="eyebrow">FANDOM GOODS MARKET</p><h1>좋아하는 작품의 굿즈를<br>팬들과 안전하게 거래해보세요.</h1><p class="muted">블로그 글과 분리된 1:1 팬덤 굿즈 마켓입니다. MVP에서는 포인트로 거래합니다.</p></div><form class="feed-search" id="market-search"><span>⌕</span><input name="query" placeholder="작품, 캐릭터, 상품명 검색"></form><div class="feed-toolbar"><strong>판매 중인 상품 <em>${items.length}</em></strong><div><button class="active">최신순</button><button>낮은 가격순</button><button data-go="/market/new">상품 등록</button></div></div>${state.marketError ? `<p class="form-error">API 연결 전이라 샘플 상품을 표시하고 있습니다. ${esc(state.marketError)}</p>` : ''}<div class="feed-list">${items.map((item) => `<article class="feed-row"><div><p class="post-blog">${esc(item.category)} · ${condition[item.condition] || esc(item.condition)}</p><h2><button data-go="/market/${item.id}">${esc(item.title)}</button></h2><p class="excerpt">${esc(item.description)}</p><small>${esc(item.seller?.nickname || '판매자')} · ${item.status === 'SELLING' ? '판매 중' : esc(item.status)}</small></div><div class="row-stat"><strong>${Number(item.pricePoints || 0).toLocaleString()} P</strong></div></article>`).join('')}</div></div></main>`)
+  }
+
+  async function loadMarket() {
+    const query = new URLSearchParams(location.search).get('q') || ''
+    try {
+      state.marketError = ''
+      state.marketItems = await api(`/market/items?q=${encodeURIComponent(query)}&sort=latest&page=1&size=12`) || []
+    } catch (error) {
+      state.marketItems = []
+      state.marketError = error.message
+    }
+    if (path() === '/market') root.innerHTML = market()
   }
 
   function hub(kind) {
@@ -174,7 +197,9 @@
     else if (route === '/agreement/third-party-consent') root.innerHTML = state.user ? agreement() : auth('login')
     else if (route === '/notice/2702') root.innerHTML = notice()
     else if (route === '/blog/new') root.innerHTML = setup()
-    else if (route === '/skin' || route === '/forum') root.innerHTML = hub(route.slice(1))
+    else if (route === '/market') { root.innerHTML = market(); if (load) loadMarket() }
+    else if (route === '/skin') go('/market')
+    else if (route === '/forum') root.innerHTML = hub('forum')
     else if (route === '/write') root.innerHTML = state.user ? editor() : auth('login')
     else if (route === '/blog/me/manage' || route.endsWith('/manage')) { root.innerHTML = manage(); if (load) loadData(route) }
     else if (route.startsWith('/post/') && route.endsWith('/edit')) { root.innerHTML = editor(route.split('/')[2]); if (load) loadData(route) }
@@ -227,9 +252,10 @@
 
   root.addEventListener('submit', async (event) => {
     event.preventDefault()
-    if (['header-search', 'feed-search'].includes(event.target.id)) {
+    if (['header-search', 'feed-search', 'market-search'].includes(event.target.id)) {
       const query = new FormData(event.target).get('query')?.toString().trim() || ''
-      go(`/feed${query ? `?q=${encodeURIComponent(query)}` : ''}`)
+      const target = event.target.id === 'market-search' ? '/market' : '/feed'
+      go(`${target}${query ? `?q=${encodeURIComponent(query)}` : ''}`)
     }
     if (event.target.id === 'auth-form') {
       const form = event.target, signup = path() === '/signup', errorNode = form.querySelector('.form-error')
