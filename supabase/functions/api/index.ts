@@ -1,6 +1,7 @@
 import { apiError, corsHeaders, getSession, json, requireCsrfSession, supabase } from './shared.ts'
 import { handleAuthRoute } from './auth/auth.routes.ts'
 import { handleSystemRoute } from './system/system.routes.ts'
+import { handleMarketRoute } from './market/market.routes.ts'
 
 const reservedSlugs = new Set(['api', 'login', 'signup', 'feed', 'post', 'blog', 'me', 'new'])
 const slugPattern = /^[a-z0-9-]{3,30}$/
@@ -379,6 +380,9 @@ Deno.serve(async (request) => {
 
   const systemResponse = handleSystemRoute(request, path)
   if (systemResponse) return systemResponse
+
+  const marketResponse = handleMarketRoute(request, path, url)
+  if (marketResponse) return marketResponse
 
   if (request.method === 'POST' && path === '/blogs') return createBlog(request)
   if (request.method === 'GET' && path === '/blogs/check-slug') return checkSlug(url)
