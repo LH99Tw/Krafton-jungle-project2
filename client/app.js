@@ -23,7 +23,7 @@
   const state = {
     user: null, csrf: '', modal: false, profile: false, mobile: false,
     category: '', categoryPage: 1, creatorPage: 1, risingPage: 1, tipPage: 1,
-    feedSort: 'latest', feedPosts: [], feedError: '', marketItems: [], marketError: '', pageData: null, manageFilter: 'ALL',
+    feedSort: 'latest', feedPosts: [], feedError: '', marketItems: [], marketError: '', searchTab: 'posts', searchResults: { posts: [], market: [], blogs: [] }, searchError: '', pageData: null, manageFilter: 'ALL',
   }
 
   const esc = (value = '') => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;')
@@ -115,13 +115,13 @@
 
   function market() {
     const sampleItems = [
-      { id: 'sample-1', title: '최애 캐릭터 한정 아크릴 스탠드', description: '개봉 후 진열만 한 상품입니다.', category: '애니메이션 굿즈', condition: 'LIKE_NEW', pricePoints: 18000, status: 'SELLING', seller: { nickname: '굿즈수집가' } },
-      { id: 'sample-2', title: '공식 캐릭터 봉제인형', description: '미개봉 새 상품이며 태그가 포함되어 있습니다.', category: '인형', condition: 'NEW', pricePoints: 32000, status: 'SELLING', seller: { nickname: '덕질하는정글러' } },
-      { id: 'sample-3', title: '극장판 특전 포토카드 세트', description: '슬리브에 보관해 상태가 좋습니다.', category: '포토카드', condition: 'LIKE_NEW', pricePoints: 9500, status: 'SELLING', seller: { nickname: '애니기록소' } },
+      { id: 'sample-1', title: '최애 캐릭터 한정 아크릴 스탠드', description: '개봉 후 진열만 한 상품입니다.', category: '애니메이션 굿즈', tags: ['최애캐', '아크릴스탠드'], condition: 'LIKE_NEW', pricePoints: 18000, status: 'SELLING', seller: { nickname: '굿즈수집가' } },
+      { id: 'sample-2', title: '공식 캐릭터 봉제인형', description: '미개봉 새 상품이며 태그가 포함되어 있습니다.', category: '인형', tags: ['공식굿즈', '봉제인형'], condition: 'NEW', pricePoints: 32000, status: 'SELLING', seller: { nickname: '덕질하는정글러' } },
+      { id: 'sample-3', title: '극장판 특전 포토카드 세트', description: '슬리브에 보관해 상태가 좋습니다.', category: '포토카드', tags: ['극장판', '특전', '포토카드'], condition: 'LIKE_NEW', pricePoints: 9500, status: 'SELLING', seller: { nickname: '애니기록소' } },
     ]
     const items = state.marketItems.length ? state.marketItems : sampleItems
     const condition = { NEW: '새 상품', LIKE_NEW: '거의 새 상품', USED: '사용감 있음' }
-    return shell(`<main id="main" class="page-main"><div class="section-inner"><div class="page-intro"><p class="eyebrow">FANDOM GOODS MARKET</p><h1>좋아하는 작품의 굿즈를<br>팬들과 안전하게 거래해보세요.</h1><p class="muted">블로그 글과 분리된 1:1 팬덤 굿즈 마켓입니다. MVP에서는 포인트로 거래합니다.</p></div><form class="feed-search" id="market-search"><span>⌕</span><input name="query" placeholder="작품, 캐릭터, 상품명 검색"></form><div class="feed-toolbar"><strong>판매 중인 상품 <em>${items.length}</em></strong><div><button class="active">최신순</button><button>낮은 가격순</button><button data-go="/market/new">상품 등록</button></div></div>${state.marketError ? `<p class="form-error">API 연결 전이라 샘플 상품을 표시하고 있습니다. ${esc(state.marketError)}</p>` : ''}<div class="feed-list">${items.map((item) => `<article class="feed-row"><div><p class="post-blog">${esc(item.category)} · ${condition[item.condition] || esc(item.condition)}</p><h2><button data-go="/market/${item.id}">${esc(item.title)}</button></h2><p class="excerpt">${esc(item.description)}</p><small>${esc(item.seller?.nickname || '판매자')} · ${item.status === 'SELLING' ? '판매 중' : esc(item.status)}</small></div><div class="row-stat"><strong>${Number(item.pricePoints || 0).toLocaleString()} P</strong></div></article>`).join('')}</div></div></main>`)
+    return shell(`<main id="main" class="page-main"><div class="section-inner"><div class="page-intro"><p class="eyebrow">FANDOM GOODS MARKET</p><h1>좋아하는 작품의 굿즈를<br>팬들과 안전하게 거래해보세요.</h1><p class="muted">블로그 글과 분리된 1:1 팬덤 굿즈 마켓입니다. MVP에서는 포인트로 거래합니다.</p></div><form class="feed-search" id="market-search"><span>⌕</span><input name="query" placeholder="작품, 캐릭터, 상품명 또는 #키워드 검색"></form><div class="feed-toolbar"><strong>판매 중인 상품 <em>${items.length}</em></strong><div><button class="active">최신순</button><button>낮은 가격순</button><button data-go="/market/new">상품 등록</button></div></div>${state.marketError ? `<p class="form-error">API 연결 전이라 샘플 상품을 표시하고 있습니다. ${esc(state.marketError)}</p>` : ''}<div class="feed-list">${items.map((item) => `<article class="feed-row"><div><p class="post-blog">${esc(item.category)} · ${condition[item.condition] || esc(item.condition)}</p><h2><button data-go="/market/${item.id}">${esc(item.title)}</button></h2><p class="excerpt">${esc(item.description)}</p><p class="market-tags">${(item.tags || []).map((tag) => `<button data-go="/search?tab=market&q=${encodeURIComponent(`#${tag}`)}">#${esc(tag)}</button>`).join(' ')}</p><small>${esc(item.seller?.nickname || '판매자')} · ${item.status === 'SELLING' ? '판매 중' : esc(item.status)}</small></div><div class="row-stat"><strong>${Number(item.pricePoints || 0).toLocaleString()} P</strong></div></article>`).join('')}</div></div></main>`)
   }
 
   async function loadMarket() {
@@ -134,6 +134,10 @@
       state.marketError = error.message
     }
     if (path() === '/market') root.innerHTML = market()
+  }
+
+  function marketEditor() {
+    return shell(`<main id="main" class="setup-page"><div class="setup-panel"><button class="back-button" data-go="/market">← 마켓으로</button><p class="eyebrow">SELL YOUR GOODS</p><h1>팬덤 굿즈를<br>등록해보세요.</h1><form id="market-item-form"><label>상품명<input required maxlength="100" name="title" placeholder="상품명을 입력하세요"></label><label>상품 설명<textarea required maxlength="5000" name="description" placeholder="상품 상태와 구성품을 자세히 적어주세요."></textarea></label><label>카테고리<input required maxlength="50" name="category" placeholder="예: 포토카드, 인형"></label><label>상품 상태<select name="condition"><option value="NEW">새 상품</option><option value="LIKE_NEW">거의 새 상품</option><option value="USED">사용감 있음</option></select></label><label>가격 포인트<input required min="1" max="1000000000" type="number" name="pricePoints" placeholder="예: 18000"></label><label>검색 키워드 <span class="counter" id="tag-count">0/5</span><input name="tags" placeholder="#작품명 #캐릭터명 #굿즈종류"></label><small>띄어쓰기로 구분하며 최대 5개, 키워드당 20자까지 입력할 수 있습니다.</small><p class="form-error" hidden></p><button class="primary-button">상품 등록　→</button></form></div></main>`)
   }
 
   function hub(kind) {
@@ -169,6 +173,49 @@
     return shell(`<main id="main" class="manage-page"><div class="section-inner"><div class="manage-head"><div><p class="eyebrow">MY TISTORY</p><h1>${esc(data.blog?.name || '내 블로그 관리')}</h1><p>${esc(data.blog?.description || '')}</p></div><button class="primary-button compact" data-go="/write">✎ 새 글 쓰기</button></div><div class="manage-tabs"><div>${[['ALL', '전체'], ['PUBLISHED', '발행됨'], ['DRAFT', '임시저장']].map(([value, label]) => `<button data-filter="${value}" class="${state.manageFilter === value ? 'active' : ''}">${label}</button>`).join('')}</div>${data.blog ? `<button data-go="/blog/${esc(data.blog.slug)}">내 블로그 보기　→</button>` : ''}</div>${shown.length ? `<div class="feed-list">${shown.map((post) => postRow(post, true)).join('')}</div>` : empty('작성한 글이 없습니다.', '첫 글을 작성해보세요.')}</div></main>`)
   }
 
+  function searchPage() {
+    const query = new URLSearchParams(location.search).get('q') || ''
+    const tabs = [['posts', '글'], ['market', '마켓'], ['blogs', '블로그']]
+    const results = state.searchResults[state.searchTab] || []
+    const marketRows = (items) => items.map((item) => `<article class="feed-row"><div><p class="post-blog">${esc(item.category)} · ${(item.tags || []).map((tag) => `#${esc(tag)}`).join(' ')}</p><h2><button data-go="/market/${item.id}">${esc(item.title)}</button></h2><p class="excerpt">${esc(item.description)}</p><small>${esc(item.seller?.nickname || '판매자')} · ${item.status === 'SELLING' ? '판매 중' : esc(item.status)}</small></div><div class="row-stat"><strong>${Number(item.pricePoints || 0).toLocaleString()} P</strong></div></article>`).join('')
+    const blogRows = (items) => items.map((blog) => `<article class="feed-row"><div><p class="post-blog">BLOG</p><h2><button data-go="/blog/${esc(blog.slug)}">${esc(blog.name)}</button></h2><p class="excerpt">${esc(blog.description || '블로그 소개가 없습니다.')}</p><small>${esc(blog.owner?.nickname || '블로거')} · /blog/${esc(blog.slug)}</small></div></article>`).join('')
+    const content = state.searchTab === 'posts'
+      ? results.map((post) => postRow(post)).join('')
+      : state.searchTab === 'market' ? marketRows(results) : blogRows(results)
+    return shell(`<main id="main" class="page-main"><div class="section-inner"><div class="page-intro"><p class="eyebrow">INTEGRATED SEARCH</p><h1>‘${esc(query)}’ 검색 결과</h1><form class="feed-search" id="integrated-search"><span>⌕</span><input name="query" value="${esc(query)}" placeholder="글, 마켓, 블로그 검색"></form></div><div class="manage-tabs"><div>${tabs.map(([value, label]) => `<button data-search-tab="${value}" class="${state.searchTab === value ? 'active' : ''}">${label} <em>${state.searchResults[value].length}</em></button>`).join('')}</div></div>${state.searchError ? `<p class="form-error">일부 검색 결과를 불러오지 못했습니다. ${esc(state.searchError)}</p>` : ''}<div class="feed-list">${content || empty('검색 결과가 없습니다.', '다른 검색어를 입력해보세요.')}</div></div></main>`)
+  }
+
+  async function loadSearch() {
+    const params = new URLSearchParams(location.search)
+    const query = params.get('q') || ''
+    const requestedTab = params.get('tab')
+    if (['posts', 'market', 'blogs'].includes(requestedTab)) state.searchTab = requestedTab
+    const requests = [
+      api(`/posts?scope=public&q=${encodeURIComponent(query)}&sort=latest&page=1&size=20`),
+      api(`/market/items?q=${encodeURIComponent(query)}&sort=latest&page=1&size=20`),
+      api(`/blogs?q=${encodeURIComponent(query)}&page=1&size=20`),
+    ]
+    const [posts, marketItems, blogs] = await Promise.allSettled(requests)
+    const normalized = query.replace(/^#/, '').toLowerCase()
+    const sampleMarket = [
+      { id: 'sample-1', title: '최애 캐릭터 한정 아크릴 스탠드', description: '개봉 후 진열만 한 상품입니다.', category: '애니메이션 굿즈', tags: ['최애캐', '아크릴스탠드'], condition: 'LIKE_NEW', pricePoints: 18000, status: 'SELLING', seller: { nickname: '굿즈수집가' } },
+      { id: 'sample-2', title: '공식 캐릭터 봉제인형', description: '미개봉 새 상품입니다.', category: '인형', tags: ['공식굿즈', '봉제인형'], condition: 'NEW', pricePoints: 32000, status: 'SELLING', seller: { nickname: '덕질하는정글러' } },
+      { id: 'sample-3', title: '극장판 특전 포토카드 세트', description: '슬리브에 보관해 상태가 좋습니다.', category: '포토카드', tags: ['극장판', '특전', '포토카드'], condition: 'LIKE_NEW', pricePoints: 9500, status: 'SELLING', seller: { nickname: '애니기록소' } },
+    ].filter((item) => !normalized || `${item.title} ${item.description} ${item.category} ${item.tags.join(' ')}`.toLowerCase().includes(normalized))
+    const sampleBlogs = [
+      { id: 'sample-blog-1', name: '애니기록소', slug: 'anime-log', description: '극장판과 캐릭터 굿즈를 기록합니다.', owner: { nickname: '애니기록소' } },
+      { id: 'sample-blog-2', name: '덕질하는 정글러', slug: 'jungle-fan', description: '좋아하는 작품과 캐릭터 이야기를 나눕니다.', owner: { nickname: '정글러' } },
+    ].filter((blog) => !normalized || `${blog.name} ${blog.description}`.toLowerCase().includes(normalized))
+    state.searchResults = {
+      posts: posts.status === 'fulfilled' ? posts.value : [],
+      market: marketItems.status === 'fulfilled' ? marketItems.value : sampleMarket,
+      blogs: blogs.status === 'fulfilled' ? blogs.value : sampleBlogs,
+    }
+    const errors = [posts, marketItems, blogs].filter((result) => result.status === 'rejected')
+    state.searchError = errors[0]?.reason?.message || ''
+    if (path() === '/search') root.innerHTML = searchPage()
+  }
+
   async function loadFeed() {
     const query = new URLSearchParams(location.search).get('q') || ''
     try { state.feedError = ''; state.feedPosts = await api(`/posts?scope=${state.user ? 'following' : 'public'}&q=${encodeURIComponent(query)}&sort=${state.feedSort}&page=1&size=10`) || [] }
@@ -197,6 +244,8 @@
     else if (route === '/agreement/third-party-consent') root.innerHTML = state.user ? agreement() : auth('login')
     else if (route === '/notice/2702') root.innerHTML = notice()
     else if (route === '/blog/new') root.innerHTML = setup()
+    else if (route === '/search') { root.innerHTML = searchPage(); if (load) loadSearch() }
+    else if (route === '/market/new') root.innerHTML = state.user ? marketEditor() : auth('login')
     else if (route === '/market') { root.innerHTML = market(); if (load) loadMarket() }
     else if (route === '/skin') go('/market')
     else if (route === '/forum') root.innerHTML = hub('forum')
@@ -235,6 +284,14 @@
     if (sort) { state.feedSort = sort.dataset.sort; render(false); loadFeed() }
     const filter = event.target.closest('[data-filter]')
     if (filter) { state.manageFilter = filter.dataset.filter; render(false) }
+    const searchTab = event.target.closest('[data-search-tab]')
+    if (searchTab) {
+      state.searchTab = searchTab.dataset.searchTab
+      const params = new URLSearchParams(location.search)
+      params.set('tab', state.searchTab)
+      history.replaceState({}, '', `/search?${params}`)
+      render(false)
+    }
     const consent = event.target.closest('[data-consent]')
     if (consent) { sessionStorage.setItem('tistory-third-party-consent', consent.dataset.consent); go('/') }
     const save = event.target.closest('[data-save]')
@@ -252,10 +309,10 @@
 
   root.addEventListener('submit', async (event) => {
     event.preventDefault()
-    if (['header-search', 'feed-search', 'market-search'].includes(event.target.id)) {
+    if (['header-search', 'feed-search', 'market-search', 'integrated-search'].includes(event.target.id)) {
       const query = new FormData(event.target).get('query')?.toString().trim() || ''
-      const target = event.target.id === 'market-search' ? '/market' : '/feed'
-      go(`${target}${query ? `?q=${encodeURIComponent(query)}` : ''}`)
+      const tab = event.target.id === 'market-search' ? 'market' : event.target.id === 'integrated-search' ? state.searchTab : 'posts'
+      go(`/search?tab=${tab}&q=${encodeURIComponent(query)}`)
     }
     if (event.target.id === 'auth-form') {
       const form = event.target, signup = path() === '/signup', errorNode = form.querySelector('.form-error')
@@ -267,12 +324,30 @@
       try { const item = await api('/blogs', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(form))) }); go(`/blog/${item.slug}/manage`) }
       catch (error) { errorNode.hidden = false; errorNode.textContent = error.message }
     }
+    if (event.target.id === 'market-item-form') {
+      const form = event.target, errorNode = form.querySelector('.form-error')
+      const raw = Object.fromEntries(new FormData(form))
+      const tags = String(raw.tags || '').split(/\s+/).map((tag) => tag.replace(/^#/, '').trim()).filter(Boolean)
+      if (tags.length > 5 || tags.some((tag) => tag.length > 20)) {
+        errorNode.hidden = false
+        errorNode.textContent = '키워드는 최대 5개, 각각 20자까지 입력할 수 있습니다.'
+        return
+      }
+      try {
+        const item = await api('/market/items', { method: 'POST', body: JSON.stringify({ ...raw, pricePoints: Number(raw.pricePoints), tags }) })
+        go('/market')
+      } catch (error) { errorNode.hidden = false; errorNode.textContent = error.message }
+    }
   })
 
   root.addEventListener('input', (event) => {
     if (event.target.name === 'description') root.querySelector('#description-count').textContent = `${event.target.value.length}/160`
     if (event.target.id === 'editor-title') root.querySelector('#title-count').textContent = `${event.target.value.length}/100`
     if (event.target.id === 'editor-content') root.querySelector('#content-count').textContent = `${event.target.value.length.toLocaleString()}/20,000`
+    if (event.target.name === 'tags') {
+      const count = event.target.value.trim() ? event.target.value.trim().split(/\s+/).length : 0
+      root.querySelector('#tag-count').textContent = `${count}/5`
+    }
   })
 
   async function savePost(status) {

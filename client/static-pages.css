@@ -11,3 +11,7 @@
 .static-page .feed-row-placeholder{width:100px;height:66px;border-radius:8px;background:#eee}
 .static-page .detail-content p{margin:0 0 1.5em}.static-page .content-editor{display:block}
 .static-page .skin-swatch{width:110px;height:70px;border-radius:7px;background:linear-gradient(135deg,#222,#ff5a4a)}
+.setup-panel select{display:block;width:100%;height:48px;margin-top:8px;padding:0 13px;border:1px solid #ddd;background:#fff;font:inherit;font-size:13px}
+.market-tags{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+.market-tags button{padding:4px 8px;border-radius:999px;background:#f3f3f3;color:#777;font-size:10px}
+.manage-tabs em{color:#e66c61;font-style:normal}
