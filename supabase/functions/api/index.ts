@@ -1,134 +1,6 @@
 import { apiError, corsHeaders, getSession, json, requireCsrfSession, supabase } from './shared.ts'
 import { handleAuthRoute } from './auth/auth.routes.ts'
-
-const openApiDocument = {
-  openapi: '3.0.3',
-  info: {
-    title: 'Tistory API',
-    version: '1.0.0',
-    description: 'Tistory clone backend API deployed on Supabase Edge Functions.',
-  },
-  paths: {
-    '/auth/signup': {
-      post: {
-        summary: 'Create a user and sign in',
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object',
-                required: ['email', 'nickname', 'password', 'passwordConfirm'],
-                properties: {
-                  email: { type: 'string', format: 'email', maxLength: 255 },
-                  nickname: { type: 'string', minLength: 2, maxLength: 30 },
-                  password: { type: 'string', minLength: 8, maxLength: 72 },
-                  passwordConfirm: { type: 'string' },
-                },
-              },
-            },
-          },
-        },
-        responses: {
-          '201': { description: 'User created and signed in' },
-          '400': { description: 'Validation error' },
-          '403': { description: 'Invalid CSRF token' },
-          '409': { description: 'Email already exists' },
-        },
-      },
-    },
-    '/auth/login': {
-      post: {
-        summary: 'Sign in with email and password',
-        responses: {
-          '200': { description: 'Signed in' },
-          '400': { description: 'Validation error' },
-          '401': { description: 'Invalid credentials' },
-          '403': { description: 'Invalid CSRF token' },
-        },
-      },
-    },
-    '/auth/logout': {
-      post: {
-        summary: 'Destroy the current session',
-        responses: { '204': { description: 'Signed out' } },
-      },
-    },
-    '/me': {
-      get: {
-        summary: 'Get the current user and blog',
-        responses: {
-          '200': { description: 'Current user' },
-          '401': { description: 'Unauthenticated' },
-        },
-      },
-    },
-    '/blogs': {
-      post: { summary: 'Create a blog', responses: { '201': { description: 'Blog created' } } },
-    },
-    '/blogs/check-slug': {
-      get: { summary: 'Check blog slug availability', responses: { '200': { description: 'Availability' } } },
-    },
-    '/blogs/me': {
-      get: { summary: 'Get current user blog', responses: { '200': { description: 'Current blog' } } },
-    },
-    '/blogs/{slug}': {
-      get: { summary: 'Get public blog and posts', responses: { '200': { description: 'Public blog' } } },
-    },
-    '/posts': {
-      get: { summary: 'List public or owned posts', responses: { '200': { description: 'Post list' } } },
-      post: { summary: 'Create a draft or published post', responses: { '201': { description: 'Post created' } } },
-    },
-    '/posts/{id}': {
-      get: { summary: 'Read a post', responses: { '200': { description: 'Post detail' } } },
-      patch: { summary: 'Update an owned post', responses: { '200': { description: 'Post updated' } } },
-      delete: { summary: 'Delete an owned post', responses: { '204': { description: 'Post deleted' } } },
-    },
-    '/auth/csrf': {
-      get: {
-        summary: 'Issue a CSRF token',
-        responses: {
-          '200': {
-            description: 'CSRF token issued',
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: {
-                    data: {
-                      type: 'object',
-                      properties: { csrfToken: { type: 'string' } },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-    '/health': {
-      get: {
-        summary: 'Check API health',
-        responses: { '200': { description: 'API is healthy' } },
-      },
-    },
-  },
-}
-
-const swaggerAsset = async (path: 'swagger-ui.css' | 'swagger-ui-bundle.js') => {
-  const response = await fetch(`https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.32.12/${path}`)
-  return new Response(response.body, {
-    status: response.status,
-    headers: {
-      ...corsHeaders,
-      'Content-Type': path.endsWith('.css')
-        ? 'text/css; charset=utf-8'
-        : 'text/javascript; charset=utf-8',
-      'Cache-Control': 'public, max-age=3600',
-    },
-  })
-}
+import { handleSystemRoute } from './system/system.routes.ts'
 
 const reservedSlugs = new Set(['api', 'login', 'signup', 'feed', 'post', 'blog', 'me', 'new'])
 const slugPattern = /^[a-z0-9-]{3,30}$/
@@ -225,7 +97,7 @@ const positiveInteger = (value: string | null, fallback: number, max?: number) =
   return parsed
 }
 
-const getPublicBlog = async (slugValue: string, url: URL) => {
+const getPublicBlog = async (request: Request, slugValue: string, url: URL) => {
   const { slug, valid } = validateSlug(decodeURIComponent(slugValue))
   if (!valid) return apiError(404, 'NOT_FOUND', '블로그를 찾을 수 없습니다.')
   const page = positiveInteger(url.searchParams.get('page'), 1)
@@ -235,6 +107,10 @@ const getPublicBlog = async (slugValue: string, url: URL) => {
   const { data: blog, error } = await supabase.from('blogs').select('*').eq('slug', slug).maybeSingle()
   if (error || !blog) return apiError(404, 'NOT_FOUND', '블로그를 찾을 수 없습니다.')
   const { data: owner } = await supabase.from('users').select('id, nickname').eq('id', blog.owner_id).single()
+  const session = await getSession(request)
+  const { data: subscription } = session?.user_id
+    ? await supabase.from('subscriptions').select('blog_id').eq('user_id', session.user_id).eq('blog_id', blog.id).maybeSingle()
+    : { data: null }
   const from = (page - 1) * size
   const to = from + size - 1
   const { data: posts, count, error: postsError } = await supabase
@@ -264,7 +140,7 @@ const getPublicBlog = async (slugValue: string, url: URL) => {
   }))
   const totalItems = count ?? 0
   return json({ data: {
-    blog: blogJson(blog, owner ?? undefined),
+    blog: { ...blogJson(blog, owner ?? undefined), isSubscribed: Boolean(subscription) },
     posts: {
       items,
       pagination: { page, size, totalItems, totalPages: totalItems ? Math.ceil(totalItems / size) : 0 },
@@ -320,27 +196,39 @@ const listPosts = async (request: Request, url: URL) => {
   const size = positiveInteger(url.searchParams.get('size'), 10, 50)
   const q = (url.searchParams.get('q') ?? '').trim()
   const requestedStatus = url.searchParams.get('status')
-  if (!['public', 'mine'].includes(scope) || !['latest', 'popular'].includes(sort) || !page || !size) {
+  if (!['public', 'mine', 'following'].includes(scope) || !['latest', 'popular'].includes(sort) || !page || !size) {
     return apiError(400, 'VALIDATION_ERROR', '목록 조건을 확인해 주세요.')
   }
-  if (scope === 'public' && requestedStatus !== null) {
+  if (scope !== 'mine' && requestedStatus !== null) {
     return apiError(400, 'VALIDATION_ERROR', '공개 피드에는 status를 지정할 수 없습니다.')
   }
 
   let ownerId: number | null = null
   let status = 'PUBLISHED'
-  if (scope === 'mine') {
+  let followedBlogIds: number[] = []
+  if (scope === 'mine' || scope === 'following') {
     const session = await getSession(request)
     if (!session?.user_id) return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
     ownerId = session.user_id
-    status = requestedStatus ?? 'ALL'
-    if (!['ALL', 'DRAFT', 'PUBLISHED'].includes(status)) {
-      return apiError(400, 'VALIDATION_ERROR', '글 상태를 확인해 주세요.')
+    if (scope === 'mine') {
+      status = requestedStatus ?? 'ALL'
+      if (!['ALL', 'DRAFT', 'PUBLISHED'].includes(status)) {
+        return apiError(400, 'VALIDATION_ERROR', '글 상태를 확인해 주세요.')
+      }
+    } else {
+      const { data, error } = await supabase.from('subscriptions').select('blog_id').eq('user_id', session.user_id)
+      if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '구독 피드를 불러오지 못했습니다.')
+      followedBlogIds = (data ?? []).map((item: { blog_id: number }) => item.blog_id)
+      if (!followedBlogIds.length) {
+        return json({ data: [], pagination: { page, size, totalItems: 0, totalPages: 0 } })
+      }
     }
   }
 
   let query = supabase.from('post_details').select('*', { count: 'exact' })
-  query = scope === 'public' ? query.eq('status', 'PUBLISHED') : query.eq('owner_id', ownerId!)
+  if (scope === 'public') query = query.eq('status', 'PUBLISHED')
+  else if (scope === 'following') query = query.eq('status', 'PUBLISHED').in('blog_id', followedBlogIds)
+  else query = query.eq('owner_id', ownerId!)
   if (scope === 'mine' && status !== 'ALL') query = query.eq('status', status)
   if (q) {
     const safe = q.replaceAll(',', ' ')
@@ -348,9 +236,9 @@ const listPosts = async (request: Request, url: URL) => {
   }
   if (sort === 'popular') {
     query = query.order('view_count', { ascending: false })
-    if (scope === 'public') query = query.order('published_at', { ascending: false })
+    if (scope !== 'mine') query = query.order('published_at', { ascending: false })
   } else {
-    query = query.order(scope === 'public' ? 'published_at' : 'updated_at', { ascending: false })
+    query = query.order(scope === 'mine' ? 'updated_at' : 'published_at', { ascending: false })
   }
   query = query.order('id', { ascending: false })
   const from = (page - 1) * size
@@ -364,6 +252,25 @@ const listPosts = async (request: Request, url: URL) => {
     data: (data ?? []).map((post: Record<string, any>) => postJson(post)),
     pagination: { page, size, totalItems, totalPages: totalItems ? Math.ceil(totalItems / size) : 0 },
   })
+}
+
+const changeSubscription = async (request: Request, slugValue: string, subscribe: boolean) => {
+  const session = await requireCsrfSession(request)
+  if (!session) return apiError(403, 'CSRF_TOKEN_INVALID', 'CSRF 토큰이 유효하지 않습니다.')
+  if (!session.user_id) return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
+  const slug = decodeURIComponent(slugValue).trim().toLowerCase()
+  const { data: blog, error: blogError } = await supabase.from('blogs').select('id, owner_id').eq('slug', slug).maybeSingle()
+  if (blogError || !blog) return apiError(404, 'BLOG_NOT_FOUND', '블로그를 찾을 수 없습니다.')
+  if (blog.owner_id === session.user_id) return apiError(400, 'SELF_SUBSCRIPTION_NOT_ALLOWED', '내 블로그는 구독할 수 없습니다.')
+
+  if (subscribe) {
+    const { error } = await supabase.from('subscriptions').upsert({ user_id: session.user_id, blog_id: blog.id })
+    if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '구독하지 못했습니다.')
+    return json({ data: { subscribed: true } }, 201)
+  }
+  const { error } = await supabase.from('subscriptions').delete().eq('user_id', session.user_id).eq('blog_id', blog.id)
+  if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '구독을 취소하지 못했습니다.')
+  return new Response(null, { status: 204, headers: corsHeaders })
 }
 
 const createPost = async (request: Request) => {
@@ -470,11 +377,17 @@ Deno.serve(async (request) => {
   const authResponse = handleAuthRoute(request, path)
   if (authResponse) return authResponse
 
+  const systemResponse = handleSystemRoute(request, path)
+  if (systemResponse) return systemResponse
+
   if (request.method === 'POST' && path === '/blogs') return createBlog(request)
   if (request.method === 'GET' && path === '/blogs/check-slug') return checkSlug(url)
   if (request.method === 'GET' && path === '/blogs/me') return getMyBlog(request)
   const blogMatch = path.match(/^\/blogs\/([^/]+)$/)
-  if (request.method === 'GET' && blogMatch) return getPublicBlog(blogMatch[1], url)
+  if (request.method === 'GET' && blogMatch) return getPublicBlog(request, blogMatch[1], url)
+  const subscriptionMatch = path.match(/^\/blogs\/([^/]+)\/subscription$/)
+  if (subscriptionMatch && request.method === 'POST') return changeSubscription(request, subscriptionMatch[1], true)
+  if (subscriptionMatch && request.method === 'DELETE') return changeSubscription(request, subscriptionMatch[1], false)
   if (request.method === 'GET' && path === '/posts') return listPosts(request, url)
   if (request.method === 'POST' && path === '/posts') return createPost(request)
   const postMatch = path.match(/^\/posts\/(\d+)$/)
@@ -484,29 +397,6 @@ Deno.serve(async (request) => {
     if (request.method === 'GET') return readPost(request, postId)
     if (request.method === 'PATCH') return updatePost(request, postId)
     if (request.method === 'DELETE') return deletePost(request, postId)
-  }
-
-  if (request.method === 'GET' && path === '/swagger-ui.css') {
-    return swaggerAsset('swagger-ui.css')
-  }
-
-  if (request.method === 'GET' && path === '/swagger-ui-bundle.js') {
-    return swaggerAsset('swagger-ui-bundle.js')
-  }
-
-  if (request.method === 'GET' && path === '/openapi.json') {
-    return json(openApiDocument)
-  }
-
-  if (request.method === 'GET' && (path === '/docs' || path === '/docs/')) {
-    return Response.redirect(
-      'https://krafton-jungle-project2-client.vercel.app/api-docs.html',
-      302,
-    )
-  }
-
-  if (request.method === 'GET' && (path === '/health' || path === '/')) {
-    return json({ status: 'ok', service: 'tistory-api', runtime: 'supabase-edge-functions' })
   }
 
   return apiError(404, 'NOT_FOUND', '요청한 API를 찾을 수 없습니다.')
