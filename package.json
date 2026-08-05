@@ -4,6 +4,9 @@
   "scripts": {
     "dev": "npm run dev:client",
     "dev:client": "npm --prefix client run dev -- --host 0.0.0.0",
+    "supabase:start": "npx supabase start",
+    "supabase:stop": "npx supabase stop",
+    "supabase:status": "npx supabase status",
     "dev:api": "npx supabase functions serve api --env-file supabase/functions/api/.env.local",
     "build": "npm --prefix client run build",
     "deploy:api": "npx supabase functions deploy api --no-verify-jwt"
