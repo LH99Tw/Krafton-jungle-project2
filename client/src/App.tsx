@@ -4,10 +4,19 @@ type User = { id: number; email: string; nickname: string }
 type Blog = { id: number; name: string; slug: string; description: string; owner?: { id: number; nickname: string }; isSubscribed?: boolean }
 type Post = { id: number; url?: string; title: string; content?: string; excerpt?: string; status: 'DRAFT' | 'PUBLISHED'; viewCount: number; author: { id: number; nickname: string }; blog: { id: number; name: string; slug: string }; publishedAt?: string | null; updatedAt?: string }
 type Page = { page: number; size: number; totalItems: number; totalPages: number }
+type MarketItem = { id: number | string; title: string; description: string; category: string; tags: string[]; condition: 'NEW' | 'LIKE_NEW' | 'USED'; pricePoints: number; status: 'SELLING' | 'RESERVED' | 'SOLD'; seller: { id: number | string; nickname: string }; createdAt?: string }
+type Conversation = { id: number | string; itemId: number | string; buyerId?: number; sellerId?: number }
+type ChatMessage = { id: number | string; conversationId?: number | string; senderId: number | string; body: string; createdAt: string }
+type SearchBlog = Blog & { owner?: { id: number; nickname: string } }
 
 const API = import.meta.env.VITE_API_URL ?? ''
 const solidColors = ['#9DB6AD', '#91A8B5', '#C79A7D', '#AAA982', '#C79A94', '#8FA3C2', '#C3A6B8', '#94B99B', '#C9AD78', '#92AEB0']
 const solidColor = (index: number, offset = 0) => solidColors[(index + offset) % solidColors.length]
+const sampleMarketItems: MarketItem[] = [
+  { id: 'sample-1', title: '최애 캐릭터 한정 아크릴 스탠드', description: '개봉 후 진열만 한 상품입니다. 구성품은 본체와 받침대이며 눈에 띄는 흠집 없이 깨끗하게 보관했습니다.', category: '애니메이션 굿즈', tags: ['최애캐', '아크릴스탠드'], condition: 'LIKE_NEW', pricePoints: 18000, status: 'SELLING', seller: { id: 'sample-seller-1', nickname: '굿즈수집가' } },
+  { id: 'sample-2', title: '공식 캐릭터 봉제인형', description: '미개봉 새 상품이며 태그가 포함되어 있습니다.', category: '인형', tags: ['공식굿즈', '봉제인형'], condition: 'NEW', pricePoints: 32000, status: 'SELLING', seller: { id: 'sample-seller-2', nickname: '덕질하는정글러' } },
+  { id: 'sample-3', title: '극장판 특전 포토카드 세트', description: '슬리브에 보관해 상태가 좋습니다.', category: '포토카드', tags: ['극장판', '특전', '포토카드'], condition: 'LIKE_NEW', pricePoints: 9500, status: 'SELLING', seller: { id: 'sample-seller-3', nickname: '애니기록소' } },
+]
 const clonePosts = [
   ['부산 토박이 아저씨의 맛집 에세이', '야채값이 비싸서 리필이 안 된다는 물회집', 'taekwon-v1.tistory.com', 'FOOD'],
   ['즐거운 인생', '라면과 함께 먹으면 안 되는 식품', 'young303.tistory.com', 'LIFE'],
@@ -82,9 +91,10 @@ async function request<T>(path: string, options: RequestInit = {}) {
 }
 
 function useRoute() {
-  const [path, setPath] = useState(window.location.pathname)
-  useEffect(() => { const onPop = () => setPath(window.location.pathname); window.addEventListener('popstate', onPop); return () => window.removeEventListener('popstate', onPop) }, [])
-  const go = (to: string) => { window.history.pushState({}, '', to); setPath(to); window.scrollTo(0, 0) }
+  const [locationKey, setLocationKey] = useState(window.location.pathname + window.location.search)
+  const path = locationKey.split('?')[0]
+  useEffect(() => { const onPop = () => setLocationKey(window.location.pathname + window.location.search); window.addEventListener('popstate', onPop); return () => window.removeEventListener('popstate', onPop) }, [])
+  const go = (to: string) => { window.history.pushState({}, '', to); setLocationKey(window.location.pathname + window.location.search); window.scrollTo(0, 0) }
   return { path, go }
 }
 
@@ -102,7 +112,7 @@ function Header({ go, user, onLogin }: { go: (to: string) => void; user: User | 
   }, [])
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    go('/feed' + (query.trim() ? '?q=' + encodeURIComponent(query.trim()) : ''))
+    go('/search' + (query.trim() ? '?q=' + encodeURIComponent(query.trim()) : ''))
     setMobile(false)
   }
   const navigate = (to: string) => {
@@ -117,8 +127,8 @@ function Header({ go, user, onLogin }: { go: (to: string) => void; user: User | 
     <div className="header-inner">
       <button className="brand" data-od-id="brand" onClick={() => navigate('/')}>티스토리</button>
       <nav className={mobile ? 'main-nav open' : 'main-nav'} aria-label="주요 메뉴">
-        {[['홈', '/'], ['피드', '/feed'], ['스킨', '/skin'], ['포럼', '/forum']].map(([label, to]) =>
-          <button key={to} className={path === to ? 'active' : ''} onClick={() => navigate(to)}>{label}</button>
+        {[['홈', '/'], ['피드', '/feed'], ['마켓', '/market'], ['포럼', '/forum']].map(([label, to]) =>
+          <button key={to} className={path === to || (to === '/market' && path.startsWith('/market/')) ? 'active' : ''} onClick={() => navigate(to)}>{label}</button>
         )}
       </nav>
       <form className="header-search" data-od-id="header-search" onSubmit={submit}>
@@ -160,7 +170,7 @@ function Shell({ children, go, user, onLogin }: { children: React.ReactNode; go:
 }
 
 function Footer({ go }: { go: (to: string) => void }) {
-  const groups = [['메뉴가 궁금할 땐', [['홈', '/'], ['피드', '/'], ['스킨', '#'], ['포럼', '#']]], ['사용하다 궁금할 땐', [['스킨가이드', '#'], ['고객센터', '#'], ['공지사항', '#']]], ['정책이 궁금할 땐', [['이용약관', '#'], ['이전 이용약관', '#'], ['운영정책', '#'], ['개인정보처리방침', '#'], ['청소년보호정책', '#']]], ['도움이 필요할 땐', [['권리침해신고', '#'], ['상거래 피해 구제신청', '#']]]]
+  const groups = [['메뉴가 궁금할 땐', [['홈', '/'], ['피드', '/feed'], ['마켓', '/market'], ['포럼', '/forum']]], ['사용하다 궁금할 땐', [['마켓 이용안내', '/market'], ['고객센터', '#'], ['공지사항', '/notice/2702']]], ['정책이 궁금할 땐', [['이용약관', '#'], ['이전 이용약관', '#'], ['운영정책', '#'], ['개인정보처리방침', '#'], ['청소년보호정책', '#']]], ['도움이 필요할 땐', [['권리침해신고', '#'], ['상거래 피해 구제신청', '#']]]]
   return <footer className="site-footer"><div className="footer-inner"><div className="footer-brand"><strong>TISTORY</strong><p>티스토리는 Daum에서 <img src="/assets/tistory/heart.png" alt="사랑" /> 을 담아 만듭니다.</p><small>© Daum Corp.</small></div><div className="footer-links">{groups.map(([title, links]) => <FooterGroup key={title as string} title={title as string} links={links as string[][]} go={go} />)}</div></div></footer>
 }
 function FooterGroup({ title, links, go }: { title: string; links: string[][]; go: (to: string) => void }) { const [open, setOpen] = useState(false); return <div className="footer-group"><button className="footer-title" onClick={() => setOpen(!open)}>{title}<ChevronDown size={14} className={open ? 'rotated' : ''} /></button><div className={open ? 'footer-list expanded' : 'footer-list'}>{links.map(([name, path]) => <button key={name} onClick={() => path.startsWith('/') && go(path)}>{name}</button>)}</div></div> }
@@ -403,6 +413,58 @@ function PostDetail({ id, go, user, onLogin }: { id: string; go: (to: string) =>
 
 function Manage({ go, user, onLogin }: { go: (to: string) => void; user: User | null; onLogin: () => void }) { const [blog, setBlog] = useState<Blog | null>(null); const [posts, setPosts] = useState<Post[]>([]); const [filter, setFilter] = useState('ALL'); useEffect(() => { request<Blog>('/blogs/me').then(setBlog).catch(() => {}); request<Post[]>('/posts?scope=mine&size=50').then((r) => setPosts(r ?? [])).catch(() => {}) }, []); const shown = useMemo(() => filter === 'ALL' ? posts : posts.filter((p) => p.status === filter), [filter, posts]); return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="manage-page"><div className="section-inner"><div className="manage-head"><div><p className="eyebrow">MY TISTORY</p><h1>{blog?.name ?? '내 블로그 관리'}</h1><p>{blog?.description}</p></div><button className="primary-button compact" onClick={() => go('/write')}><PenLine size={15} /> 새 글 쓰기</button></div><div className="manage-tabs"><div>{['ALL', 'PUBLISHED', 'DRAFT'].map((tab) => <button className={filter === tab ? 'active' : ''} onClick={() => setFilter(tab)} key={tab}>{tab === 'ALL' ? '전체' : tab === 'PUBLISHED' ? '발행됨' : '임시저장'}</button>)}</div><button onClick={() => blog && go(`/blog/${blog.slug}`)}>내 블로그 보기 <ArrowRight size={15} /></button></div>{shown.length ? <div className="feed-list">{shown.map((post) => <PostRow key={post.id} post={post} go={go} mine />)}</div> : <Empty text="작성한 글이 없습니다." detail="첫 글을 작성해보세요." />}</div></main></Shell> }
 
+const conditionLabel: Record<MarketItem['condition'], string> = { NEW: '새 상품', LIKE_NEW: '거의 새 상품', USED: '사용감 있음' }
+
+function MarketRow({ item, go }: { item: MarketItem; go: (to: string) => void }) {
+  return <article className="feed-row market-row"><div><p className="post-blog">{item.category} · {conditionLabel[item.condition]}</p><h2><button onClick={() => go(`/market/${item.id}`)}>{item.title}</button></h2><p className="excerpt">{item.description}</p><p className="market-tags">{item.tags.map((tag) => <button key={tag} onClick={() => go(`/search?tab=market&q=${encodeURIComponent(`#${tag}`)}`)}>#{tag}</button>)}</p><small>{item.seller.nickname} · {item.status === 'SELLING' ? '판매 중' : item.status}</small></div><div className="row-stat"><strong>{item.pricePoints.toLocaleString()} P</strong></div></article>
+}
+
+function Market({ go, user, onLogin }: { go: (to: string) => void; user: User | null; onLogin: () => void }) {
+  const [query, setQuery] = useState(new URLSearchParams(window.location.search).get('q') ?? '')
+  const [sort, setSort] = useState<'latest' | 'price_asc'>('latest')
+  const [items, setItems] = useState<MarketItem[]>([])
+  const [error, setError] = useState('')
+  useEffect(() => { setError(''); request<MarketItem[]>(`/market/items?q=${encodeURIComponent(query)}&sort=${sort}&page=1&size=12`).then((data) => setItems(data ?? [])).catch((e) => { setItems([]); setError(e.message) }) }, [query, sort])
+  const shown = items.length ? items : sampleMarketItems.filter((item) => !query || `${item.title} ${item.description} ${item.category} ${item.tags.join(' ')}`.toLowerCase().includes(query.replace(/^#/, '').toLowerCase()))
+  return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="page-main"><div className="section-inner"><div className="page-intro"><p className="eyebrow">FANDOM GOODS MARKET</p><h1>좋아하는 작품의 굿즈를<br />팬들과 안전하게 거래해보세요.</h1><p className="muted">블로그 글과 분리된 1:1 팬덤 굿즈 마켓입니다. MVP에서는 포인트로 거래합니다.</p><form className="feed-search" onSubmit={(event) => { event.preventDefault(); setQuery(query.trim()) }}><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="작품, 캐릭터, 상품명 또는 #키워드 검색" /></form></div><div className="feed-toolbar"><strong>판매 중인 상품 <em>{shown.length}</em></strong><div><button className={sort === 'latest' ? 'active' : ''} onClick={() => setSort('latest')}>최신순</button><button className={sort === 'price_asc' ? 'active' : ''} onClick={() => setSort('price_asc')}>낮은 가격순</button><button onClick={() => user ? go('/market/new') : onLogin()}>상품 등록</button></div></div>{error && <p className="form-error">API 연결 전이라 샘플 상품을 표시하고 있습니다. {error}</p>}<div className="feed-list">{shown.map((item) => <MarketRow key={item.id} item={item} go={go} />)}</div></div></main></Shell>
+}
+
+function MarketEditor({ go }: { go: (to: string) => void }) {
+  const [form, setForm] = useState({ title: '', description: '', category: '', condition: 'NEW' as MarketItem['condition'], pricePoints: '', tags: '' })
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); setError(''); try { const item = await request<MarketItem>('/market/items', { method: 'POST', body: JSON.stringify({ ...form, pricePoints: Number(form.pricePoints), tags: form.tags.split(/\s+/).map((tag) => tag.replace(/^#/, '')).filter(Boolean).slice(0, 5) }) }); go(`/market/${item.id}`) } catch (e) { setError((e as Error).message) } finally { setBusy(false) } }
+  return <main id="main" className="setup-page"><div className="setup-panel"><button className="back-button" onClick={() => go('/market')}><ArrowLeft size={16} /> 마켓으로</button><p className="eyebrow">SELL YOUR GOODS</p><h1>팬덤 굿즈를<br />등록해보세요.</h1><form onSubmit={submit}><label>상품명<input required maxLength={100} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="상품명을 입력하세요" /></label><label>상품 설명<textarea required maxLength={5000} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="상품 상태와 구성품을 자세히 적어주세요." /></label><label>카테고리<input required maxLength={50} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="예: 포토카드, 인형" /></label><label>상품 상태<select value={form.condition} onChange={(e) => setForm({ ...form, condition: e.target.value as MarketItem['condition'] })}><option value="NEW">새 상품</option><option value="LIKE_NEW">거의 새 상품</option><option value="USED">사용감 있음</option></select></label><label>가격 포인트<input required min={1} max={1000000000} type="number" value={form.pricePoints} onChange={(e) => setForm({ ...form, pricePoints: e.target.value })} placeholder="예: 18000" /></label><label>검색 키워드<input value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} placeholder="#작품명 #캐릭터명 #굿즈종류" /></label><small>띄어쓰기로 구분하며 최대 5개까지 입력할 수 있습니다.</small>{error && <p className="form-error">{error}</p>}<button className="primary-button" disabled={busy}>{busy ? '등록 중…' : '상품 등록'} <ArrowRight size={16} /></button></form></div></main>
+}
+
+function MarketDetail({ id, go, user, onLogin }: { id: string; go: (to: string) => void; user: User | null; onLogin: () => void }) {
+  const [item, setItem] = useState<MarketItem | null>(() => sampleMarketItems.find((entry) => String(entry.id) === id) ?? null)
+  const [chatOpen, setChatOpen] = useState(false)
+  const [conversation, setConversation] = useState<Conversation | null>(null)
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+  useEffect(() => { if (!id.startsWith('sample-')) request<MarketItem>(`/market/items/${id}`).then(setItem).catch((e) => setError(e.message)) }, [id])
+  const startChat = async () => { if (!user) return onLogin(); setChatOpen(true); setError(''); if (id.startsWith('sample-')) return; try { const room = await request<Conversation>(`/market/items/${id}/conversations`, { method: 'POST' }); setConversation(room); setMessages(await request<ChatMessage[]>(`/market/conversations/${room.id}/messages`) ?? []) } catch (e) { setError((e as Error).message) } }
+  const send = async (event: FormEvent) => { event.preventDefault(); const body = message.trim(); if (!body) return; if (!conversation) { setMessages([...messages, { id: Date.now(), senderId: user?.id ?? 0, body, createdAt: new Date().toISOString() }]); setMessage(''); return } try { const sent = await request<ChatMessage>(`/market/conversations/${conversation.id}/messages`, { method: 'POST', body: JSON.stringify({ body }) }); setMessages([...messages, sent]); setMessage('') } catch (e) { setError((e as Error).message) } }
+  if (!item) return <Shell go={go} user={user} onLogin={onLogin}><main className="page-main"><div className="section-inner"><Empty text={error || '상품을 불러오는 중입니다.'} /></div></main></Shell>
+  const shownMessages = messages.length ? messages : [{ id: 'welcome', senderId: item.seller.id, body: '안녕하세요! 상품에 대해 궁금한 점을 편하게 물어보세요.', createdAt: new Date().toISOString() }]
+  return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="market-detail-page"><div className="section-inner"><button className="back-button" onClick={() => go('/market')}><ArrowLeft size={16} /> 마켓으로</button><div className="market-product"><section className="market-product-gallery"><div className="market-image-placeholder"><span>FANDOM GOODS</span><strong>{item.category}</strong></div><div className="market-image-dots"><b /><i /><i /></div></section><section className="market-product-info"><p className="post-blog">{item.category} · {conditionLabel[item.condition]}</p><h1>{item.title}</h1><strong className="market-price">{item.pricePoints.toLocaleString()} <small>P</small></strong><div className="market-tags">{item.tags.map((tag) => <button key={tag} onClick={() => go(`/search?tab=market&q=${encodeURIComponent(`#${tag}`)}`)}>#{tag}</button>)}</div><p className="market-description">{item.description}</p><div className="market-seller"><span className="market-seller-avatar">{item.seller.nickname[0]}</span><div><strong>{item.seller.nickname}</strong><span>본인 인증 완료 · 판매 상품</span></div></div><div className="market-actions"><button aria-label="찜하기">♡</button><button className="market-chat-button" onClick={startChat}>채팅하기</button><button className="market-buy-button" disabled>포인트 구매 준비 중</button></div><p className="market-safety">안전한 거래를 위해 결제 전 개인정보나 외부 메신저 ID를 보내지 마세요.</p></section></div></div>{chatOpen && <aside className="market-chat-panel" aria-label="판매자와 채팅"><div className="market-chat-head"><div><strong>{item.seller.nickname}</strong><span>{item.title}</span></div><button onClick={() => setChatOpen(false)} aria-label="채팅 닫기">×</button></div><div className="market-chat-messages">{shownMessages.map((entry) => <div className={`chat-message${entry.senderId === user?.id ? ' mine' : ''}`} key={entry.id}><p>{entry.body}</p><time>{new Date(entry.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</time></div>)}</div>{error && <p className="form-error">{error}</p>}<form className="market-chat-form" onSubmit={send}><input maxLength={1000} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="메시지를 입력하세요" /><button>전송</button></form></aside>}</main></Shell>
+}
+
+function SearchPage({ go, user, onLogin }: { go: (to: string) => void; user: User | null; onLogin: () => void }) {
+  const params = new URLSearchParams(window.location.search)
+  const [query, setQuery] = useState(params.get('q') ?? '')
+  const [tab, setTab] = useState<'posts' | 'market' | 'blogs'>((['posts', 'market', 'blogs'].includes(params.get('tab') ?? '') ? params.get('tab') : 'posts') as 'posts' | 'market' | 'blogs')
+  const [posts, setPosts] = useState<Post[]>([])
+  const [market, setMarket] = useState<MarketItem[]>([])
+  const [blogs, setBlogs] = useState<SearchBlog[]>([])
+  const [error, setError] = useState('')
+  useEffect(() => { Promise.allSettled([request<Post[]>(`/posts?scope=public&q=${encodeURIComponent(query)}&sort=latest&page=1&size=20`), request<MarketItem[]>(`/market/items?q=${encodeURIComponent(query)}&sort=latest&page=1&size=20`), request<SearchBlog[]>(`/blogs?q=${encodeURIComponent(query)}&page=1&size=20`)]).then(([postResult, marketResult, blogResult]) => { setPosts(postResult.status === 'fulfilled' ? postResult.value ?? [] : []); setMarket(marketResult.status === 'fulfilled' ? marketResult.value ?? [] : sampleMarketItems); setBlogs(blogResult.status === 'fulfilled' ? blogResult.value ?? [] : []); const failed = [postResult, marketResult, blogResult].find((result) => result.status === 'rejected'); setError(failed?.status === 'rejected' ? String(failed.reason?.message ?? failed.reason) : '') }) }, [query])
+  const submit = (event: FormEvent) => { event.preventDefault(); go(`/search?tab=${tab}&q=${encodeURIComponent(query.trim())}`) }
+  return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="page-main"><div className="section-inner"><div className="page-intro"><p className="eyebrow">INTEGRATED SEARCH</p><h1>‘{query}’ 검색 결과</h1><form className="feed-search" onSubmit={submit}><Search size={18} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="글, 마켓, 블로그 검색" /></form></div><div className="manage-tabs"><div><button className={tab === 'posts' ? 'active' : ''} onClick={() => setTab('posts')}>글 <em>{posts.length}</em></button><button className={tab === 'market' ? 'active' : ''} onClick={() => setTab('market')}>마켓 <em>{market.length}</em></button><button className={tab === 'blogs' ? 'active' : ''} onClick={() => setTab('blogs')}>블로그 <em>{blogs.length}</em></button></div></div>{error && <p className="form-error">일부 검색 결과를 불러오지 못했습니다. {error}</p>}<div className="feed-list">{tab === 'posts' ? posts.map((post) => <PostRow key={post.id} post={post} go={go} />) : tab === 'market' ? market.map((item) => <MarketRow key={item.id} item={item} go={go} />) : blogs.map((blog) => <article className="feed-row" key={blog.id}><div><p className="post-blog">BLOG</p><h2><button onClick={() => go(`/blog/${blog.slug}`)}>{blog.name}</button></h2><p className="excerpt">{blog.description || '블로그 소개가 없습니다.'}</p><small>{blog.owner?.nickname || '블로거'} · /blog/{blog.slug}</small></div></article>)}</div></div></main></Shell>
+}
+
 function StaticHub({ kind, go, user, onLogin }: { kind: 'skin' | 'forum'; go: (to: string) => void; user: User | null; onLogin: () => void }) {
   const skin = kind === 'skin'
   return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="page-main"><div className="section-inner"><div className="page-intro"><p className="eyebrow">{skin ? 'TISTORY SKIN' : 'TISTORY FORUM'}</p><h1>{skin ? '내 블로그에 어울리는 스킨을 만나보세요.' : '티스토리 이용자들과 이야기를 나눠보세요.'}</h1><p className="muted">{skin ? '다양한 레이아웃의 스킨을 둘러보고 블로그에 적용할 수 있습니다.' : '공지, 질문, 팁을 공유하는 포럼입니다.'}</p></div><div className="feed-list">{(skin ? ['Whatever 스킨', 'Book Club 스킨', 'Portfolio 스킨'] : ['티스토리 공지사항', '블로그 운영 질문', '스킨 제작 정보']).map((title, index) => <article className="feed-row" key={title}><div><p className="post-blog">{skin ? 'SKIN STORE' : 'FORUM'}</p><h2><button onClick={() => go('/feed')}>{title}</button></h2><p className="excerpt">{skin ? '콘텐츠가 돋보이는 티스토리 스킨입니다.' : '티스토리 사용자들과 나누는 이야기입니다.'}</p></div><div className="row-stat">{index + 1}</div></article>)}</div></div></main></Shell>
@@ -421,7 +483,11 @@ function App() {
   else if (path === '/notice/2702') content = <NoticeArticle go={go} />
   else if (path === '/blog/new') content = <BlogSetup go={go} onDone={(blog) => go('/blog/' + blog.slug + '/manage')} />
   else if (path === '/feed') content = <Feed go={go} user={user} onLogin={onLogin} />
-  else if (path === '/skin') content = <StaticHub kind="skin" go={go} user={user} onLogin={onLogin} />
+  else if (path === '/search') content = <SearchPage go={go} user={user} onLogin={onLogin} />
+  else if (path === '/market/new') content = user ? <MarketEditor go={go} /> : <Auth mode="login" go={go} onSuccess={(nextUser) => { setUser(nextUser); go('/market/new') }} />
+  else if (path === '/market') content = <Market go={go} user={user} onLogin={onLogin} />
+  else if (path.startsWith('/market/')) content = <MarketDetail id={path.split('/')[2]} go={go} user={user} onLogin={onLogin} />
+  else if (path === '/skin') content = <Market go={go} user={user} onLogin={onLogin} />
   else if (path === '/forum') content = <StaticHub kind="forum" go={go} user={user} onLogin={onLogin} />
   else if (path === '/write') content = user ? <Editor go={go} /> : <Auth mode="login" go={go} onSuccess={(nextUser) => { setUser(nextUser); go('/write') }} />
   else if (path === '/blog/me/manage' || path.endsWith('/manage')) content = <Manage go={go} user={user} onLogin={onLogin} />
