@@ -4,6 +4,10 @@
     {
       "source": "/api/:path*",
       "destination": "https://tirnfqlznctbvwzfolmq.supabase.co/functions/v1/api/:path*"
+    },
+    {
+      "source": "/:path*",
+      "destination": "/index.html"
     }
   ]
 }
