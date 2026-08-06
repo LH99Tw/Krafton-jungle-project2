@@ -1112,7 +1112,7 @@ body:has(.home-main) .story-creator{position:relative}body:has(.home-main) .crea
 
 .today-card h1 {
   font-family: 'Maplestory', sans-serif !important;
-  font-size: clamp(20px, 2.4vw, 26px) !important;
+  font-size: clamp(19px, 2.2vw, 24px) !important;
   line-height: 1.35 !important;
   letter-spacing: -0.5px !important;
   white-space: pre-line !important;
@@ -1121,6 +1121,7 @@ body:has(.home-main) .story-creator{position:relative}body:has(.home-main) .crea
   display: -webkit-box !important;
   -webkit-line-clamp: 2 !important;
   -webkit-box-orient: vertical !important;
+  max-height: 2.8em !important;
   overflow: hidden !important;
 }
 
