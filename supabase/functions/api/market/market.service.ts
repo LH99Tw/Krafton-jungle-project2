@@ -24,6 +24,8 @@ const itemJson = (item: Record<string, any>, seller?: Record<string, any>) => ({
   status: item.status,
   createdAt: item.created_at,
   updatedAt: item.updated_at,
+  deletedAt: item.deleted_at,
+  purgeAfter: item.purge_after,
 })
 
 const marketInput = (body: Record<string, unknown>, partial = false) => {
@@ -91,7 +93,8 @@ export const listMarketItems = async (request: Request, url: URL) => {
   const category = (url.searchParams.get('category') ?? '').trim()
   const condition = url.searchParams.get('condition')
   const status = url.searchParams.get('status') ?? (scope === 'public' ? 'SELLING' : 'ALL')
-  if (!page || !size || !['latest', 'price_asc', 'price_desc'].includes(sort) || !['public', 'mine'].includes(scope)) {
+  const deleted = url.searchParams.get('deleted') ?? 'exclude'
+  if (!page || !size || !['latest', 'price_asc', 'price_desc'].includes(sort) || !['public', 'mine'].includes(scope) || !['exclude', 'only'].includes(deleted)) {
     return apiError(400, 'VALIDATION_ERROR', '목록 조건을 확인해 주세요.')
   }
   if ((condition && !conditions.includes(condition as typeof conditions[number])) || (status !== 'ALL' && !statuses.includes(status as typeof statuses[number]))) {
@@ -108,6 +111,7 @@ export const listMarketItems = async (request: Request, url: URL) => {
   }
 
   let query = supabase.from('market_items').select(marketItemFields, { count: 'exact' })
+  query = deleted === 'only' ? query.not('deleted_at', 'is', null) : query.is('deleted_at', null)
   if (sellerId) query = query.eq('seller_id', sellerId)
   if (status !== 'ALL') query = query.eq('status', status)
   if (category) query = query.eq('category', category)
@@ -161,7 +165,7 @@ export const createMarketItem = async (request: Request) => {
 export const readMarketItem = async (id: number) => {
   const { data, error } = await findMarketItem(id)
   if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '상품을 불러오지 못했습니다.')
-  if (!data) return apiError(404, 'NOT_FOUND', '상품을 찾을 수 없습니다.')
+  if (!data || data.deleted_at) return apiError(404, 'NOT_FOUND', '상품을 찾을 수 없습니다.')
   const { data: seller } = await findSeller(data.seller_id)
   return json({ data: itemJson(data, seller ?? undefined) })
 }
@@ -180,6 +184,7 @@ export const updateMarketItem = async (request: Request, id: number) => {
   if (!session.user_id) return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
   const ownership = await ownedItem(session.user_id, id)
   if (ownership.error) return ownership.error
+  if (ownership.data!.deleted_at) return apiError(404, 'NOT_FOUND', '상품을 찾을 수 없습니다.')
   if (ownership.data!.status === 'SOLD') return apiError(409, 'SOLD_ITEM_IMMUTABLE', '판매 완료된 상품은 수정할 수 없습니다.')
   const body = await request.json().catch(() => null)
   if (!body || typeof body !== 'object' || Array.isArray(body)) return apiError(400, 'VALIDATION_ERROR', '입력값을 확인해 주세요.')
@@ -197,8 +202,36 @@ export const deleteMarketItem = async (request: Request, id: number) => {
   if (!session.user_id) return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
   const ownership = await ownedItem(session.user_id, id)
   if (ownership.error) return ownership.error
-  if (ownership.data!.status === 'SOLD') return apiError(409, 'SOLD_ITEM_IMMUTABLE', '판매 완료된 상품은 삭제할 수 없습니다.')
-  const { error } = await supabase.from('market_items').delete().eq('id', id)
+  const now = new Date(); const purgeAfter = new Date(now.getTime() + 30 * 86400000)
+  const { error } = await supabase.from('market_items').update({ deleted_at: now.toISOString(), purge_after: purgeAfter.toISOString(), updated_at: now.toISOString() }).eq('id', id)
   if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '상품을 삭제하지 못했습니다.')
+  return new Response(null, { status: 204, headers: corsHeaders })
+}
+
+export const restoreMarketItem = async (request: Request, id: number) => {
+  const session = await requireCsrfSession(request)
+  if (!session?.user_id) return apiError(session ? 401 : 403, session ? 'UNAUTHENTICATED' : 'CSRF_TOKEN_INVALID', session ? '로그인이 필요합니다.' : 'CSRF 토큰이 유효하지 않습니다.')
+  const ownership = await ownedItem(session.user_id, id)
+  if (ownership.error) return ownership.error
+  if (!ownership.data!.deleted_at || !ownership.data!.purge_after) return apiError(409, 'NOT_IN_TRASH', '복원할 수 있는 휴지통 상품이 아닙니다.')
+  const { error } = await supabase.from('market_items').update({ deleted_at: null, purge_after: null, updated_at: new Date().toISOString() }).eq('id', id)
+  if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '상품을 복원하지 못했습니다.')
+  return json({ data: { restored: true } })
+}
+
+export const permanentlyDeleteMarketItem = async (request: Request, id: number) => {
+  const session = await requireCsrfSession(request)
+  if (!session?.user_id) return apiError(session ? 401 : 403, session ? 'UNAUTHENTICATED' : 'CSRF_TOKEN_INVALID', session ? '로그인이 필요합니다.' : 'CSRF 토큰이 유효하지 않습니다.')
+  const ownership = await ownedItem(session.user_id, id)
+  if (ownership.error) return ownership.error
+  if (!ownership.data!.deleted_at) return apiError(409, 'NOT_IN_TRASH', '휴지통에 있는 상품만 영구 삭제할 수 있습니다.')
+  const { count } = await supabase.from('market_conversations').select('id', { count: 'exact', head: true }).eq('item_id', id)
+  if (count) {
+    const { error } = await supabase.from('market_items').update({ title: '[삭제된 상품]', description: '삭제된 상품입니다.', category: '삭제됨', tags: [], purge_after: null, updated_at: new Date().toISOString() }).eq('id', id)
+    if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '상품을 영구 삭제하지 못했습니다.')
+  } else {
+    const { error } = await supabase.from('market_items').delete().eq('id', id)
+    if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '상품을 영구 삭제하지 못했습니다.')
+  }
   return new Response(null, { status: 204, headers: corsHeaders })
 }

@@ -1,0 +1,24 @@
+/* Open Design 정적 페이지 보정. 기존 앱의 시각 언어를 그대로 사용한다. */
+.od-hero{background:linear-gradient(135deg,#48665f 0%,#9db6ad 52%,#d6b08a 100%)}
+.od-thumb-1{background-color:#91a8b5!important}.od-thumb-2{background-color:#c79a7d!important}
+.od-thumb-3{background-color:#aaa982!important}.od-thumb-4{background-color:#c79a94!important}
+.od-thumb-5{background-color:#8fa3c2!important}.od-thumb-6{background-color:#c3a6b8!important}
+.od-thumb-7{background-color:#94b99b!important}.od-thumb-8{background-color:#c9ad78!important}
+.static-page .site-header{position:relative}.static-page .main-nav button:first-child{color:#000}
+.static-page .main-nav button:first-child:after{display:none}.static-page .main-nav button.active{color:var(--accent)}
+.static-page .main-nav button.active:after{content:'';display:block;position:absolute;bottom:-3px;left:3px;right:3px;height:2px;background:var(--accent)}
+.static-page .footer-list{display:grid}.static-page .page-main{min-height:700px}
+.static-page .feed-row-placeholder{width:100px;height:66px;border-radius:8px;background:#eee}
+.static-page .detail-content p{margin:0 0 1.5em}.static-page .content-editor{display:block}
+.static-page .skin-swatch{width:110px;height:70px;border-radius:7px;background:linear-gradient(135deg,#222,#ff5a4a)}
+.site-header .main-nav a{position:relative;display:flex;width:51.66px;height:30px;align-items:center;justify-content:center;color:#111;font-size:13px;line-height:30px;white-space:nowrap}
+.site-header .main-nav a:first-child{width:38px}
+.site-header .main-nav a:after{content:'';position:absolute;right:50%;bottom:0;left:50%;height:2px;background:var(--accent);transition:right .18s linear,left .18s linear}
+.site-header .main-nav a:hover,.site-header .main-nav a:focus-visible,.site-header .main-nav a.active{color:var(--accent);font-weight:700}
+.site-header .main-nav a:hover:after,.site-header .main-nav a:focus-visible:after,.site-header .main-nav a.active:after{right:6px;left:6px}
+.footer-list a{padding:0;color:#999;text-align:left;font-size:11px}
+.header-actions .outline-button{display:flex;align-items:center;justify-content:center}
+body:has(.home-main) .footer-list a{width:100%;padding:0;font-size:9px;text-align:left;white-space:nowrap}
+.notice-blog-header>a:first-child{display:inline-block;height:80px;padding:28px 0;color:inherit;font-size:24px;line-height:24px;font-weight:700;letter-spacing:1px;text-decoration:none}
+.notice-blog-footer>a{margin-left:auto;color:inherit;text-decoration:underline}
+@media(max-width:700px){.site-header .main-nav a,.site-header .main-nav a:first-child{width:auto;padding:0 7px}}
