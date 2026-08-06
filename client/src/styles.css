@@ -1110,7 +1110,20 @@ body:has(.home-main) .story-creator{position:relative}body:has(.home-main) .crea
   font-family: 'Maplestory', sans-serif !important;
 }
 
-.today-card h1,
+.today-card h1 {
+  font-family: 'Maplestory', sans-serif !important;
+  font-size: clamp(20px, 2.4vw, 26px) !important;
+  line-height: 1.35 !important;
+  letter-spacing: -0.5px !important;
+  white-space: pre-line !important;
+  word-break: keep-all !important;
+  word-wrap: break-word !important;
+  display: -webkit-box !important;
+  -webkit-line-clamp: 2 !important;
+  -webkit-box-orient: vertical !important;
+  overflow: hidden !important;
+}
+
 .hero-inner h1,
 .page-intro h1,
 .market-hero h1,
@@ -1293,10 +1306,17 @@ body:has(.home-main) .account-dashboard-actions button {
 /* 3. 관리 콘솔 (운영 요약, 블로그 설정, 관심분야, 카테고리, 글 관리, 마켓 관리, 휴지통 등) */
 .manage-console-head h1,
 .manage-head h1,
-.manage-console-grid h2,
-.manage-console-grid h3,
-.manage-console-metric strong,
-.manage-settings-section h2,
+.manage-sidebar nav button,
+.manage-stat-grid div span,
+.manage-stat-grid div strong,
+.manage-overview section header h2,
+.manage-overview-grid h2,
+.manage-overview-grid button,
+.manage-form-section header h2,
+.manage-form-section label,
+.manage-form-section p,
+.manage-settings h2,
+.manage-settings label,
 .manage-settings-field label,
 .manage-settings-field small,
 .manage-interests-page h1,
@@ -1305,7 +1325,12 @@ body:has(.home-main) .account-dashboard-actions button {
 .manage-categories-page h2,
 .manage-posts-page h1,
 .manage-market-page h1,
-.manage-trash-page h1 {
+.manage-trash-page h1,
+.manage-tabs button,
+.manage-secondary,
+.manage-readonly span,
+.empty-state h3,
+.empty-state p {
   font-family: 'Jua', sans-serif !important;
 }
 
