@@ -23,6 +23,8 @@ type HomeBanner = { id: number; eyebrow: string; title: string; description: str
 type HomeCreator = { blog: Blog; subscriberCount: number; isSubscribed: boolean; posts: Post[] }
 type HomeData = { banners: HomeBanner[]; popularPosts: Post[]; categoryPosts: Post[]; trendingPosts: Post[]; latestPosts: Post[]; creators: HomeCreator[]; marketItems: MarketItem[] }
 type Comment = { id: number; postId: number; parentId?: number | null; body: string; author: { id: number; nickname: string }; deleted: boolean; createdAt: string; updatedAt: string }
+type NotificationItem = { id: number; type: 'LIKE' | 'REPLY'; actor: { id: number; nickname: string }; post: { id: number; title: string }; commentId?: number | null; read: boolean; readAt?: string | null; createdAt: string }
+type NotificationData = { items: NotificationItem[]; unreadCount: number; pagination: Page }
 
 const AUTH_SNAPSHOT_KEY = 'tistory.auth-display.v1'
 const AuthBootstrapContext = createContext<{ pending: boolean; cachedUser: User | null }>({ pending: false, cachedUser: null })
@@ -207,14 +209,27 @@ function useRoute() {
   return { path, go }
 }
 
+const notificationTime = (value: string) => {
+  const elapsed = Math.max(0, Date.now() - new Date(value).getTime())
+  if (elapsed < 60_000) return '방금 전'
+  if (elapsed < 3_600_000) return `${Math.floor(elapsed / 60_000)}분 전`
+  if (elapsed < 86_400_000) return `${Math.floor(elapsed / 3_600_000)}시간 전`
+  return new Date(value).toLocaleDateString('ko-KR')
+}
+
 function Header({ go, user, onLogin }: { go: (to: string) => void; user: User | null; onLogin: () => void }) {
   const { pending: authPending, cachedUser } = useContext(AuthBootstrapContext)
   const displayUser = user ?? (authPending ? cachedUser : null)
   const [mobile, setMobile] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
+  const [notificationOpen, setNotificationOpen] = useState(false)
   const [fixed, setFixed] = useState(false)
   const [query, setQuery] = useState('')
   const path = window.location.pathname
+  const notificationQuery = useQuery({ queryKey: ['notifications', 'header', displayUser?.id], queryFn: () => request<NotificationData>('/notifications?page=1&size=8'), enabled: Boolean(displayUser && !authPending), refetchInterval: 30_000 })
+  const notificationData = notificationQuery.data
+  const readNotification = async (item: NotificationItem) => { if (!item.read) await request(`/notifications/${item.id}/read`, { method: 'PATCH' }); await notificationQuery.refetch(); navigate(`/post/${item.post.id}${item.commentId ? `?comment=${item.commentId}` : ''}`) }
+  const readAllNotifications = async () => { await request('/notifications/read-all', { method: 'PATCH' }); await notificationQuery.refetch() }
   useEffect(() => {
     const onScroll = () => setFixed(window.scrollY > 90)
     onScroll()
@@ -230,6 +245,7 @@ function Header({ go, user, onLogin }: { go: (to: string) => void; user: User | 
     go(to)
     setMobile(false)
     setProfileOpen(false)
+    setNotificationOpen(false)
   }
   const logout = async () => {
     try { await request('/auth/logout', { method: 'POST' }) } finally { clearClientAuthState(); window.location.href = '/' }
@@ -251,8 +267,9 @@ function Header({ go, user, onLogin }: { go: (to: string) => void; user: User | 
         <button className="header-notice" onClick={() => navigate('/notice/2702')}><Volume2 size={16} /><span>불법촬영물 유통 방지 조치 대상 확대 안내</span></button>
         {displayUser
           ? <div className="signed-header-actions">
-              <button className="header-icon-button" aria-label="알림"><Bell size={20} /></button>
-              <button className="profile-trigger" aria-label="프로필 메뉴" aria-expanded={profileOpen} onClick={() => setProfileOpen(!profileOpen)}>{displayUser.nickname.slice(0, 1).toUpperCase()}</button>
+              <button className="header-icon-button notification-trigger" aria-label={`알림${notificationData?.unreadCount ? ` ${notificationData.unreadCount}개 미확인` : ''}`} aria-expanded={notificationOpen} onClick={() => { setNotificationOpen(!notificationOpen); setProfileOpen(false) }}><Bell size={20} />{Boolean(notificationData?.unreadCount) && <i />}</button>
+              {notificationOpen && <><button className="profile-menu-scrim" aria-label="알림 닫기" onClick={() => setNotificationOpen(false)} /><div className="notification-popover"><header><strong>알림</strong>{Boolean(notificationData?.unreadCount) && <button onClick={readAllNotifications}>모두 읽음</button>}</header><div className="notification-scroll">{notificationQuery.isPending ? <p className="notification-empty">알림을 불러오는 중…</p> : notificationData?.items.length ? notificationData.items.map((item) => <button className={item.read ? 'notification-item' : 'notification-item unread'} key={item.id} onClick={() => readNotification(item)}><span>{item.actor.nickname.slice(0, 1)}</span><div><p><b>{item.actor.nickname}</b>님이 {item.type === 'LIKE' ? '회원님의 글을 좋아합니다.' : '회원님의 댓글에 답글을 남겼습니다.'}</p><small>{item.post.title}</small><time>{notificationTime(item.createdAt)}</time></div></button>) : <p className="notification-empty">새로운 알림이 없습니다.</p>}</div><button className="notification-all" onClick={() => navigate('/notifications')}>전체보기 <ArrowRight size={13} /></button></div></>}
+              <button className="profile-trigger" aria-label="프로필 메뉴" aria-expanded={profileOpen} onClick={() => { setProfileOpen(!profileOpen); setNotificationOpen(false) }}>{displayUser.nickname.slice(0, 1).toUpperCase()}</button>
               {profileOpen && <>
                 <button className="profile-menu-scrim" aria-label="프로필 메뉴 닫기" onClick={() => setProfileOpen(false)} />
                 <div className="profile-popover" role="menu">
@@ -475,6 +492,16 @@ function PostRow({ post, go, mine = false }: { post: Post; go: (to: string) => v
 function Empty({ text, detail }: { text: string; detail?: string }) { return <div className="empty-state"><FileText size={24} /><strong>{text}</strong>{detail && <p>{detail}</p>}</div> }
 function ContentSkeleton({ rows = 3 }: { rows?: number }) { return <div className="content-skeleton" aria-label="콘텐츠를 불러오는 중">{Array.from({ length: rows }, (_, index) => <div className="content-skeleton-row" key={index}><span><i /><i /><i /></span><b /></div>)}</div> }
 
+function NotificationsPage({ go, user, onLogin }: { go: (to: string) => void; user: User; onLogin: () => void }) {
+  const queryClient = useQueryClient()
+  const [page, setPage] = useState(1)
+  const query = useQuery({ queryKey: ['notifications', 'all', user.id, page], queryFn: () => request<NotificationData>(`/notifications?page=${page}&size=30`), refetchInterval: 30_000 })
+  const refreshNotifications = () => queryClient.invalidateQueries({ queryKey: ['notifications'] })
+  const open = async (item: NotificationItem) => { if (!item.read) await request(`/notifications/${item.id}/read`, { method: 'PATCH' }); await refreshNotifications(); go(`/post/${item.post.id}${item.commentId ? `?comment=${item.commentId}` : ''}`) }
+  const readAll = async () => { await request('/notifications/read-all', { method: 'PATCH' }); await refreshNotifications() }
+  return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="notifications-page"><div className="section-inner"><header className="notifications-head"><div><p className="eyebrow">NOTIFICATIONS</p><h1>전체 알림</h1><span>좋아요와 답글 소식을 확인하세요.</span></div>{Boolean(query.data?.unreadCount) && <button onClick={readAll}>모두 읽음</button>}</header>{query.isPending ? <ContentSkeleton rows={5} /> : query.error ? <Empty text="알림을 불러오지 못했습니다." detail={(query.error as Error).message} /> : query.data?.items.length ? <div className="notifications-list">{query.data.items.map((item) => <button className={item.read ? 'notification-item' : 'notification-item unread'} key={item.id} onClick={() => open(item)}><span>{item.actor.nickname.slice(0, 1)}</span><div><p><b>{item.actor.nickname}</b>님이 {item.type === 'LIKE' ? '회원님의 글을 좋아합니다.' : '회원님의 댓글에 답글을 남겼습니다.'}</p><small>{item.post.title}</small><time>{notificationTime(item.createdAt)}</time></div><ArrowRight size={15} /></button>)}</div> : <Empty text="아직 알림이 없습니다." detail="글에 좋아요가 달리거나 댓글에 답글이 달리면 알려드릴게요." />}<ManagePager page={query.data?.pagination.page ?? page} total={query.data?.pagination.totalPages ?? 0} onPage={setPage} /></div></main></Shell>
+}
+
 function Auth({ mode, go, onSuccess }: { mode: 'login' | 'signup'; go: (to: string) => void; onSuccess: (user: User, requiresThirdPartyConsent: boolean) => void }) {
   const [form, setForm] = useState({ email: '', nickname: '', password: '', passwordConfirm: '', interests: [] as string[] })
   const [signupStep, setSignupStep] = useState<'account' | 'interests'>('account')
@@ -671,7 +698,7 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
         {mine ? <button className="creator-subscribe" onClick={() => go('/blog/me/manage')}>블로그 관리</button> : <button className={`creator-subscribe${data?.blog.isSubscribed ? ' active' : ''}`} disabled={busy || !data} onClick={toggleSubscription}>{busy ? '처리 중…' : data?.blog.isSubscribed ? '구독 중 ✓' : '+ 구독하기'}</button>}
       </aside>
       <section className="creator-editorial">
-        <header className="creator-section-head"><div><p className="creator-kicker">LATEST STORIES</p><h2>요즘의 기록</h2></div>{mine && <button onClick={() => go('/write')}>새 글 쓰기 ↗</button>}</header>
+        <header className="creator-section-head"><div><p className="creator-kicker">LATEST STORIES</p><h2>요즘의 기록</h2></div>{mine && <div className="creator-section-actions"><button onClick={() => go('/market/new')}>새 상품 등록 ↗</button><button onClick={() => go('/write')}>새 글 쓰기 ↗</button></div>}</header>
         {blogQuery.isPending ? <ContentSkeleton rows={3} /> : posts.length ? <div className="creator-editorial-grid"><div className="creator-story-list">{posts.slice(0, 3).map((post, index) => <button className="creator-story" key={post.id} onClick={() => go(`/post/${post.id}`)}><small>{index === 0 ? 'LATEST' : 'STORY 0' + (index + 1)}</small><h3>{post.title}</h3><time><span>{new Date(post.publishedAt ?? post.updatedAt ?? '').toLocaleDateString('ko-KR')}</span><span>조회 {post.viewCount}</span></time></button>)}</div><div className="creator-gallery" aria-label="최근 글 갤러리">{posts.slice(0, 9).map((post, index) => <button className={`creator-gallery-tile creator-tone-${index % 9}`} key={post.id} onClick={() => go(`/post/${post.id}`)}><i /><span>{post.title}</span></button>)}</div></div> : <Empty text="아직 발행된 글이 없습니다." detail={mine ? '첫 글을 작성해 블로그를 채워보세요.' : undefined} />}
       </section>
     </div>
@@ -1086,6 +1113,7 @@ function App() {
   else if (path === '/blog/new') content = <BlogSetup go={go} onDone={(blog) => { setUser((current) => current ? { ...current, blog } : current); go(blog.url ?? '/blog/' + blog.slug) }} />
   else if (path === '/feed') content = <Feed go={go} user={visibleUser} onLogin={onLogin} />
   else if (path === '/bookmarks') content = <BookmarkedPosts go={go} user={user} onLogin={onLogin} />
+  else if (path === '/notifications') content = user ? <NotificationsPage go={go} user={user} onLogin={onLogin} /> : <Auth mode="login" go={go} onSuccess={(nextUser) => { setUser(nextUser); go('/notifications') }} />
   else if (path === '/search') content = <SearchPage go={go} user={visibleUser} onLogin={onLogin} />
   else if (path === '/market/new') content = user ? <MarketEditor go={go} /> : <Auth mode="login" go={go} onSuccess={(nextUser) => { setUser(nextUser); go('/market/new') }} />
   else if (/^\/market\/\d+\/edit$/.test(path)) content = user ? <MarketEditor id={path.split('/')[2]} go={go} /> : <Auth mode="login" go={go} onSuccess={(nextUser) => { setUser(nextUser); go(path) }} />

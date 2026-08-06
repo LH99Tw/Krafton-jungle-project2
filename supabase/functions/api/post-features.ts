@@ -54,7 +54,7 @@ export const replacePostClassifications = async (postId: number, blogId: number,
 }
 
 const publishedPost = async (id: number) => {
-  const { data } = await supabase.from('posts').select('id,status,deleted_at').eq('id', id).maybeSingle()
+  const { data } = await supabase.from('posts').select('id,blog_id,status,deleted_at').eq('id', id).maybeSingle()
   return data?.status === 'PUBLISHED' && !data.deleted_at ? data : null
 }
 
@@ -62,7 +62,8 @@ const toggleRelation = async (request: Request, postId: number, table: 'post_lik
   const session = await requireCsrfSession(request)
   if (!session) return apiError(403, 'CSRF_TOKEN_INVALID', 'CSRF 토큰이 유효하지 않습니다.')
   if (!session.user_id) return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
-  if (!(await publishedPost(postId))) return apiError(404, 'NOT_FOUND', '글을 찾을 수 없습니다.')
+  const post = await publishedPost(postId)
+  if (!post) return apiError(404, 'NOT_FOUND', '글을 찾을 수 없습니다.')
   const query = enabled
     ? supabase.from(table).upsert({ user_id: session.user_id, post_id: postId }, { onConflict: 'user_id,post_id', ignoreDuplicates: true })
     : supabase.from(table).delete().eq('user_id', session.user_id).eq('post_id', postId)
@@ -105,8 +106,10 @@ const createComment = async (request: Request, postId: number) => {
   const body = typeof input?.body === 'string' ? input.body.trim() : ''
   const parentId = input?.parentId == null ? null : Number(input.parentId)
   if (!body || body.length > 1000) return apiError(400, 'VALIDATION_ERROR', '댓글은 1~1,000자로 입력해 주세요.')
+  let parent: Record<string, any> | null = null
   if (parentId !== null) {
-    const { data: parent } = await supabase.from('post_comments').select('id,post_id,parent_id,deleted_at').eq('id', parentId).maybeSingle()
+    const { data } = await supabase.from('post_comments').select('id,post_id,parent_id,author_id,deleted_at').eq('id', parentId).maybeSingle()
+    parent = data
     if (!parent || parent.post_id !== postId) return apiError(400, 'INVALID_PARENT_COMMENT', '부모 댓글을 확인해 주세요.')
     if (parent.deleted_at) return apiError(400, 'INVALID_PARENT_COMMENT', '삭제된 댓글에는 답글을 작성할 수 없습니다.')
     if (parent.parent_id) return apiError(400, 'REPLY_DEPTH_EXCEEDED', '답글에는 다시 답글을 작성할 수 없습니다.')

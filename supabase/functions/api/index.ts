@@ -5,6 +5,7 @@ import { handleMarketRoute } from './market/market.routes.ts'
 import { handleBlogManagementRoute } from './blog-management.ts'
 import { enrichPosts, handlePostFeatureRoute, parseClassificationIds, replacePostClassifications, validateClassificationOwnership } from './post-features.ts'
 import { handleHomeRoute } from './home.ts'
+import { handleNotificationRoute } from './notifications.ts'
 
 const reservedSlugs = new Set(['api', 'login', 'signup', 'feed', 'post', 'blog', 'me', 'new', 'manage', 'ai'])
 const slugPattern = /^(?!.*--)[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$/
@@ -458,6 +459,9 @@ Deno.serve(async (request) => {
 
   const managementResponse = handleBlogManagementRoute(request, path)
   if (managementResponse) return managementResponse
+
+  const notificationResponse = handleNotificationRoute(request, path, url)
+  if (notificationResponse) return notificationResponse
 
   const homeResponse = handleHomeRoute(request, path)
   if (homeResponse) return homeResponse
