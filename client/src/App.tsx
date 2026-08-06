@@ -108,7 +108,7 @@ type ChatMessage = {
 type WalletTransaction = {
   id: number;
   orderId?: number;
-  type: "INITIAL_GRANT" | "POINT_CHARGE" | "MARKET_PURCHASE" | "MARKET_SALE" | "REFUND";
+  type: "INITIAL_GRANT" | "POINT_CHARGE" | "MARKET_PURCHASE" | "MARKET_SALE" | "REFUND" | "MISSION_REWARD";
   amount: number;
   balanceAfter: number;
   createdAt: string;
@@ -2163,6 +2163,26 @@ function Editor({ id, go, user }: { id?: string; go: (to: string) => void; user:
           setEditorReady(false);
         });
   }, [id]);
+  const aiEditorMilestones = useRef({ title: false, body: false, classification: false });
+  useEffect(() => {
+    if (title.trim() && !aiEditorMilestones.current.title) {
+      aiEditorMilestones.current.title = true;
+      emitAiActivity({ type: "post_progress", milestone: "title" });
+    }
+  }, [title]);
+  useEffect(() => {
+    if (content.trim().length >= 30 && !aiEditorMilestones.current.body) {
+      aiEditorMilestones.current.body = true;
+      emitAiActivity({ type: "post_progress", milestone: "body" });
+    }
+  }, [content]);
+  useEffect(() => {
+    const hasInterest = classifications.some((item) => item.source === "INTEREST" && classificationIds.includes(item.id));
+    if (hasInterest && !aiEditorMilestones.current.classification) {
+      aiEditorMilestones.current.classification = true;
+      emitAiActivity({ type: "post_progress", milestone: "classification" });
+    }
+  }, [classificationIds, classifications]);
   const toggleClassification = (classificationId: number) => setClassificationIds((ids) => (ids.includes(classificationId) ? ids.filter((value) => value !== classificationId) : ids.length < 5 ? [...ids, classificationId] : ids));
   const createClassification = async (name: string, source: BlogClassification["source"]) => {
     const existing = classifications.find((item) => item.name === name);
@@ -4250,15 +4270,15 @@ function MarketDetail({ id, go, user, onLogin }: { id: string; go: (to: string) 
   useEffect(() => {
     if (!id.startsWith("sample-"))
       request<MarketItem>(`/market/items/${id}`)
-        .then(setItem)
+        .then((nextItem) => {
+          setItem(nextItem);
+          emitAiActivity({ type: "market_detail_viewed", itemId: id });
+        })
         .catch((e) => setError(e.message));
   }, [id]);
   useEffect(() => {
     if (item) rememberMarketItem(item);
   }, [item?.id]);
-  useEffect(() => {
-    emitAiActivity({ type: "market_detail_viewed", itemId: id });
-  }, [id]);
   const toggleLike = async () => {
     if (!user) return onLogin();
     if (!item || likeBusy || item.status !== "SELLING") return;
@@ -4478,6 +4498,7 @@ const transactionLabel: Record<WalletTransaction["type"], string> = {
   MARKET_PURCHASE: "상품 구매",
   MARKET_SALE: "상품 판매 정산",
   REFUND: "구매 취소 환불",
+  MISSION_REWARD: "AI 미션 완료 보상",
 };
 
 function MarketWallet({ go, user, onLogin }: { go: (to: string) => void; user: User; onLogin: () => void }) {
@@ -4830,7 +4851,7 @@ function App() {
   const [authState, setAuthState] = useState<"loading" | "authenticated" | "anonymous" | "degraded">("loading");
   const [requiresConsent, setRequiresConsent] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
-  const aiMission = useAiMission(user?.id ?? null);
+  const aiMission = useAiMission(user?.id ?? null, request);
   useEffect(() => {
     let cancelled = false;
     const load = async () => {

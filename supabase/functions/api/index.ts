@@ -6,6 +6,7 @@ import { handleBlogManagementRoute } from './blog-management.ts'
 import { enrichPosts, handlePostFeatureRoute, parseClassificationIds, replacePostClassifications, validateClassificationOwnership } from './post-features.ts'
 import { handleHomeRoute } from './home.ts'
 import { handleNotificationRoute } from './notifications.ts'
+import { handleAiRoute, recordAiMissionActivity } from './ai.ts'
 import { claimPostImages, handlePostImageRoute, purgePostImages, validateRichDocument } from './post-images.ts'
 
 const reservedSlugs = new Set(['api', 'login', 'signup', 'feed', 'post', 'blog', 'me', 'new', 'manage', 'ai'])
@@ -235,7 +236,7 @@ const listPosts = async (request: Request, url: URL) => {
   if (categoryId && categoryId !== 'uncategorized' && (!/^\d+$/.test(categoryId) || Number(categoryId) < 1)) {
     return apiError(400, 'VALIDATION_ERROR', '카테고리를 확인해 주세요.')
   }
-  const { data, error } = await supabase.rpc('get_posts_payload', {
+  const { data, error } = await supabase.rpc('get_posts_payload_v2', {
     p_session_hash: await getSessionHash(request),
     p_scope: scope,
     p_sort: sort,
@@ -248,7 +249,7 @@ const listPosts = async (request: Request, url: URL) => {
     p_category_id: categoryId,
   })
   if (error) {
-    console.error('Failed to list posts', error)
+    console.error('Failed to list posts', { code: error.code, details: error.details, scope, sort, page, size, hasQuery: Boolean(q), hasInterest: Boolean(interest) })
     return apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
   }
   const payload = data as { authenticated?: boolean; data?: unknown[]; pagination?: Record<string, unknown> } | null
@@ -342,6 +343,15 @@ const createPost = async (request: Request) => {
     owner_id: session.user_id,
     author_nickname: user?.nickname,
   }, true)])
+  const { data: interestClassifications } = classificationInput.ids.length
+    ? await supabase.from('blog_classifications').select('id').eq('source', 'INTEREST').in('id', classificationInput.ids)
+    : { data: [] }
+  await recordAiMissionActivity(session.user_id, 'POST_SAVED', {
+    status: values.status,
+    titleLength: String(values.title ?? '').trim().length,
+    contentLength: String(values.content ?? '').trim().length,
+    interestClassificationCount: interestClassifications?.length ?? 0,
+  })
   return json({ data: created }, 201)
 }
 
@@ -421,6 +431,18 @@ const updatePost = async (request: Request, id: number) => {
     if (result.error) return apiError(400, 'VALIDATION_ERROR', result.error, { classificationIds: result.error })
   }
   const [updated] = await enrichPosts(request, [postJson({ ...previous, ...data }, true)])
+  const activeClassificationIds = classificationInput.present
+    ? classificationInput.ids
+    : ((await supabase.from('post_classifications').select('classification_id').eq('post_id', id)).data ?? []).map((item: Record<string, any>) => item.classification_id)
+  const { data: interestClassifications } = activeClassificationIds.length
+    ? await supabase.from('blog_classifications').select('id').eq('source', 'INTEREST').in('id', activeClassificationIds)
+    : { data: [] }
+  await recordAiMissionActivity(session.user_id, 'POST_SAVED', {
+    status: data.status,
+    titleLength: String(data.title ?? '').trim().length,
+    contentLength: String(data.content ?? '').trim().length,
+    interestClassificationCount: interestClassifications?.length ?? 0,
+  })
   return json({ data: updated })
 }
 
@@ -487,6 +509,9 @@ Deno.serve(async (request) => {
 
   const notificationResponse = handleNotificationRoute(request, path, url)
   if (notificationResponse) return notificationResponse
+
+  const aiResponse = handleAiRoute(request, path)
+  if (aiResponse) return aiResponse
 
   const homeResponse = handleHomeRoute(request, path)
   if (homeResponse) return homeResponse

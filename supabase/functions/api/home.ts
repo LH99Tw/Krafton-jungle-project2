@@ -7,6 +7,13 @@ const bannerDto = (banner: Record<string, any>) => ({
   isActive: banner.is_active, createdAt: banner.created_at, updatedAt: banner.updated_at,
 })
 
+const activeBanners = async () => {
+  const now = new Date().toISOString()
+  const { data, error } = await supabase.from('home_banners').select('*').eq('is_active', true).lte('starts_at', now)
+    .or(`ends_at.is.null,ends_at.gt.${now}`).order('position').order('id')
+  return { data: (data ?? []).map((banner: Record<string, any>) => bannerDto(banner)), error }
+}
+
 export const getHome = async (request: Request) => {
   const sessionHash = await getSessionHash(request)
   const storageBase = `${supabaseUrl}/storage/v1/object/public/market-item-images`

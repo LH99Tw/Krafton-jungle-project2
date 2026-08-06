@@ -11,7 +11,7 @@ export const enrichPosts = async (request: Request, posts: PostDto[], knownUserI
     p_user_id: userId,
   })
   if (error) throw error
-  const summaryByPost = new Map((data ?? []).map((summary: Record<string, any>) => [Number(summary.post_id), summary]))
+  const summaryByPost = new Map<number, Record<string, any>>((data ?? []).map((summary: Record<string, any>) => [Number(summary.post_id), summary]))
   return posts.map((post) => ({
     ...post,
     classifications: summaryByPost.get(Number(post.id))?.classifications ?? [],
