@@ -1271,7 +1271,13 @@ button:not(.main-nav button):not(.category-tabs button):not(.feed-toolbar button
 /* 1. 계정 정보 & 사이드바 (내 닉네임, 조회수, 방문자, 수익, 1회, 1명) */
 .account-dashboard-head strong,
 .account-dashboard dl dt,
-.account-dashboard dl dd b {
+.account-dashboard dl dd,
+.account-dashboard dl dd b,
+.account-dashboard-actions button,
+body:has(.home-main) .account-dashboard-head strong,
+body:has(.home-main) .account-dashboard dl dt,
+body:has(.home-main) .account-dashboard dl dd b,
+body:has(.home-main) .account-dashboard-actions button {
   font-family: 'Jua', sans-serif !important;
 }
 
