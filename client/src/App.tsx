@@ -11,6 +11,9 @@ type MarketImage = { id: number; url: string; position: number }
 type MarketItem = { id: number | string; url?: string; title: string; description: string; category: string; tags: string[]; condition: 'NEW' | 'LIKE_NEW' | 'USED'; pricePoints: number; status: 'SELLING' | 'RESERVED' | 'SOLD'; seller: { id: number | string; nickname: string }; likeCount: number; isLiked: boolean; images?: MarketImage[]; thumbnailUrl?: string | null; createdAt?: string; updatedAt?: string; deletedAt?: string | null; purgeAfter?: string | null }
 type Conversation = { id: number | string; itemId: number | string; buyerId?: number; sellerId?: number }
 type ChatMessage = { id: number | string; conversationId?: number | string; senderId: number | string; body: string; createdAt: string }
+type WalletTransaction = { id: number; orderId?: number; type: 'INITIAL_GRANT' | 'POINT_CHARGE' | 'MARKET_PURCHASE' | 'MARKET_SALE' | 'REFUND'; amount: number; balanceAfter: number; createdAt: string }
+type Wallet = { balance: number; updatedAt: string; transactions: WalletTransaction[] }
+type MarketOrder = { id: number; itemId: number; buyerId: number; sellerId: number; pricePoints: number; status: 'PAID' | 'COMPLETED' | 'CANCELLED'; createdAt: string; item?: { id: number; title: string; imageUrls?: string[]; images?: MarketImage[]; status: MarketItem['status'] } }
 type SearchBlog = Blog & { owner?: { id: number; nickname: string } }
 type HomeBanner = { id: number; eyebrow: string; title: string; description: string; imageUrl?: string | null; ctaLabel: string; ctaUrl: string; startsAt: string; endsAt?: string | null; position: number; isActive: boolean }
 type HomeCreator = { blog: Blog; subscriberCount: number; isSubscribed: boolean; posts: Post[] }
@@ -207,6 +210,7 @@ function Header({ go, user, onLogin }: { go: (to: string) => void; user: User | 
                   <div className="profile-summary"><span className="profile-avatar">{user.nickname.slice(0, 1).toUpperCase()}</span><div><strong>{user.nickname}</strong><span>{user.email}</span><button onClick={() => navigate('/blog/me/manage')}>계정관리</button></div></div>
                   <div className="profile-blog"><p>운영중인 블로그</p><div><button onClick={() => navigate(publicBlogPath)}>{user.blog?.name ?? user.nickname}</button><span><button aria-label="글쓰기" onClick={() => navigate(user.blog ? '/write' : '/blog/new')}><Pencil size={16} /></button><button aria-label="블로그 관리" onClick={() => navigate(user.blog ? '/blog/me/manage' : '/blog/new')}><Settings size={16} /></button></span></div></div>
                   <button className="profile-bookmarks" role="menuitem" onClick={() => navigate('/bookmarks')}><Bookmark size={15} /> 저장한 글</button>
+                  <button className="profile-wallet" role="menuitem" onClick={() => navigate('/market/wallet')}><ShoppingCart size={15} /> 포인트 지갑 · 거래내역</button>
                   <button className="profile-logout" role="menuitem" onClick={logout}>로그아웃</button>
                 </div>
               </>}
@@ -344,7 +348,7 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
         <aside className="tistory-right">
           {user ? <AccountPanel user={user} go={go} /> : <section className="my-tistory">
             <p>티스토리에 로그인하시고 더 많은 기능을 이용해보세요!</p>
-            <button onClick={onLogin}>●　카카오계정으로 시작하기</button>
+            <button onClick={onLogin}>✉　이메일로 시작하기</button>
           </section>}
 
           <ShoppingShortcutModule go={go} user={user} onLogin={onLogin} />
@@ -408,7 +412,6 @@ function Empty({ text, detail }: { text: string; detail?: string }) { return <di
 
 function Auth({ mode, go, onSuccess }: { mode: 'login' | 'signup'; go: (to: string) => void; onSuccess: (user: User) => void }) {
   const [form, setForm] = useState({ email: '', nickname: '', password: '', passwordConfirm: '', interests: [] as string[] })
-  const [loginStep, setLoginStep] = useState<'intro' | 'credentials'>('intro')
   const [signupStep, setSignupStep] = useState<'account' | 'interests'>('account')
   const [interestStep, setInterestStep] = useState(0)
   const [error, setError] = useState('')
@@ -426,24 +429,18 @@ function Auth({ mode, go, onSuccess }: { mode: 'login' | 'signup'; go: (to: stri
 
   if (!signup) return <main id="main" className="tistory-auth-page">
     <button className="standalone-close" onClick={() => go('/')} aria-label="로그인 닫기"><X size={24} /></button>
-    <section className={`tistory-auth-card ${loginStep === 'credentials' ? 'credentials' : ''}`}>
+    <section className="tistory-auth-card credentials">
       <button className="login-wordmark" onClick={() => go('/')}>TISTORY</button>
-      {loginStep === 'intro' ? <>
-        <p className="login-description">당신의 이야기가 콘텐츠가 됩니다.</p>
-        <img className="login-visual" src="https://t1.daumcdn.net/tistory_admin/static/top/pc/img_login.png" alt="" />
-        <button className="kakao-login-button" onClick={() => setLoginStep('credentials')}><span>●</span> 카카오계정으로 로그인</button>
-        <button className="login-help" onClick={() => setLoginStep('credentials')}>내 티스토리 계정을 모르겠어요</button>
-      </> : <>
-        <p className="credential-title">카카오계정으로 로그인</p>
+        <p className="credential-title">이메일로 로그인</p>
+        <p className="login-description">회원가입할 때 등록한 이메일과 비밀번호를 입력하세요.</p>
         <form className="credential-form" onSubmit={submit}>
-          <label><span>카카오메일 아이디, 이메일, 전화번호</span><input required autoFocus type="email" autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="카카오메일 아이디, 이메일, 전화번호" /></label>
+          <label><span>이메일</span><input required autoFocus type="email" autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="email@example.com" /></label>
           <label><span>비밀번호</span><input required minLength={8} type="password" autoComplete="current-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="비밀번호" /></label>
           {error && <p className="form-error" role="alert">{error}</p>}
           <button className="credential-submit" disabled={busy}>{busy ? '로그인 중…' : '로그인'}</button>
         </form>
-        <div className="credential-links"><button onClick={() => go('/signup')}>회원가입</button><span>아이디 찾기　|　비밀번호 찾기</span></div>
-        <button className="credential-back" onClick={() => { setLoginStep('intro'); setError('') }}><ArrowLeft size={14} /> 이전</button>
-      </>}
+        <div className="credential-links"><button onClick={() => go('/signup')}>회원가입</button><span>회원가입한 이메일을 사용하세요</span></div>
+        <button className="credential-back" onClick={() => go('/')}><ArrowLeft size={14} /> 홈으로</button>
     </section>
   </main>
 
@@ -781,7 +778,7 @@ function Market({ go, user, onLogin }: { go: (to: string) => void; user: User | 
   const [error, setError] = useState('')
   useEffect(() => { setError(''); request<MarketItem[]>(`/market/items?q=${encodeURIComponent(query)}&sort=${sort}&page=1&size=12`).then((data) => setItems(data ?? [])).catch((e) => { setItems([]); setError(e.message) }) }, [query, sort])
   const shown = items.length ? items : sampleMarketItems.filter((item) => !query || `${item.title} ${item.description} ${item.category} ${item.tags.join(' ')}`.toLowerCase().includes(query.replace(/^#/, '').toLowerCase()))
-  return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="page-main"><div className="section-inner"><div className="page-intro"><p className="eyebrow">FANDOM GOODS MARKET</p><h1>좋아하는 작품의 굿즈를<br />팬들과 안전하게 거래해보세요.</h1><p className="muted">블로그 글과 분리된 1:1 팬덤 굿즈 마켓입니다. MVP에서는 포인트로 거래합니다.</p><form className="feed-search" onSubmit={(event) => { event.preventDefault(); setQuery(query.trim()) }}><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="작품, 캐릭터, 상품명 또는 #키워드 검색" /></form></div><div className="feed-toolbar"><strong>판매 중인 상품 <em>{shown.length}</em></strong><div><button className={sort === 'latest' ? 'active' : ''} onClick={() => setSort('latest')}>최신순</button><button className={sort === 'price_asc' ? 'active' : ''} onClick={() => setSort('price_asc')}>낮은 가격순</button><button onClick={() => user ? go('/market/new') : onLogin()}>상품 등록</button></div></div>{error && <p className="form-error">API 연결 전이라 샘플 상품을 표시하고 있습니다. {error}</p>}<div className="feed-list">{shown.map((item) => <MarketRow key={item.id} item={item} go={go} />)}</div></div></main></Shell>
+  return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="page-main"><div className="section-inner"><div className="page-intro"><p className="eyebrow">FANDOM GOODS MARKET</p><h1>좋아하는 작품의 굿즈를<br />팬들과 안전하게 거래해보세요.</h1><p className="muted">블로그 글과 분리된 1:1 팬덤 굿즈 마켓입니다. MVP에서는 포인트로 거래합니다.</p><form className="feed-search" onSubmit={(event) => { event.preventDefault(); setQuery(query.trim()) }}><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="작품, 캐릭터, 상품명 또는 #키워드 검색" /></form></div><div className="feed-toolbar"><strong>판매 중인 상품 <em>{shown.length}</em></strong><div><button className={sort === 'latest' ? 'active' : ''} onClick={() => setSort('latest')}>최신순</button><button className={sort === 'price_asc' ? 'active' : ''} onClick={() => setSort('price_asc')}>낮은 가격순</button>{user && <button onClick={() => go('/market/wallet')}>내 지갑·거래</button>}<button onClick={() => user ? go('/market/new') : onLogin()}>상품 등록</button></div></div>{error && <p className="form-error">API 연결 전이라 샘플 상품을 표시하고 있습니다. {error}</p>}<div className="feed-list">{shown.map((item) => <MarketRow key={item.id} item={item} go={go} />)}</div></div></main></Shell>
 }
 
 function MarketEditor({ go, id }: { go: (to: string) => void; id?: string }) {
@@ -812,6 +809,7 @@ function MarketDetail({ id, go, user, onLogin }: { id: string; go: (to: string) 
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [buying, setBuying] = useState(false)
   useEffect(() => { if (!id.startsWith('sample-')) request<MarketItem>(`/market/items/${id}`).then(setItem).catch((e) => setError(e.message)) }, [id])
   useEffect(() => { if (item) rememberMarketItem(item) }, [item?.id])
   useEffect(() => { emitAiActivity({ type: 'market_detail_viewed', itemId: id }) }, [id])
@@ -828,9 +826,28 @@ function MarketDetail({ id, go, user, onLogin }: { id: string; go: (to: string) 
   }
   const startChat = async () => { if (!user) return onLogin(); setChatOpen(true); setError(''); if (id.startsWith('sample-')) return; try { const room = await request<Conversation>(`/market/items/${id}/conversations`, { method: 'POST' }); setConversation(room); setMessages(await request<ChatMessage[]>(`/market/conversations/${room.id}/messages`) ?? []) } catch (e) { setError((e as Error).message) } }
   const send = async (event: FormEvent) => { event.preventDefault(); const body = message.trim(); if (!body) return; if (!conversation) { setMessages([...messages, { id: Date.now(), senderId: user?.id ?? 0, body, createdAt: new Date().toISOString() }]); setMessage(''); return } try { const sent = await request<ChatMessage>(`/market/conversations/${conversation.id}/messages`, { method: 'POST', body: JSON.stringify({ body }) }); setMessages([...messages, sent]); setMessage('') } catch (e) { setError((e as Error).message) } }
+  const purchase = async () => { if (!user) return onLogin(); if (id.startsWith('sample-')) return setError('샘플 상품은 실제로 구매할 수 없습니다. 상품을 직접 등록한 뒤 시험해 주세요.'); if (!confirm(`${item?.pricePoints.toLocaleString()}P로 이 상품을 구매할까요?`)) return; setBuying(true); setError(''); try { const result = await request<{ orderId: number; balance: number }>(`/market/items/${id}/purchase`, { method: 'POST' }); alert(`구매되었습니다. 남은 포인트는 ${result.balance.toLocaleString()}P입니다.`); go('/market/wallet') } catch (e) { setError((e as Error).message) } finally { setBuying(false) } }
   if (!item) return <Shell go={go} user={user} onLogin={onLogin}><main className="page-main"><div className="section-inner"><Empty text={error || '상품을 불러오는 중입니다.'} /></div></main></Shell>
   const shownMessages = messages.length ? messages : [{ id: 'welcome', senderId: item.seller.id, body: '안녕하세요! 상품에 대해 궁금한 점을 편하게 물어보세요.', createdAt: new Date().toISOString() }]
-  return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="market-detail-page"><div className="section-inner"><button className="back-button" onClick={() => go('/market')}><ArrowLeft size={16} /> 마켓으로</button><div className="market-product"><section className="market-product-gallery">{item.images?.length ? <><img className="market-detail-image" src={item.images[0].url} alt={item.title} /><div className="market-image-dots">{item.images.map((image, index) => index === 0 ? <b key={image.id} /> : <i key={image.id} />)}</div></> : <><div className="market-image-placeholder"><span>FANDOM GOODS</span><strong>{item.category}</strong></div><div className="market-image-dots"><b /></div></>}</section><section className="market-product-info"><p className="post-blog">{item.category} · {conditionLabel[item.condition]}</p><h1>{item.title}</h1><strong className="market-price">{item.pricePoints.toLocaleString()} <small>P</small></strong><div className="market-tags">{item.tags.map((tag) => <button key={tag} onClick={() => go(`/search?tab=market&q=${encodeURIComponent(`#${tag}`)}`)}>#{tag}</button>)}</div><p className="market-description">{item.description}</p><div className="market-seller"><span className="market-seller-avatar">{item.seller.nickname[0]}</span><div><strong>{item.seller.nickname}</strong><span>본인 인증 완료 · 판매 상품</span></div></div><div className="market-actions"><button className={`market-like-button${item.isLiked ? ' active' : ''}`} aria-pressed={item.isLiked} disabled={likeBusy || item.status !== 'SELLING'} onClick={toggleLike}><Heart size={15} fill={item.isLiked ? 'currentColor' : 'none'} /> 좋아요 {item.likeCount ?? 0}</button><button className="market-chat-button" onClick={startChat}>채팅하기</button><button className="market-buy-button" disabled>포인트 구매 준비 중</button></div>{error && <p className="form-error" role="alert">{error}</p>}<p className="market-safety">안전한 거래를 위해 결제 전 개인정보나 외부 메신저 ID를 보내지 마세요.</p></section></div></div>{chatOpen && <aside className="market-chat-panel" aria-label="판매자와 채팅"><div className="market-chat-head"><div><strong>{item.seller.nickname}</strong><span>{item.title}</span></div><button onClick={() => setChatOpen(false)} aria-label="채팅 닫기">×</button></div><div className="market-chat-messages">{shownMessages.map((entry) => <div className={`chat-message${entry.senderId === user?.id ? ' mine' : ''}`} key={entry.id}><p>{entry.body}</p><time>{new Date(entry.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</time></div>)}</div><form className="market-chat-form" onSubmit={send}><input maxLength={1000} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="메시지를 입력하세요" /><button>전송</button></form></aside>}</main></Shell>
+  const mine = String(item.seller.id) === String(user?.id)
+  return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="market-detail-page"><div className="section-inner"><button className="back-button" onClick={() => go('/market')}><ArrowLeft size={16} /> 마켓으로</button><div className="market-product"><section className="market-product-gallery">{item.images?.length ? <><img className="market-detail-image" src={item.images[0].url} alt={item.title} /><div className="market-image-dots">{item.images.map((image, index) => index === 0 ? <b key={image.id} /> : <i key={image.id} />)}</div></> : <><div className="market-image-placeholder"><span>FANDOM GOODS</span><strong>{item.category}</strong></div><div className="market-image-dots"><b /></div></>}</section><section className="market-product-info"><p className="post-blog">{item.category} · {conditionLabel[item.condition]}</p><h1>{item.title}</h1><strong className="market-price">{item.pricePoints.toLocaleString()} <small>P</small></strong><div className="market-tags">{item.tags.map((tag) => <button key={tag} onClick={() => go(`/search?tab=market&q=${encodeURIComponent(`#${tag}`)}`)}>#{tag}</button>)}</div><p className="market-description">{item.description}</p><div className="market-seller"><span className="market-seller-avatar">{item.seller.nickname[0]}</span><div><strong>{item.seller.nickname}</strong><span>본인 인증 완료 · 판매 상품</span></div></div><div className="market-actions"><button className={`market-like-button${item.isLiked ? ' active' : ''}`} aria-pressed={item.isLiked} disabled={likeBusy || item.status !== 'SELLING'} onClick={toggleLike}><Heart size={15} fill={item.isLiked ? 'currentColor' : 'none'} /> 좋아요 {item.likeCount ?? 0}</button><button className="market-chat-button" disabled={mine || item.status !== 'SELLING'} onClick={startChat}>{mine ? '내 상품' : '채팅하기'}</button><button className="market-buy-button" disabled={mine || item.status !== 'SELLING' || buying} onClick={purchase}>{item.status === 'SOLD' ? '판매 완료' : mine ? '내 상품' : buying ? '구매 처리 중…' : '포인트로 구매'}</button></div>{error && <p className="form-error" role="alert">{error}</p>}<p className="market-safety">구매 즉시 구매자의 포인트가 차감되고 판매자에게 정산됩니다. 실제 현금 가치가 없는 MVP 포인트입니다.</p></section></div></div>{chatOpen && <aside className="market-chat-panel" aria-label="판매자와 채팅"><div className="market-chat-head"><div><strong>{item.seller.nickname}</strong><span>{item.title}</span></div><button onClick={() => setChatOpen(false)} aria-label="채팅 닫기">×</button></div><div className="market-chat-messages">{shownMessages.map((entry) => <div className={`chat-message${String(entry.senderId) === String(user?.id) ? ' mine' : ''}`} key={entry.id}><p>{entry.body}</p><time>{new Date(entry.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</time></div>)}</div><form className="market-chat-form" onSubmit={send}><input maxLength={1000} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="메시지를 입력하세요" /><button>전송</button></form></aside>}</main></Shell>
+}
+
+const transactionLabel: Record<WalletTransaction['type'], string> = { INITIAL_GRANT: '가입 축하 포인트', POINT_CHARGE: 'MVP 테스트 충전', MARKET_PURCHASE: '상품 구매', MARKET_SALE: '상품 판매 정산', REFUND: '구매 취소 환불' }
+
+function MarketWallet({ go, user, onLogin }: { go: (to: string) => void; user: User; onLogin: () => void }) {
+  const [wallet, setWallet] = useState<Wallet | null>(null)
+  const [buyerOrders, setBuyerOrders] = useState<MarketOrder[]>([])
+  const [sellerOrders, setSellerOrders] = useState<MarketOrder[]>([])
+  const [tab, setTab] = useState<'buyer' | 'seller'>('buyer')
+  const [error, setError] = useState('')
+  const load = () => { setError(''); Promise.all([request<Wallet>('/market/wallet'), request<MarketOrder[]>('/market/orders?role=buyer'), request<MarketOrder[]>('/market/orders?role=seller')]).then(([nextWallet, bought, sold]) => { setWallet(nextWallet); setBuyerOrders(bought ?? []); setSellerOrders(sold ?? []) }).catch((e) => setError(e.message)) }
+  useEffect(load, [])
+  const complete = async (id: number) => { if (!confirm('상품을 잘 받으셨나요? 구매 완료 후에는 되돌릴 수 없습니다.')) return; try { await request(`/market/orders/${id}/complete`, { method: 'POST' }); load() } catch (e) { setError((e as Error).message) } }
+  const charge = async (amount: number) => { if (!confirm(`${amount.toLocaleString()}P를 MVP 테스트 포인트로 충전할까요?`)) return; try { await request('/market/wallet/charge', { method: 'POST', body: JSON.stringify({ amount }) }); load() } catch (e) { setError((e as Error).message) } }
+  const orders = tab === 'buyer' ? buyerOrders : sellerOrders
+  const imageUrl = (order: MarketOrder) => order.item?.images?.[0]?.url ?? order.item?.imageUrls?.[0]
+  return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="wallet-page"><div className="section-inner"><button className="back-button" onClick={() => go('/market')}><ArrowLeft size={16} /> 마켓으로</button><div className="wallet-hero"><div><p className="eyebrow">POINT WALLET</p><h1>내 포인트 지갑</h1><p>팬덤 굿즈를 사고 판매 대금을 정산받는 MVP 지갑입니다.</p><div className="wallet-charge">{[10000, 50000, 100000].map((amount) => <button key={amount} onClick={() => charge(amount)}>+ {amount.toLocaleString()}P</button>)}</div></div><strong>{wallet ? wallet.balance.toLocaleString() : '—'} <small>P</small></strong></div>{error && <p className="form-error">{error}</p>}<section className="wallet-section"><h2>포인트 내역</h2><div className="wallet-history">{wallet?.transactions.length ? wallet.transactions.map((entry) => <article key={entry.id}><div><strong>{transactionLabel[entry.type]}</strong><time>{new Date(entry.createdAt).toLocaleString('ko-KR')}</time></div><span className={entry.amount > 0 ? 'positive' : ''}>{entry.amount > 0 ? '+' : ''}{entry.amount.toLocaleString()} P</span></article>) : <Empty text="포인트 내역이 없습니다." />}</div></section><section className="wallet-section"><div className="wallet-order-head"><h2>주문·판매 내역</h2><div><button className={tab === 'buyer' ? 'active' : ''} onClick={() => setTab('buyer')}>구매 {buyerOrders.length}</button><button className={tab === 'seller' ? 'active' : ''} onClick={() => setTab('seller')}>판매 {sellerOrders.length}</button></div></div><div className="order-list">{orders.length ? orders.map((order) => <article key={order.id}>{imageUrl(order) ? <img src={imageUrl(order)} alt="" /> : <span className="order-no-image">NO IMAGE</span>}<div><small>주문 #{order.id}</small><button onClick={() => go(`/market/${order.itemId}`)}><strong>{order.item?.title ?? `상품 ${order.itemId}`}</strong></button><p>{order.pricePoints.toLocaleString()}P · {order.status === 'PAID' ? '결제 완료' : order.status === 'COMPLETED' ? '구매 완료' : '취소됨'}</p></div>{tab === 'buyer' && order.status === 'PAID' && <button className="order-complete" onClick={() => complete(order.id)}><Check size={15} /> 구매 완료</button>}</article>) : <Empty text={tab === 'buyer' ? '구매한 상품이 없습니다.' : '판매된 상품이 없습니다.'} />}</div></section></div></main></Shell>
 }
 
 function SearchPage({ go, user, onLogin }: { go: (to: string) => void; user: User | null; onLogin: () => void }) {
@@ -890,6 +907,7 @@ function App() {
   else if (/^\/market\/\d+\/edit$/.test(path)) content = user ? <MarketEditor id={path.split('/')[2]} go={go} /> : <Auth mode="login" go={go} onSuccess={(nextUser) => { setUser(nextUser); go(path) }} />
   else if (path === '/market/recent') content = <MarketSavedList kind="recent" go={go} user={user} onLogin={onLogin} />
   else if (path === '/market/wishlist') content = <MarketSavedList kind="wishlist" go={go} user={user} onLogin={onLogin} />
+  else if (path === '/market/wallet') content = user ? <MarketWallet go={go} user={user} onLogin={onLogin} /> : <Auth mode="login" go={go} onSuccess={(nextUser) => { setUser(nextUser); go('/market/wallet') }} />
   else if (path === '/market/cart') content = <MarketPrepared kind="cart" go={go} user={user} onLogin={onLogin} />
   else if (path === '/market/price-guide') content = <MarketPrepared kind="price-guide" go={go} user={user} onLogin={onLogin} />
   else if (path === '/market/coupons') content = <MarketPrepared kind="coupons" go={go} user={user} onLogin={onLogin} />
@@ -908,10 +926,10 @@ function App() {
     <div className="login-modal tistory-login-modal" onMouseDown={(event) => event.stopPropagation()}>
       <button className="modal-close" onClick={() => setLoginOpen(false)} aria-label="닫기"><X size={20} /></button>
       <strong className="login-wordmark">TISTORY</strong>
-      <p className="login-description">당신의 이야기가 콘텐츠가 됩니다.</p>
+      <p className="login-description">회원가입한 이메일과 비밀번호로 로그인하세요.</p>
       <img className="login-visual" src="https://t1.daumcdn.net/tistory_admin/static/top/pc/img_login.png" alt="" />
-      <button className="kakao-login-button" onClick={() => { setLoginOpen(false); go('/login') }}><span>●</span> 카카오계정으로 로그인</button>
-      <button className="login-help" onClick={() => { setLoginOpen(false); go('/login') }}>내 티스토리 계정을 모르겠어요</button>
+      <button className="kakao-login-button" onClick={() => { setLoginOpen(false); go('/login') }}><span>✉</span> 이메일로 로그인</button>
+      <button className="login-help" onClick={() => { setLoginOpen(false); go('/signup') }}>처음이라면 회원가입</button>
     </div>
   </div>}</>
 }

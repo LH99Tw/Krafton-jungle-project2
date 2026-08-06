@@ -1,8 +1,18 @@
 import { apiError } from '../shared.ts'
 import { changeMarketItemLike, createMarketItem, deleteMarketItem, listMarketItems, permanentlyDeleteMarketItem, readMarketItem, replaceMarketItemImages, restoreMarketItem, updateMarketItem } from './market.service.ts'
 import { listConversations, listMessages, sendMessage, startConversation } from './market-chat.service.ts'
+import { chargeWallet, completeOrder, listOrders, purchaseItem, readWallet } from './market-transaction.service.ts'
 
 export const handleMarketRoute = (request: Request, path: string, url: URL) => {
+  if (path === '/market/wallet' && request.method === 'GET') return readWallet(request)
+  if (path === '/market/wallet/charge' && request.method === 'POST') return chargeWallet(request)
+  if (path === '/market/orders' && request.method === 'GET') return listOrders(request, url)
+  const completeOrderMatch = path.match(/^\/market\/orders\/(\d+)\/complete$/)
+  if (completeOrderMatch && request.method === 'POST') {
+    const orderId = Number(completeOrderMatch[1])
+    if (!Number.isSafeInteger(orderId) || orderId < 1) return apiError(404, 'NOT_FOUND', '주문을 찾을 수 없습니다.')
+    return completeOrder(request, orderId)
+  }
   if (path === '/market/conversations' && request.method === 'GET') return listConversations(request)
   const conversationMatch = path.match(/^\/market\/conversations\/(\d+)\/messages$/)
   if (conversationMatch) {
@@ -16,6 +26,12 @@ export const handleMarketRoute = (request: Request, path: string, url: URL) => {
     const itemId = Number(startChatMatch[1])
     if (!Number.isSafeInteger(itemId) || itemId < 1) return apiError(404, 'NOT_FOUND', '상품을 찾을 수 없습니다.')
     return startConversation(request, itemId)
+  }
+  const purchaseMatch = path.match(/^\/market\/items\/(\d+)\/purchase$/)
+  if (purchaseMatch && request.method === 'POST') {
+    const itemId = Number(purchaseMatch[1])
+    if (!Number.isSafeInteger(itemId) || itemId < 1) return apiError(404, 'NOT_FOUND', '상품을 찾을 수 없습니다.')
+    return purchaseItem(request, itemId)
   }
   const restoreMatch = path.match(/^\/market\/items\/(\d+)\/restore$/)
   if (restoreMatch && request.method === 'POST') return restoreMarketItem(request, Number(restoreMatch[1]))
