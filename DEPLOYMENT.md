@@ -49,13 +49,13 @@ npm run dev:api
 npm run dev:client
 ```
 
-`client/.env.local`에는 다음 값을 설정한다.
+프론트엔드는 별도 환경 변수 없이 상대 경로 `/api/*`를 사용한다. 로컬에서는
+`client/server.js`가 Supabase Edge Function으로 프록시하고, 운영에서는 Vercel rewrite가
+동일한 요청을 전달한다.
 
-```env
-VITE_API_URL=http://127.0.0.1:54321/functions/v1
-```
-
-프론트엔드는 `/api/*` 경로를 사용하고, Vercel에서는 rewrite를 통해 Supabase Edge Function으로 전달한다.
+배포 산출물은 Vite 번들이 아니라 `client/build.js`가 `client/dist`에 복사한 페이지별 HTML,
+공통 JavaScript, CSS, 정적 에셋이다. 새 HTML 페이지를 추가하면 `build.js`의 `pages` 목록에도
+반드시 추가한다.
 
 로컬 작업을 마치면 Docker 컨테이너를 종료한다.
 

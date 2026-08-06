@@ -1,10 +1,11 @@
-import { apiError, corsHeaders, getSession, json, requireCsrfSession, supabase } from './shared.ts'
+import { apiError, corsHeaders, getSession, json, requireCsrfSession, supabase, supabaseUrl } from './shared.ts'
 import { handleAuthRoute } from './auth/auth.routes.ts'
 import { handleSystemRoute } from './system/system.routes.ts'
 import { handleMarketRoute } from './market/market.routes.ts'
+import { handleBlogManagementRoute } from './blog-management.ts'
 
-const reservedSlugs = new Set(['api', 'login', 'signup', 'feed', 'post', 'blog', 'me', 'new'])
-const slugPattern = /^[a-z0-9-]{3,30}$/
+const reservedSlugs = new Set(['api', 'login', 'signup', 'feed', 'post', 'blog', 'me', 'new', 'manage'])
+const slugPattern = /^(?!.*--)[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$/
 
 const blogJson = (blog: Record<string, any>, owner?: Record<string, any>) => ({
   id: blog.id,
@@ -12,6 +13,7 @@ const blogJson = (blog: Record<string, any>, owner?: Record<string, any>) => ({
   slug: blog.slug,
   url: `/blog/${blog.slug}`,
   description: blog.description,
+  profileImageUrl: blog.profile_image_path ? `${supabaseUrl}/storage/v1/object/public/blog-profile-images/${blog.profile_image_path}` : null,
   ...(owner ? { owner: { id: owner.id, nickname: owner.nickname } } : {}),
   createdAt: blog.created_at,
   updatedAt: blog.updated_at,
@@ -34,7 +36,7 @@ const checkSlug = async (url: URL) => {
     console.error('Failed to check slug', error)
     return apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
   }
-  return json({ data: { slug, available: !data } })
+  return json({ data: { slug, url: `/blog/${slug}`, available: !data } })
 }
 
 const createBlog = async (request: Request) => {
@@ -138,6 +140,14 @@ const getPublicBlog = async (request: Request, slugValue: string, url: URL) => {
   const { data: subscription } = session?.user_id
     ? await supabase.from('subscriptions').select('blog_id').eq('user_id', session.user_id).eq('blog_id', blog.id).maybeSingle()
     : { data: null }
+  const { count: subscriberCount, error: subscriberError } = await supabase
+    .from('subscriptions')
+    .select('blog_id', { count: 'exact', head: true })
+    .eq('blog_id', blog.id)
+  if (subscriberError && subscriberError.code !== '42P01') {
+    console.error('Failed to count blog subscribers', subscriberError)
+    return apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
+  }
   const from = (page - 1) * size
   const to = from + size - 1
   const { data: posts, count, error: postsError } = await supabase
@@ -145,6 +155,7 @@ const getPublicBlog = async (request: Request, slugValue: string, url: URL) => {
     .select('*', { count: 'exact' })
     .eq('blog_id', blog.id)
     .eq('status', 'PUBLISHED')
+    .is('deleted_at', null)
     .order('published_at', { ascending: false })
     .order('id', { ascending: false })
     .range(from, to)
@@ -165,12 +176,42 @@ const getPublicBlog = async (request: Request, slugValue: string, url: URL) => {
     createdAt: post.created_at,
     updatedAt: post.updated_at,
   }))
+  const { data: marketItems, count: marketCount, error: marketError } = await supabase
+    .from('market_items')
+    .select('id, seller_id, title, description, category, tags, condition, price_points, status, created_at, updated_at', { count: 'exact' })
+    .eq('seller_id', blog.owner_id)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
+    .range(0, 7)
+  if (marketError && marketError.code !== '42P01') {
+    console.error('Failed to read blog market items', marketError)
+    return apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
+  }
+  const market = (marketItems ?? []).map((item: Record<string, any>) => ({
+    id: item.id,
+    url: `/market/${item.id}`,
+    seller: owner,
+    title: item.title,
+    description: item.description,
+    category: item.category,
+    tags: item.tags ?? [],
+    condition: item.condition,
+    pricePoints: item.price_points,
+    status: item.status,
+    createdAt: item.created_at,
+    updatedAt: item.updated_at,
+  }))
   const totalItems = count ?? 0
   return json({ data: {
-    blog: { ...blogJson(blog, owner ?? undefined), isSubscribed: Boolean(subscription) },
+    blog: { ...blogJson(blog, owner ?? undefined), isSubscribed: Boolean(subscription), subscriberCount: subscriberCount ?? 0 },
     posts: {
       items,
       pagination: { page, size, totalItems, totalPages: totalItems ? Math.ceil(totalItems / size) : 0 },
+    },
+    market: {
+      items: market,
+      pagination: { page: 1, size: 8, totalItems: marketCount ?? 0, totalPages: marketCount ? Math.ceil(marketCount / 8) : 0 },
     },
   } })
 }
@@ -183,20 +224,24 @@ const postJson = (post: Record<string, any>, includeContent = false) => ({
     excerpt: post.content.length > 160 ? `${post.content.slice(0, 160)}…` : post.content,
   }),
   status: post.status,
+  category: post.category_id ? { id: post.category_id, name: post.category_name } : null,
   viewCount: post.view_count,
   author: { id: post.owner_id, nickname: post.author_nickname },
   blog: { id: post.blog_id, name: post.blog_name, slug: post.blog_slug },
   publishedAt: post.published_at,
   createdAt: post.created_at,
   updatedAt: post.updated_at,
+  deletedAt: post.deleted_at,
+  purgeAfter: post.purge_after,
 })
 
 const postInput = (body: Record<string, unknown>, partial = false) => {
   const fields: Record<string, string> = {}
-  const result: Record<string, string> = {}
+  const result: Record<string, string | number | null> = {}
   const hasTitle = Object.prototype.hasOwnProperty.call(body, 'title')
   const hasContent = Object.prototype.hasOwnProperty.call(body, 'content')
   const hasStatus = Object.prototype.hasOwnProperty.call(body, 'status')
+  const hasCategory = Object.prototype.hasOwnProperty.call(body, 'categoryId')
   if (!partial || hasTitle) {
     const title = typeof body.title === 'string' ? body.title.trim() : ''
     if (!title || title.length > 100) fields.title = '제목은 1~100자로 입력해 주세요.'
@@ -212,7 +257,11 @@ const postInput = (body: Record<string, unknown>, partial = false) => {
     if (status !== 'DRAFT' && status !== 'PUBLISHED') fields.status = '상태 값을 확인해 주세요.'
     else result.status = status
   }
-  if (partial && !hasTitle && !hasContent && !hasStatus) fields.request = '수정할 값을 입력해 주세요.'
+  if (hasCategory) {
+    if (body.categoryId !== null && (!Number.isSafeInteger(body.categoryId) || Number(body.categoryId) < 1)) fields.categoryId = '카테고리를 확인해 주세요.'
+    else result.category_id = body.categoryId as number | null
+  }
+  if (partial && !hasTitle && !hasContent && !hasStatus && !hasCategory) fields.request = '수정할 값을 입력해 주세요.'
   return { fields, values: result }
 }
 
@@ -223,7 +272,9 @@ const listPosts = async (request: Request, url: URL) => {
   const size = positiveInteger(url.searchParams.get('size'), 10, 50)
   const q = (url.searchParams.get('q') ?? '').trim()
   const requestedStatus = url.searchParams.get('status')
-  if (!['public', 'mine', 'following'].includes(scope) || !['latest', 'popular'].includes(sort) || !page || !size) {
+  const deleted = url.searchParams.get('deleted') ?? 'exclude'
+  const categoryId = url.searchParams.get('categoryId')
+  if (!['public', 'mine', 'following'].includes(scope) || !['latest', 'popular'].includes(sort) || !['exclude', 'only'].includes(deleted) || !page || !size) {
     return apiError(400, 'VALIDATION_ERROR', '목록 조건을 확인해 주세요.')
   }
   if (scope !== 'mine' && requestedStatus !== null) {
@@ -253,10 +304,12 @@ const listPosts = async (request: Request, url: URL) => {
   }
 
   let query = supabase.from('post_details').select('*', { count: 'exact' })
+  query = deleted === 'only' ? query.not('deleted_at', 'is', null) : query.is('deleted_at', null)
   if (scope === 'public') query = query.eq('status', 'PUBLISHED')
   else if (scope === 'following') query = query.eq('status', 'PUBLISHED').in('blog_id', followedBlogIds)
   else query = query.eq('owner_id', ownerId!)
   if (scope === 'mine' && status !== 'ALL') query = query.eq('status', status)
+  if (scope === 'mine' && categoryId) query = categoryId === 'uncategorized' ? query.is('category_id', null) : query.eq('category_id', Number(categoryId))
   if (q) {
     const safe = q.replaceAll(',', ' ')
     query = query.or(`title.ilike.%${safe}%,content.ilike.%${safe}%,author_nickname.ilike.%${safe}%,blog_name.ilike.%${safe}%`)
@@ -292,11 +345,17 @@ const changeSubscription = async (request: Request, slugValue: string, subscribe
 
   if (subscribe) {
     const { error } = await supabase.from('subscriptions').upsert({ user_id: session.user_id, blog_id: blog.id })
-    if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '구독하지 못했습니다.')
+    if (error) {
+      console.error('Failed to subscribe to blog', error)
+      return apiError(500, 'INTERNAL_SERVER_ERROR', '구독하지 못했습니다.')
+    }
     return json({ data: { subscribed: true } }, 201)
   }
   const { error } = await supabase.from('subscriptions').delete().eq('user_id', session.user_id).eq('blog_id', blog.id)
-  if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '구독을 취소하지 못했습니다.')
+  if (error) {
+    console.error('Failed to unsubscribe from blog', error)
+    return apiError(500, 'INTERNAL_SERVER_ERROR', '구독을 취소하지 못했습니다.')
+  }
   return new Response(null, { status: 204, headers: corsHeaders })
 }
 
@@ -313,12 +372,17 @@ const createPost = async (request: Request) => {
   const { data: blog } = await supabase.from('blogs').select('id, name, slug').eq('owner_id', session.user_id).maybeSingle()
   if (!blog) return apiError(409, 'BLOG_REQUIRED', '먼저 블로그를 만들어 주세요.')
   const publishedAt = values.status === 'PUBLISHED' ? new Date().toISOString() : null
+  if (values.category_id) {
+    const { data: category } = await supabase.from('blog_categories').select('id').eq('id', values.category_id).eq('blog_id', blog.id).maybeSingle()
+    if (!category) return apiError(400, 'VALIDATION_ERROR', '현재 블로그의 카테고리를 선택해 주세요.', { categoryId: '유효하지 않은 카테고리입니다.' })
+  }
   const { data, error } = await supabase.from('posts').insert({
     blog_id: blog.id,
     title: values.title,
     content: values.content,
     status: values.status,
     published_at: publishedAt,
+    category_id: values.category_id ?? null,
   }).select('*').single()
   if (error) {
     console.error('Failed to create post', error)
@@ -363,11 +427,16 @@ const updatePost = async (request: Request, id: number) => {
   if (!session.user_id) return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
   const ownership = await ownedPost(session.user_id, id)
   if (ownership.error) return ownership.error
+  if (ownership.data!.deleted_at) return apiError(404, 'NOT_FOUND', '글을 찾을 수 없습니다.')
   const body = await request.json().catch(() => null)
   if (!body || typeof body !== 'object' || Array.isArray(body)) return apiError(400, 'VALIDATION_ERROR', '입력값을 확인해 주세요.')
   const { fields, values } = postInput(body as Record<string, unknown>, true)
   if (Object.keys(fields).length) return apiError(400, 'VALIDATION_ERROR', '입력값을 확인해 주세요.', fields)
   const previous = ownership.data!
+  if (values.category_id) {
+    const { data: category } = await supabase.from('blog_categories').select('id').eq('id', values.category_id).eq('blog_id', previous.blog_id).maybeSingle()
+    if (!category) return apiError(400, 'VALIDATION_ERROR', '현재 블로그의 카테고리를 선택해 주세요.', { categoryId: '유효하지 않은 카테고리입니다.' })
+  }
   let publishedAt = previous.published_at
   if (values.status === 'PUBLISHED' && previous.status === 'DRAFT') publishedAt = new Date().toISOString()
   if (values.status === 'DRAFT') publishedAt = null
@@ -386,8 +455,31 @@ const deletePost = async (request: Request, id: number) => {
   if (!session.user_id) return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
   const ownership = await ownedPost(session.user_id, id)
   if (ownership.error) return ownership.error
-  const { error } = await supabase.from('posts').delete().eq('id', id)
+  const now = new Date(); const purgeAfter = new Date(now.getTime() + 30 * 86400000)
+  const { error } = await supabase.from('posts').update({ deleted_at: now.toISOString(), purge_after: purgeAfter.toISOString(), updated_at: now.toISOString() }).eq('id', id)
   if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
+  return new Response(null, { status: 204, headers: corsHeaders })
+}
+
+const restorePost = async (request: Request, id: number) => {
+  const session = await requireCsrfSession(request)
+  if (!session?.user_id) return apiError(session ? 401 : 403, session ? 'UNAUTHENTICATED' : 'CSRF_TOKEN_INVALID', session ? '로그인이 필요합니다.' : 'CSRF 토큰이 유효하지 않습니다.')
+  const ownership = await ownedPost(session.user_id, id)
+  if (ownership.error) return ownership.error
+  if (!ownership.data!.deleted_at || !ownership.data!.purge_after) return apiError(409, 'NOT_IN_TRASH', '복원할 수 있는 휴지통 글이 아닙니다.')
+  const { error } = await supabase.from('posts').update({ deleted_at: null, purge_after: null, updated_at: new Date().toISOString() }).eq('id', id)
+  if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '글을 복원하지 못했습니다.')
+  return json({ data: { restored: true } })
+}
+
+const permanentlyDeletePost = async (request: Request, id: number) => {
+  const session = await requireCsrfSession(request)
+  if (!session?.user_id) return apiError(session ? 401 : 403, session ? 'UNAUTHENTICATED' : 'CSRF_TOKEN_INVALID', session ? '로그인이 필요합니다.' : 'CSRF 토큰이 유효하지 않습니다.')
+  const ownership = await ownedPost(session.user_id, id)
+  if (ownership.error) return ownership.error
+  if (!ownership.data!.deleted_at) return apiError(409, 'NOT_IN_TRASH', '휴지통에 있는 글만 영구 삭제할 수 있습니다.')
+  const { error } = await supabase.from('posts').delete().eq('id', id)
+  if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '글을 영구 삭제하지 못했습니다.')
   return new Response(null, { status: 204, headers: corsHeaders })
 }
 
@@ -410,6 +502,9 @@ Deno.serve(async (request) => {
   const marketResponse = handleMarketRoute(request, path, url)
   if (marketResponse) return marketResponse
 
+  const managementResponse = handleBlogManagementRoute(request, path)
+  if (managementResponse) return managementResponse
+
   if (request.method === 'POST' && path === '/blogs') return createBlog(request)
   if (request.method === 'GET' && path === '/blogs') return listBlogs(url)
   if (request.method === 'GET' && path === '/blogs/check-slug') return checkSlug(url)
@@ -429,6 +524,10 @@ Deno.serve(async (request) => {
     if (request.method === 'PATCH') return updatePost(request, postId)
     if (request.method === 'DELETE') return deletePost(request, postId)
   }
+  const postRestoreMatch = path.match(/^\/posts\/(\d+)\/restore$/)
+  if (postRestoreMatch && request.method === 'POST') return restorePost(request, Number(postRestoreMatch[1]))
+  const postPermanentMatch = path.match(/^\/posts\/(\d+)\/permanent$/)
+  if (postPermanentMatch && request.method === 'DELETE') return permanentlyDeletePost(request, Number(postPermanentMatch[1]))
 
   return apiError(404, 'NOT_FOUND', '요청한 API를 찾을 수 없습니다.')
 })

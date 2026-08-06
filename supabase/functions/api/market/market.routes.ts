@@ -1,5 +1,5 @@
 import { apiError } from '../shared.ts'
-import { createMarketItem, deleteMarketItem, listMarketItems, readMarketItem, updateMarketItem, uploadMarketImages } from './market.service.ts'
+import { createMarketItem, deleteMarketItem, listMarketItems, permanentlyDeleteMarketItem, readMarketItem, restoreMarketItem, updateMarketItem, uploadMarketImages } from './market.service.ts'
 import { listConversations, listMessages, sendMessage, startConversation } from './market-chat.service.ts'
 import { chargeWallet, completeOrder, listOrders, purchaseItem, readWallet } from './market-transaction.service.ts'
 
@@ -39,6 +39,10 @@ export const handleMarketRoute = (request: Request, path: string, url: URL) => {
     if (!Number.isSafeInteger(itemId) || itemId < 1) return apiError(404, 'NOT_FOUND', '상품을 찾을 수 없습니다.')
     return uploadMarketImages(request, itemId)
   }
+  const restoreMatch = path.match(/^\/market\/items\/(\d+)\/restore$/)
+  if (restoreMatch && request.method === 'POST') return restoreMarketItem(request, Number(restoreMatch[1]))
+  const permanentMatch = path.match(/^\/market\/items\/(\d+)\/permanent$/)
+  if (permanentMatch && request.method === 'DELETE') return permanentlyDeleteMarketItem(request, Number(permanentMatch[1]))
   if (path === '/market/items') {
     if (request.method === 'GET') return listMarketItems(request, url)
     if (request.method === 'POST') return createMarketItem(request)
