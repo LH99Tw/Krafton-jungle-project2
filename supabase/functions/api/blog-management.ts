@@ -100,7 +100,7 @@ const listCategories = async (request: Request) => {
   const ids = (data ?? []).map((item: Record<string, any>) => item.id)
   const { data: posts } = ids.length ? await supabase.from('posts').select('category_id, deleted_at').in('category_id', ids) : { data: [] }
   return json({ data: (data ?? []).map((item: Record<string, any>) => ({
-    id: item.id, name: item.name, position: item.position,
+    id: item.id, name: item.name, position: item.position, isDefault: item.is_default,
     activePostCount: (posts ?? []).filter((post: Record<string, any>) => post.category_id === item.id && !post.deleted_at).length,
     trashPostCount: (posts ?? []).filter((post: Record<string, any>) => post.category_id === item.id && post.deleted_at).length,
   })) })
@@ -117,12 +117,15 @@ const createCategory = async (request: Request) => {
   const { data, error } = await supabase.from('blog_categories').insert({ blog_id: ownership.blog.id, name: parsed.name, normalized_name: parsed.normalized, position: count ?? 0 }).select('*').single()
   if (error?.code === '23505') return apiError(409, 'CATEGORY_ALREADY_EXISTS', '같은 이름의 카테고리가 이미 있습니다.')
   if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '카테고리를 추가하지 못했습니다.')
-  return json({ data: { id: data.id, name: data.name, position: data.position, activePostCount: 0, trashPostCount: 0 } }, 201)
+  return json({ data: { id: data.id, name: data.name, position: data.position, isDefault: false, activePostCount: 0, trashPostCount: 0 } }, 201)
 }
 
 const updateCategory = async (request: Request, id: number) => {
   const ownership = await ownedBlog(request, true)
   if (ownership.error) return ownership.error
+  const { data: existing } = await supabase.from('blog_categories').select('is_default').eq('id', id).eq('blog_id', ownership.blog.id).maybeSingle()
+  if (!existing) return apiError(404, 'NOT_FOUND', '카테고리를 찾을 수 없습니다.')
+  if (existing.is_default) return apiError(409, 'DEFAULT_CATEGORY_PROTECTED', '기본 카테고리인 전체글은 수정할 수 없습니다.')
   const body = await request.json().catch(() => null)
   const parsed = categoryName(body?.name)
   if (!parsed.name || parsed.name.length > 30) return apiError(400, 'VALIDATION_ERROR', '카테고리 이름은 1~30자로 입력해 주세요.')
@@ -130,7 +133,7 @@ const updateCategory = async (request: Request, id: number) => {
   if (error?.code === '23505') return apiError(409, 'CATEGORY_ALREADY_EXISTS', '같은 이름의 카테고리가 이미 있습니다.')
   if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '카테고리를 수정하지 못했습니다.')
   if (!data) return apiError(404, 'NOT_FOUND', '카테고리를 찾을 수 없습니다.')
-  return json({ data: { id: data.id, name: data.name, position: data.position } })
+  return json({ data: { id: data.id, name: data.name, position: data.position, isDefault: false } })
 }
 
 const reorderCategories = async (request: Request) => {
@@ -138,14 +141,16 @@ const reorderCategories = async (request: Request) => {
   if (ownership.error) return ownership.error
   const body = await request.json().catch(() => null)
   const ids = Array.isArray(body?.categoryIds) ? body.categoryIds.filter((id: unknown) => Number.isSafeInteger(id)) as number[] : []
-  const { data } = await supabase.from('blog_categories').select('id').eq('blog_id', ownership.blog.id).order('position')
+  const { data } = await supabase.from('blog_categories').select('id,is_default').eq('blog_id', ownership.blog.id).order('position')
   const current = (data ?? []).map((item: Record<string, any>) => item.id)
   if (ids.length !== current.length || new Set(ids).size !== ids.length || ids.some((id) => !current.includes(id))) return apiError(400, 'VALIDATION_ERROR', '현재 카테고리 전체 순서를 정확히 보내 주세요.')
-  for (let index = 0; index < current.length; index++) {
+  const defaultId = (data ?? []).find((item: Record<string, any>) => item.is_default)?.id
+  if (!defaultId || ids[0] !== defaultId) return apiError(409, 'DEFAULT_CATEGORY_PROTECTED', '전체글 카테고리는 항상 첫 번째에 있어야 합니다.')
+  for (let index = 1; index < current.length; index++) {
     const { error } = await supabase.from('blog_categories').update({ position: 1000 + index }).eq('id', current[index]).eq('blog_id', ownership.blog.id)
     if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '카테고리 순서를 저장하지 못했습니다.')
   }
-  for (let index = 0; index < ids.length; index++) {
+  for (let index = 1; index < ids.length; index++) {
     const { error } = await supabase.from('blog_categories').update({ position: index, updated_at: new Date().toISOString() }).eq('id', ids[index]).eq('blog_id', ownership.blog.id)
     if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '카테고리 순서를 저장하지 못했습니다.')
   }
@@ -155,8 +160,9 @@ const reorderCategories = async (request: Request) => {
 const deleteCategory = async (request: Request, id: number) => {
   const ownership = await ownedBlog(request, true)
   if (ownership.error) return ownership.error
-  const { data: category } = await supabase.from('blog_categories').select('id').eq('id', id).eq('blog_id', ownership.blog.id).maybeSingle()
+  const { data: category } = await supabase.from('blog_categories').select('id,is_default').eq('id', id).eq('blog_id', ownership.blog.id).maybeSingle()
   if (!category) return apiError(404, 'NOT_FOUND', '카테고리를 찾을 수 없습니다.')
+  if (category.is_default) return apiError(409, 'DEFAULT_CATEGORY_PROTECTED', '기본 카테고리인 전체글은 삭제할 수 없습니다.')
   const { count } = await supabase.from('posts').select('id', { count: 'exact', head: true }).eq('category_id', id)
   if (count) return apiError(409, 'CATEGORY_IN_USE', `글 ${count}개가 사용 중인 카테고리는 삭제할 수 없습니다.`, { posts: String(count) })
   const { error } = await supabase.from('blog_categories').delete().eq('id', id)
@@ -215,11 +221,18 @@ const reorderClassifications = async (request: Request) => {
   if (ownership.error) return ownership.error
   const body = await request.json().catch(() => null)
   const ids = Array.isArray(body?.classificationIds) ? body.classificationIds.filter((id: unknown) => Number.isSafeInteger(id)) as number[] : []
-  const { data } = await supabase.from('blog_classifications').select('id').eq('blog_id', ownership.blog.id).order('position')
+  const { data, error: readError } = await supabase.from('blog_classifications').select('id').eq('blog_id', ownership.blog.id).order('position')
+  if (readError) return apiError(500, 'INTERNAL_SERVER_ERROR', '분류 순서를 불러오지 못했습니다.')
   const current = (data ?? []).map((item: Record<string, any>) => item.id)
   if (ids.length !== current.length || new Set(ids).size !== ids.length || ids.some((id) => !current.includes(id))) return apiError(400, 'VALIDATION_ERROR', '현재 분류 전체 순서를 정확히 보내 주세요.')
-  for (let index = 0; index < current.length; index++) await supabase.from('blog_classifications').update({ position: 1000 + index }).eq('id', current[index])
-  for (let index = 0; index < ids.length; index++) await supabase.from('blog_classifications').update({ position: index, updated_at: new Date().toISOString() }).eq('id', ids[index])
+  for (let index = 0; index < current.length; index++) {
+    const { error } = await supabase.from('blog_classifications').update({ position: 1000 + index }).eq('id', current[index]).eq('blog_id', ownership.blog.id)
+    if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '분류 순서를 저장하지 못했습니다.')
+  }
+  for (let index = 0; index < ids.length; index++) {
+    const { error } = await supabase.from('blog_classifications').update({ position: index, updated_at: new Date().toISOString() }).eq('id', ids[index]).eq('blog_id', ownership.blog.id)
+    if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '분류 순서를 저장하지 못했습니다.')
+  }
   return json({ data: { classificationIds: ids } })
 }
 

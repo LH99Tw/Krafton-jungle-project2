@@ -36,6 +36,12 @@ export const openApiDocument = {
       } },
     } },
     '/me': { get: { summary: 'Get the current user and blog', responses: { '200': { description: 'Current user' }, '401': { description: 'Unauthenticated' } } } },
+    '/ai/state': { get: { summary: 'Get companion, conversation, mission and daily AI quota state', responses: { '200': { description: 'AI companion state' }, '401': { description: 'Login required' } } } },
+    '/ai/companion': { patch: { summary: 'Select an AI character and record AI processing consent', responses: { '200': { description: 'Updated AI state' }, '400': { description: 'Character or consent missing' } } } },
+    '/ai/messages': { post: { summary: 'Send one character conversation turn', description: 'Limited to 20 successful model turns per user and 200 globally per KST day.', responses: { '201': { description: 'Character reply and remaining quota' }, '429': { description: 'Per-minute, user daily, or global daily limit reached' } } } },
+    '/ai/history': { delete: { summary: 'Delete completed AI messages and the saved memory summary', responses: { '200': { description: 'History deleted' } } } },
+    '/ai/missions/{id}/start': { post: { summary: 'Start or resume one of the three server-verified companion missions', responses: { '200': { description: 'Mission mode state' }, '409': { description: 'Companion missing or mission already completed' } } } },
+    '/ai/missions/{id}/pause': { post: { summary: 'Pause a mission and return to general conversation', responses: { '200': { description: 'General conversation state' } } } },
     '/blogs': { post: {
       summary: 'Create a blog and reserve its public address',
       description: 'Stores the normalized slug and returns the canonical public path as /blog/{slug}.',
@@ -107,9 +113,11 @@ export const openApiDocument = {
       post: {
         summary: 'Create a draft or published post',
         requestBody: { required: true, content: { 'application/json': { schema: {
-          type: 'object', required: ['title', 'content', 'status'],
+          type: 'object', required: ['title', 'contentText', 'contentDocument', 'status'],
           properties: {
-            title: { type: 'string', minLength: 1, maxLength: 120 }, content: { type: 'string', minLength: 1 },
+            title: { type: 'string', minLength: 1, maxLength: 100 }, content: { type: 'string', minLength: 1, deprecated: true },
+            contentText: { type: 'string', minLength: 1, maxLength: 20000 }, contentDocument: { type: 'object', description: 'Validated TipTap JSON document' },
+            draftKey: { type: 'string', format: 'uuid', description: 'Connects temporary image uploads to this post' },
             status: { type: 'string', enum: ['DRAFT', 'PUBLISHED'] }, categoryId: { type: 'integer', nullable: true },
             classificationIds: { type: 'array', maxItems: 5, uniqueItems: true, items: { type: 'integer' } },
           },
@@ -122,6 +130,10 @@ export const openApiDocument = {
       patch: { summary: 'Update an owned post', responses: { '200': { description: 'Post updated' } } },
       delete: { summary: 'Move an owned post to 30-day trash', responses: { '204': { description: 'Post moved to trash' } } },
     },
+    '/posts/images': {
+      post: { summary: 'Upload an optimized post image', description: 'Accepts multipart WebP images up to 2MB. A draft may own at most five images.', responses: { '201': { description: 'Image asset created' }, '400': { description: 'Invalid image' }, '409': { description: 'Image limit reached' } } },
+    },
+    '/posts/images/{id}': { delete: { summary: 'Delete an unused temporary post image', responses: { '204': { description: 'Image deleted' } } } },
     '/posts/{id}/restore': { post: { summary: 'Restore a trashed post', responses: { '200': { description: 'Post restored' } } } },
     '/posts/{id}/permanent': { delete: { summary: 'Permanently delete a trashed post', responses: { '204': { description: 'Post deleted' } } } },
     '/posts/{id}/like': {
@@ -170,6 +182,7 @@ export const openApiDocument = {
       get: { summary: 'List conversation messages', responses: { '200': { description: 'Message list' } } },
       post: { summary: 'Send a conversation message', responses: { '201': { description: 'Message sent' } } },
     },
+    '/market/conversations/{id}/read': { post: { summary: 'Mark received conversation messages as read', responses: { '204': { description: 'Messages marked as read' } } } },
     '/market/items/{id}/restore': { post: { summary: 'Restore a trashed market item', responses: { '200': { description: 'Item restored' } } } },
     '/market/items/{id}/permanent': { delete: { summary: 'Permanently delete or tombstone a trashed item', responses: { '204': { description: 'Item purged' } } } },
     '/health': { get: { summary: 'Check API health', responses: { '200': { description: 'API is healthy' } } } },

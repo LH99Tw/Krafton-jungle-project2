@@ -1,17 +1,4 @@
-import { apiError, corsHeaders, getSession, json, requireCsrfSession, supabase } from './shared.ts'
-import { enrichPosts } from './post-features.ts'
-import { getPopularMarketItems } from './market/market.service.ts'
-
-const postDto = (post: Record<string, any>) => ({
-  id: post.id, url: `/post/${post.id}`, title: post.title,
-  excerpt: post.content.length > 160 ? `${post.content.slice(0, 160)}…` : post.content,
-  status: post.status,
-  category: post.category_id ? { id: post.category_id, name: post.category_name } : null,
-  viewCount: post.view_count,
-  author: { id: post.owner_id, nickname: post.author_nickname },
-  blog: { id: post.blog_id, name: post.blog_name, slug: post.blog_slug },
-  publishedAt: post.published_at, createdAt: post.created_at, updatedAt: post.updated_at,
-})
+import { apiError, corsHeaders, getSession, getSessionHash, json, requireCsrfSession, supabase, supabaseUrl } from './shared.ts'
 
 const bannerDto = (banner: Record<string, any>) => ({
   id: banner.id, eyebrow: banner.eyebrow, title: banner.title, description: banner.description,
@@ -22,48 +9,23 @@ const bannerDto = (banner: Record<string, any>) => ({
 
 const activeBanners = async () => {
   const now = new Date().toISOString()
-  const { data, error } = await supabase.from('home_banners').select('*').eq('is_active', true).lte('starts_at', now).or(`ends_at.is.null,ends_at.gt.${now}`).order('position').order('id').limit(4)
-  return { data: (data ?? []).map(bannerDto), error }
+  const { data, error } = await supabase.from('home_banners').select('*').eq('is_active', true).lte('starts_at', now)
+    .or(`ends_at.is.null,ends_at.gt.${now}`).order('position').order('id')
+  return { data: (data ?? []).map((banner: Record<string, any>) => bannerDto(banner)), error }
 }
 
 export const getHome = async (request: Request) => {
-  const since = new Date(Date.now() - 30 * 86400000).toISOString()
-  const [bannerResult, popularResult, recentResult, blogsResult, marketResult] = await Promise.all([
-    activeBanners(),
-    supabase.from('post_details').select('*').eq('status', 'PUBLISHED').is('deleted_at', null).order('view_count', { ascending: false }).order('published_at', { ascending: false }).limit(30),
-    supabase.from('post_details').select('*').eq('status', 'PUBLISHED').is('deleted_at', null).gte('published_at', since).order('published_at', { ascending: false }).limit(30),
-    supabase.from('blogs').select('*').order('created_at', { ascending: false }).limit(16),
-    getPopularMarketItems(request, 5),
-  ])
-  if (bannerResult.error || popularResult.error || recentResult.error || blogsResult.error || marketResult.error) return apiError(500, 'INTERNAL_SERVER_ERROR', '홈 콘텐츠를 불러오지 못했습니다.')
-  const popular = await enrichPosts(request, (popularResult.data ?? []).map(postDto))
-  const recent = await enrichPosts(request, (recentResult.data ?? []).map(postDto))
-  const score = (post: Record<string, any>) => post.viewCount + post.likeCount * 3 + post.commentCount * 4 + post.bookmarkCount * 2
-  const trending = [...recent].sort((a, b) => score(b) - score(a) || Date.parse(b.publishedAt ?? '') - Date.parse(a.publishedAt ?? ''))
-  const blogIds = (blogsResult.data ?? []).map((blog: Record<string, any>) => blog.id)
-  const session = await getSession(request)
-  const [subscriptionResult, mySubscriptionResult] = await Promise.all([
-    blogIds.length ? supabase.from('subscriptions').select('blog_id').in('blog_id', blogIds) : Promise.resolve({ data: [], error: null }),
-    session?.user_id && blogIds.length ? supabase.from('subscriptions').select('blog_id').eq('user_id', session.user_id).in('blog_id', blogIds) : Promise.resolve({ data: [], error: null }),
-  ])
-  if (subscriptionResult.error || mySubscriptionResult.error) return apiError(500, 'INTERNAL_SERVER_ERROR', '크리에이터 구독 정보를 불러오지 못했습니다.')
-  const subscriptions = subscriptionResult.data ?? []
-  const subscribedBlogIds = new Set((mySubscriptionResult.data ?? []).map((item: Record<string, any>) => item.blog_id))
-  const creators = await Promise.all((blogsResult.data ?? []).map(async (blog: Record<string, any>) => {
-    const { data: owner } = await supabase.from('users').select('id,nickname').eq('id', blog.owner_id).single()
-    const posts = popular.filter((post) => post.blog.id === blog.id).slice(0, 2)
-    return { blog: { id: blog.id, name: blog.name, slug: blog.slug, owner }, subscriberCount: subscriptions.filter((item: Record<string, any>) => item.blog_id === blog.id).length, isSubscribed: subscribedBlogIds.has(blog.id), posts }
-  }))
-  creators.sort((a, b) => b.subscriberCount - a.subscriberCount)
-  return json({ data: {
-    banners: bannerResult.data,
-    popularPosts: popular.slice(0, 5),
-    categoryPosts: popular.slice(0, 14),
-    trendingPosts: trending.slice(0, 5),
-    latestPosts: recent.slice(0, 5),
-    marketItems: marketResult.data,
-    creators: creators.filter((creator) => creator.posts.length).slice(0, 4),
-  } })
+  const sessionHash = await getSessionHash(request)
+  const storageBase = `${supabaseUrl}/storage/v1/object/public/market-item-images`
+  const { data, error } = await supabase.rpc('get_home_payload', {
+    p_session_hash: sessionHash,
+    p_storage_base: storageBase,
+  })
+  if (error) {
+    console.error('Failed to read home payload', error)
+    return apiError(500, 'INTERNAL_SERVER_ERROR', '홈 콘텐츠를 불러오지 못했습니다.')
+  }
+  return json({ data })
 }
 
 const requireAdmin = async (request: Request, csrf = false) => {

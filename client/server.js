@@ -1,10 +1,16 @@
-const http = require('node:http')
-const fs = require('node:fs')
-const path = require('node:path')
-const { renderHtml } = require('./lib/render-layout')
+import http from 'node:http'
+import https from 'node:https'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { renderHtml } from './lib/render-layout.js'
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = __dirname
 const port = Number(process.env.PORT || 5173)
+const apiTarget = new URL(
+  process.env.API_PROXY_TARGET || 'https://npuyxiqjowqeewesmctq.supabase.co/functions/v1',
+)
 const mime = {
   '.css': 'text/css; charset=utf-8',
   '.html': 'text/html; charset=utf-8',
@@ -21,19 +27,21 @@ const mime = {
 http.createServer((request, response) => {
   const pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname)
   if (pathname.startsWith('/api/')) {
-    const proxy = http.request({
-      hostname: '127.0.0.1',
-      port: 54321,
-      path: `/functions/v1${request.url}`,
+    const transport = apiTarget.protocol === 'https:' ? https : http
+    const proxy = transport.request({
+      protocol: apiTarget.protocol,
+      hostname: apiTarget.hostname,
+      port: apiTarget.port || undefined,
+      path: `${apiTarget.pathname.replace(/\/$/, '')}${request.url}`,
       method: request.method,
-      headers: { ...request.headers, host: '127.0.0.1:54321' },
+      headers: { ...request.headers, host: apiTarget.host },
     }, (upstream) => {
       response.writeHead(upstream.statusCode || 502, upstream.headers)
       upstream.pipe(response)
     })
     proxy.on('error', () => {
       response.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' })
-      response.end(JSON.stringify({ error: { message: '로컬 API 서버에 연결할 수 없습니다.' } }))
+      response.end(JSON.stringify({ error: { message: '운영 API 서버에 연결할 수 없습니다.' } }))
     })
     request.pipe(proxy)
     return
