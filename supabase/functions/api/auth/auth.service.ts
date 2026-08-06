@@ -5,7 +5,7 @@ import {
 } from '../shared.ts'
 import {
   createUser, deleteSession, findCurrentBlog, findCurrentUser, findUserByEmail,
-  rotateUserSession, saveCsrfSession, saveUserInterests,
+  rotateUserSession, saveCsrfSession, saveThirdPartyConsent, saveUserInterests,
 } from './auth.repository.ts'
 
 type SignupBody = { email?: unknown; nickname?: unknown; password?: unknown; passwordConfirm?: unknown; interests?: unknown }
@@ -57,7 +57,7 @@ export const signup = async (request: Request) => {
   const sessionId = readCookie(request, 'session_id')
   const csrfToken = request.headers.get('x-csrf-token')
   if (!sessionId || !csrfToken) return apiError(403, 'CSRF_TOKEN_INVALID', 'CSRF 토큰이 유효하지 않습니다.')
-  const { data, error } = await createUser({ email, nickname, csrfToken, sessionHash: await sha256(sessionId), passwordHash: await bcrypt.hash(password, 12) })
+  const { data, error } = await createUser({ email, nickname, interests, csrfToken, sessionHash: await sha256(sessionId), passwordHash: await bcrypt.hash(password, 12) })
   if (error) {
     if (error.code === '23505') return apiError(409, 'EMAIL_ALREADY_EXISTS', '이미 가입된 이메일입니다.')
     if (error.message?.includes('CSRF_TOKEN_INVALID')) return apiError(403, 'CSRF_TOKEN_INVALID', 'CSRF 토큰이 유효하지 않습니다.')
@@ -65,8 +65,6 @@ export const signup = async (request: Request) => {
   }
   const user = data?.[0]
   if (!user) return apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
-  const { error: interestsError } = await saveUserInterests(user.id, interests)
-  if (interestsError) return apiError(500, 'INTERNAL_SERVER_ERROR', '관심분야를 저장하지 못했습니다.')
   return json({ data: { user: { id: user.id, email: user.email, nickname: user.nickname, interests, createdAt: user.created_at, updatedAt: user.updated_at }, message: '회원가입이 완료되었습니다.' } }, 201, { 'Set-Cookie': sessionCookie(sessionId) })
 }
 
@@ -91,7 +89,17 @@ export const login = async (request: Request) => {
     : apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
   const { data: currentUser } = await findCurrentUser(user.id)
   const { data: blog } = await findCurrentBlog(user.id)
-  return json({ data: { user: { id: user.id, email: user.email, nickname: user.nickname, interests: currentUser?.interests ?? [] }, blog: blog ?? null, message: '로그인되었습니다.' } }, 200, { 'Set-Cookie': sessionCookie(newSessionId) })
+  return json({ data: { user: { id: user.id, email: user.email, nickname: user.nickname, interests: currentUser?.interests ?? [] }, blog: blog ?? null, requiresThirdPartyConsent: !user.third_party_consent_decided_at, message: '로그인되었습니다.' } }, 200, { 'Set-Cookie': sessionCookie(newSessionId) })
+}
+
+export const decideThirdPartyConsent = async (request: Request) => {
+  const session = await requireCsrfSession(request)
+  if (!session?.user_id) return apiError(session ? 401 : 403, session ? 'UNAUTHENTICATED' : 'CSRF_TOKEN_INVALID', session ? '로그인이 필요합니다.' : 'CSRF 토큰이 유효하지 않습니다.')
+  const body = await request.json().catch(() => null) as { accepted?: unknown } | null
+  if (!body || typeof body.accepted !== 'boolean') return apiError(400, 'VALIDATION_ERROR', '동의 여부를 확인해 주세요.')
+  const { error } = await saveThirdPartyConsent(session.user_id, body.accepted)
+  if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '동의 정보를 저장하지 못했습니다.')
+  return new Response(null, { status: 204, headers: corsHeaders })
 }
 
 export const logout = async (request: Request) => {
@@ -111,7 +119,7 @@ export const me = async (request: Request) => {
   if (error || !user) return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
   const { data: blog, error: blogError } = await findCurrentBlog(user.id)
   if (blogError && blogError.code !== '42P01') return apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
-  return json({ data: { user: { id: user.id, email: user.email, nickname: user.nickname, interests: user.interests ?? [], createdAt: user.created_at, updatedAt: user.updated_at }, blog: blog ?? null } })
+  return json({ data: { user: { id: user.id, email: user.email, nickname: user.nickname, interests: user.interests ?? [], createdAt: user.created_at, updatedAt: user.updated_at }, requiresThirdPartyConsent: !user.third_party_consent_decided_at, blog: blog ?? null } })
 }
 
 export const updateInterests = async (request: Request) => {
