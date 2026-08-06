@@ -324,10 +324,17 @@ function StoryCreator({ page, onPage, go }: { page: number; onPage: (page: numbe
 }
 
 function ShoppingShortcutModule({ go, user, onLogin }: { go: (to: string) => void; user: User | null; onLogin: () => void }) {
-  const openInterests = () => user ? go('/blog/me/manage/settings') : onLogin()
+  const interests = [...new Set((user?.interests ?? []).map((interest) => interest.trim()).filter(Boolean))].slice(0, 8)
+  const searchInterests = () => {
+    if (!user) return onLogin()
+    if (!interests.length) return go('/blog/me/manage/interests')
+    const params = new URLSearchParams({ tab: 'posts' })
+    interests.forEach((interest) => params.append('interest', interest))
+    go(`/search?${params.toString()}`)
+  }
   const openWishlist = () => user ? go('/market/wishlist') : onLogin()
   const shortcuts = [
-    ['관심카테고리', '취향 설정', Tags, openInterests],
+    ['관심카테고리', interests.length ? `${interests.length}개 관심사 검색` : '관심사 검색', Tags, searchInterests],
     ['최근 본 상품', '다시 보기', Clock3, () => go('/market/recent')],
     ['장바구니', '담은 상품', ShoppingCart, () => go('/market/cart')],
     ['찜', '좋아한 상품', Heart, openWishlist],
@@ -932,13 +939,53 @@ function SearchPage({ go, user, onLogin }: { go: (to: string) => void; user: Use
   const params = new URLSearchParams(window.location.search)
   const [query, setQuery] = useState(params.get('q') ?? '')
   const [tab, setTab] = useState<'posts' | 'market' | 'blogs'>((['posts', 'market', 'blogs'].includes(params.get('tab') ?? '') ? params.get('tab') : 'posts') as 'posts' | 'market' | 'blogs')
+  const interestTerms = [...new Set(params.getAll('interest').map((term) => term.trim()).filter(Boolean))].slice(0, 8)
+  const interestKey = interestTerms.join('\u001f')
   const [posts, setPosts] = useState<Post[]>([])
   const [market, setMarket] = useState<MarketItem[]>([])
   const [blogs, setBlogs] = useState<SearchBlog[]>([])
   const [error, setError] = useState('')
-  useEffect(() => { Promise.allSettled([request<Post[]>(`/posts?scope=public&q=${encodeURIComponent(query)}&sort=latest&page=1&size=20`), request<MarketItem[]>(`/market/items?q=${encodeURIComponent(query)}&sort=latest&page=1&size=20`), request<SearchBlog[]>(`/blogs?q=${encodeURIComponent(query)}&page=1&size=20`)]).then(([postResult, marketResult, blogResult]) => { setPosts(postResult.status === 'fulfilled' ? postResult.value ?? [] : []); setMarket(marketResult.status === 'fulfilled' ? marketResult.value ?? [] : sampleMarketItems); setBlogs(blogResult.status === 'fulfilled' ? blogResult.value ?? [] : []); const failed = [postResult, marketResult, blogResult].find((result) => result.status === 'rejected'); setError(failed?.status === 'rejected' ? String(failed.reason?.message ?? failed.reason) : '') }) }, [query])
-  const submit = (event: FormEvent) => { event.preventDefault(); go(`/search?tab=${tab}&q=${encodeURIComponent(query.trim())}`) }
-  return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="page-main"><div className="section-inner"><div className="page-intro"><p className="eyebrow">INTEGRATED SEARCH</p><h1>‘{query}’ 검색 결과</h1><form className="feed-search" onSubmit={submit}><Search size={18} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="글, 마켓, 블로그 검색" /></form></div><div className="manage-tabs"><div><button className={tab === 'posts' ? 'active' : ''} onClick={() => setTab('posts')}>글 <em>{posts.length}</em></button><button className={tab === 'market' ? 'active' : ''} onClick={() => setTab('market')}>마켓 <em>{market.length}</em></button><button className={tab === 'blogs' ? 'active' : ''} onClick={() => setTab('blogs')}>블로그 <em>{blogs.length}</em></button></div></div>{error && <p className="form-error">일부 검색 결과를 불러오지 못했습니다. {error}</p>}<div className="feed-list">{tab === 'posts' ? posts.map((post) => <PostRow key={post.id} post={post} go={go} />) : tab === 'market' ? market.map((item) => <MarketRow key={item.id} item={item} go={go} />) : blogs.map((blog) => <article className="feed-row" key={blog.id}><div><p className="post-blog">BLOG</p><h2><button onClick={() => go(`/blog/${blog.slug}`)}>{blog.name}</button></h2><p className="excerpt">{blog.description || '블로그 소개가 없습니다.'}</p><small>{blog.owner?.nickname || '블로거'} · /blog/{blog.slug}</small></div></article>)}</div></div></main></Shell>
+  const [searching, setSearching] = useState(false)
+  const rankMerged = <T extends { id: number | string },>(groups: T[][]) => {
+    const merged = new Map<string, { item: T; matches: number; order: number }>()
+    let order = 0
+    groups.forEach((items) => items.forEach((item) => {
+      const key = String(item.id)
+      const current = merged.get(key)
+      if (current) current.matches += 1
+      else merged.set(key, { item, matches: 1, order: order++ })
+    }))
+    return [...merged.values()].sort((a, b) => b.matches - a.matches || a.order - b.order).map(({ item }) => item)
+  }
+  useEffect(() => {
+    let cancelled = false
+    const terms = interestTerms.length ? interestTerms : query.trim() ? [query.trim()] : []
+    const load = async () => {
+      setError('')
+      if (!terms.length) { setPosts([]); setMarket([]); setBlogs([]); setSearching(false); return }
+      setSearching(true)
+      const endpoint = (term: string) => tab === 'posts'
+        ? `/posts?scope=public&${interestTerms.length ? `interest=${encodeURIComponent(term)}${query.trim() ? `&q=${encodeURIComponent(query.trim())}` : ''}` : `q=${encodeURIComponent(term)}`}&sort=latest&page=1&size=20`
+        : tab === 'market'
+          ? `/market/items?q=${encodeURIComponent(interestTerms.length ? `#${term}` : term)}&sort=latest&page=1&size=20`
+          : `/blogs?q=${encodeURIComponent(term)}&page=1&size=20`
+      const results = await Promise.allSettled(terms.map((term) => request<Post[] | MarketItem[] | SearchBlog[]>(endpoint(term))))
+      if (cancelled) return
+      setSearching(false)
+      const fulfilled = results.filter((result): result is PromiseFulfilledResult<Post[] | MarketItem[] | SearchBlog[]> => result.status === 'fulfilled').map((result) => result.value ?? [])
+      if (tab === 'posts') setPosts(rankMerged(fulfilled as Post[][]))
+      else if (tab === 'market') setMarket(rankMerged(fulfilled as MarketItem[][]))
+      else setBlogs(rankMerged(fulfilled as SearchBlog[][]))
+      const failed = results.find((result) => result.status === 'rejected')
+      if (failed?.status === 'rejected') setError(String(failed.reason?.message ?? failed.reason))
+    }
+    void load()
+    return () => { cancelled = true }
+  }, [query, tab, interestKey])
+  const submit = (event: FormEvent) => { event.preventDefault(); const nextParams = new URLSearchParams({ tab }); interestTerms.forEach((term) => nextParams.append('interest', term)); if (query.trim()) nextParams.set('q', query.trim()); go(`/search?${nextParams.toString()}`) }
+  const selectTab = (next: 'posts' | 'market' | 'blogs') => { setTab(next); const nextParams = new URLSearchParams(); nextParams.set('tab', next); interestTerms.forEach((term) => nextParams.append('interest', term)); if (query.trim()) nextParams.set('q', query.trim()); go(`/search?${nextParams.toString()}`) }
+  const activeCount = tab === 'posts' ? posts.length : tab === 'market' ? market.length : blogs.length
+  return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="page-main"><div className="section-inner"><div className="page-intro"><p className="eyebrow">INTEGRATED SEARCH</p><h1>{interestTerms.length ? '내 관심사 검색 결과' : `‘${query}’ 검색 결과`}</h1>{interestTerms.length > 0 && <div className="interest-search-terms" aria-label="검색에 사용된 관심사">{interestTerms.map((term) => <span key={term}>#{term}</span>)}</div>}<form className="feed-search" onSubmit={submit}><Search size={18} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="글, 마켓, 블로그 검색" /></form></div><div className="manage-tabs"><div><button className={tab === 'posts' ? 'active' : ''} onClick={() => selectTab('posts')}>글 <em>{posts.length}</em></button><button className={tab === 'market' ? 'active' : ''} onClick={() => selectTab('market')}>마켓 <em>{market.length}</em></button><button className={tab === 'blogs' ? 'active' : ''} onClick={() => selectTab('blogs')}>블로그 <em>{blogs.length}</em></button></div></div>{error && <p className="form-error">일부 검색 결과를 불러오지 못했습니다. {error}</p>}{searching ? <ContentSkeleton rows={4} /> : activeCount ? <div className="feed-list">{tab === 'posts' ? posts.map((post) => <PostRow key={post.id} post={post} go={go} />) : tab === 'market' ? market.map((item) => <MarketRow key={item.id} item={item} go={go} />) : blogs.map((blog) => <article className="feed-row" key={blog.id}><div><p className="post-blog">BLOG</p><h2><button onClick={() => go(`/blog/${blog.slug}`)}>{blog.name}</button></h2><p className="excerpt">{blog.description || '블로그 소개가 없습니다.'}</p><small>{blog.owner?.nickname || '블로거'} · /blog/{blog.slug}</small></div></article>)}</div> : <Empty text="관심사와 일치하는 결과가 없습니다." detail="다른 검색어를 입력하거나 관심분야를 변경해보세요." />}</div></main></Shell>
 }
 
 function StaticHub({ kind, go, user, onLogin }: { kind: 'skin' | 'ai'; go: (to: string) => void; user: User | null; onLogin: () => void }) {

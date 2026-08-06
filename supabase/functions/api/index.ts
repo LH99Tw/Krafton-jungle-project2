@@ -101,6 +101,7 @@ const listBlogs = async (url: URL) => {
   const page = positiveInteger(url.searchParams.get('page'), 1)
   const size = positiveInteger(url.searchParams.get('size'), 10, 50)
   const q = (url.searchParams.get('q') ?? '').trim()
+  const interest = (url.searchParams.get('interest') ?? '').trim()
   if (!page || !size) return apiError(400, 'VALIDATION_ERROR', '페이지 값을 확인해 주세요.')
 
   let query = supabase.from('blogs').select('*', { count: 'exact' })
@@ -232,6 +233,7 @@ const listPosts = async (request: Request, url: URL) => {
     p_page: page,
     p_size: size,
     p_query: q,
+    p_interest: interest,
     p_status: status,
     p_deleted: deleted,
     p_category_id: categoryId,
