@@ -177,7 +177,7 @@ export const openApiDocument = {
       delete: { summary: 'Remove my market item like idempotently', responses: { '204': { description: 'Like inactive' }, '401': { description: 'Login required' } } },
     },
     '/market/items/{id}/conversations': { post: { summary: 'Start or reuse a buyer conversation', responses: { '201': { description: 'Conversation' } } } },
-    '/market/conversations': { get: { summary: 'List my market conversations', responses: { '200': { description: 'Conversation list' } } } },
+    '/market/conversations': { get: { summary: 'List my market conversations through the participant-scoped chat RPC', responses: { '200': { description: 'Conversation list' } } } },
     '/market/conversations/{id}/messages': {
       get: { summary: 'List conversation messages', responses: { '200': { description: 'Message list' } } },
       post: { summary: 'Send a conversation message', responses: { '201': { description: 'Message sent' } } },
