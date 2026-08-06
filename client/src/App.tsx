@@ -349,10 +349,7 @@ function Auth({ mode, go, onSuccess }: { mode: 'login' | 'signup'; go: (to: stri
 }
 
 function Agreement({ go }: { go: (to: string) => void }) {
-  const decide = (accepted: boolean) => {
-    sessionStorage.setItem('tistory-third-party-consent', accepted ? 'accepted' : 'declined')
-    go('/')
-  }
+  const decide = () => go('/blog/new')
   return <main id="main" className="agreement-page">
     <section className="agreement-panel">
       <h1>[선택] 티스토리 개인정보 제 3자 제공동의</h1>
@@ -363,9 +360,15 @@ function Agreement({ go }: { go: (to: string) => void }) {
         <tr><th>보유 및 이용 기간</th><td><strong>동의 철회 또는 회원 탈퇴 시 지체없이 파기</strong></td></tr>
       </tbody></table>
       <p>개인정보 제공에 대한 동의를 거부할 권리가 있으며, 동의를 거부하더라도 티스토리 서비스를 이용할 수 있습니다.<br />자세한 내용은 <button>개인정보처리방침</button>을 확인해주세요.</p>
-      <div className="agreement-actions"><button onClick={() => decide(false)}>동의안함</button><button onClick={() => decide(true)}>동의</button></div>
+      <div className="agreement-actions"><button onClick={decide}>동의안함</button><button onClick={decide}>동의</button></div>
     </section>
   </main>
+}
+
+function AgreementGate({ go, hasBlog }: { go: (to: string) => void; hasBlog: boolean | null }) {
+  useEffect(() => { if (hasBlog) go('/') }, [go, hasBlog])
+  if (hasBlog === null || hasBlog) return null
+  return <Agreement go={go} />
 }
 
 function NoticeArticle({ go }: { go: (to: string) => void }) {
@@ -473,15 +476,27 @@ function StaticHub({ kind, go, user, onLogin }: { kind: 'skin' | 'forum'; go: (t
 function App() {
   const { path, go } = useRoute()
   const [user, setUser] = useState<User | null>(null)
+  const [hasBlog, setHasBlog] = useState<boolean | null>(null)
   const [loginOpen, setLoginOpen] = useState(false)
-  useEffect(() => { request<{ user: User }>('/me').then((data) => setUser(data.user)).catch(() => {}) }, [])
+  useEffect(() => {
+    request<{ user: User; blog: Blog | null }>('/me')
+      .then((data) => { setUser(data.user); setHasBlog(Boolean(data.blog)) })
+      .catch(() => setHasBlog(false))
+  }, [])
   const onLogin = () => setLoginOpen(true)
+  const finishLogin = async (nextUser: User) => {
+    setUser(nextUser)
+    const current = await request<{ user: User; blog: Blog | null }>('/me').catch(() => null)
+    const blogExists = Boolean(current?.blog)
+    setHasBlog(blogExists)
+    go(blogExists ? '/' : '/agreement/third-party-consent')
+  }
   let content: React.ReactNode
-  if (path === '/login') content = <Auth mode="login" go={go} onSuccess={(nextUser) => { setUser(nextUser); go('/agreement/third-party-consent') }} />
-  else if (path === '/signup') content = <Auth mode="signup" go={go} onSuccess={(nextUser) => { setUser(nextUser); go('/blog/new') }} />
-  else if (path === '/agreement/third-party-consent') content = user ? <Agreement go={go} /> : <Auth mode="login" go={go} onSuccess={(nextUser) => { setUser(nextUser); go('/agreement/third-party-consent') }} />
+  if (path === '/login') content = <Auth mode="login" go={go} onSuccess={finishLogin} />
+  else if (path === '/signup') content = <Auth mode="signup" go={go} onSuccess={(nextUser) => { setUser(nextUser); setHasBlog(false); go('/agreement/third-party-consent') }} />
+  else if (path === '/agreement/third-party-consent') content = user ? <AgreementGate go={go} hasBlog={hasBlog} /> : <Auth mode="login" go={go} onSuccess={finishLogin} />
   else if (path === '/notice/2702') content = <NoticeArticle go={go} />
-  else if (path === '/blog/new') content = <BlogSetup go={go} onDone={(blog) => go('/blog/' + blog.slug + '/manage')} />
+  else if (path === '/blog/new') content = <BlogSetup go={go} onDone={(blog) => { setHasBlog(true); go('/blog/' + blog.slug + '/manage') }} />
   else if (path === '/feed') content = <Feed go={go} user={user} onLogin={onLogin} />
   else if (path === '/search') content = <SearchPage go={go} user={user} onLogin={onLogin} />
   else if (path === '/market/new') content = user ? <MarketEditor go={go} /> : <Auth mode="login" go={go} onSuccess={(nextUser) => { setUser(nextUser); go('/market/new') }} />
