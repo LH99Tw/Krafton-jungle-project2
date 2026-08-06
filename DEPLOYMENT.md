@@ -28,6 +28,8 @@ Supabase Dashboard → Edge Functions → Secrets에 다음 값을 등록합니�
 
 - `FRONTEND_ORIGIN`: 실제 Vercel 배포 주소
 - `SESSION_COOKIE_SECURE`: production에서는 `true`
+- `GROQ_API_KEY`: AI 캐릭터 자유 대화에 사용할 Groq API 키
+- `GROQ_MODEL`: 선택 사항. 기본값은 `llama-3.1-8b-instant`
 
 ## 로컬 실행
 

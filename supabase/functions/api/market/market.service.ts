@@ -1,5 +1,6 @@
 import { apiError, corsHeaders, getSession, getSessionHash, json, requireCsrfSession, supabase, supabaseUrl } from '../shared.ts'
 import { findMarketItem, findSeller, marketItemDetailFields, marketItemFields } from './market.repository.ts'
+import { recordAiMissionActivity } from '../ai.ts'
 
 const conditions = ['NEW', 'LIKE_NEW', 'USED'] as const
 const statuses = ['SELLING', 'RESERVED', 'SOLD'] as const
@@ -191,7 +192,12 @@ export const readMarketItem = async (request: Request, id: number) => {
   const { data, error } = await findMarketItem(id)
   if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '상품을 불러오지 못했습니다.')
   if (!data || data.deleted_at) return apiError(404, 'NOT_FOUND', '상품을 찾을 수 없습니다.')
-  try { return json({ data: (await marketDtos(request, [data]))[0] }) }
+  try {
+    const session = await getSession(request)
+    const item = (await marketDtos(request, [data], session?.user_id ?? null))[0]
+    if (session?.user_id) await recordAiMissionActivity(session.user_id, 'MARKET_DETAIL_VIEWED', { itemId: id })
+    return json({ data: item })
+  }
   catch (error) { return apiError(500, 'INTERNAL_SERVER_ERROR', '상품을 불러오지 못했습니다.') }
 }
 

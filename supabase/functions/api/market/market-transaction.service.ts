@@ -65,7 +65,8 @@ export const purchaseItem = async (request: Request, itemId: number) => {
     console.error('Failed to purchase market item', error)
     return apiError(500, 'INTERNAL_SERVER_ERROR', '구매를 처리하지 못했습니다.')
   }
-  return json({ data: { orderId: data.order_id, balance: data.buyer_balance } }, 201)
+  const purchase = data as Record<string, any>
+  return json({ data: { orderId: purchase.order_id, balance: purchase.buyer_balance } }, 201)
 }
 
 export const listOrders = async (request: Request, url: URL) => {
