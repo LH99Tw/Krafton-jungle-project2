@@ -182,6 +182,7 @@ export const openApiDocument = {
       get: { summary: 'List conversation messages', responses: { '200': { description: 'Message list' } } },
       post: { summary: 'Send a conversation message', responses: { '201': { description: 'Message sent' } } },
     },
+    '/market/conversations/{id}/read': { post: { summary: 'Mark received conversation messages as read', responses: { '204': { description: 'Messages marked as read' } } } },
     '/market/items/{id}/restore': { post: { summary: 'Restore a trashed market item', responses: { '200': { description: 'Item restored' } } } },
     '/market/items/{id}/permanent': { delete: { summary: 'Permanently delete or tombstone a trashed item', responses: { '204': { description: 'Item purged' } } } },
     '/health': { get: { summary: 'Check API health', responses: { '200': { description: 'API is healthy' } } } },

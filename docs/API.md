@@ -53,9 +53,11 @@
 
 ## 마켓
 
-상품 CRUD·검색·휴지통, 상품 이미지 업로드, 상품별 채팅방, 메시지 조회·전송을 지원한다. 결제는 아직 지원하지 않는다. 이미지 업로드의 구현 계약은 [MARKET_IMAGE_UPLOAD_DESIGN.md](./MARKET_IMAGE_UPLOAD_DESIGN.md)를 따른다.
+상품 CRUD·검색·휴지통, 상품 이미지 업로드, 상품별 채팅방, 메시지 조회·전송·읽음 처리를 지원한다. 채팅함은 대화 목록을 5초, 열린 대화를 3초 간격으로 갱신하는 MVP 준실시간 방식이다. 이미지 업로드의 구현 계약은 [MARKET_IMAGE_UPLOAD_DESIGN.md](./MARKET_IMAGE_UPLOAD_DESIGN.md)를 따른다.
 
 - `GET /market/items`: `sort=latest|popular|price_asc|price_desc`. `popular`는 `likeCount DESC → createdAt DESC → id DESC` 순이다.
 - 목록·상세·홈의 상품 응답은 같은 DTO를 사용하며 `likeCount`, 현재 사용자 기준 `isLiked`를 포함한다. 비로그인은 `isLiked=false`다.
 - `POST /market/items/{id}/like`: 삭제되지 않은 `SELLING` 상품에 좋아요를 추가한다. 복합 키와 upsert로 중복 요청을 안전하게 처리한다.
 - `DELETE /market/items/{id}/like`: 자신의 좋아요를 제거하며 중복 호출에도 `204`를 반환한다.
+- `GET /market/conversations`: 구매자·판매자 공용 채팅 목록과 상대방, 상품, 마지막 메시지, 안 읽은 개수를 반환한다.
+- `POST /market/conversations/{id}/read`: 상대방이 보낸 안 읽은 메시지를 읽음 처리한다.

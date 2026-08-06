@@ -1,6 +1,6 @@
 import { apiError } from '../shared.ts'
 import { changeMarketItemLike, createMarketItem, deleteMarketItem, listMarketItems, permanentlyDeleteMarketItem, readMarketItem, replaceMarketItemImages, restoreMarketItem, updateMarketItem } from './market.service.ts'
-import { listConversations, listMessages, sendMessage, startConversation } from './market-chat.service.ts'
+import { listConversations, listMessages, markConversationRead, sendMessage, startConversation } from './market-chat.service.ts'
 import { chargeWallet, completeOrder, listOrders, purchaseItem, readWallet } from './market-transaction.service.ts'
 
 export const handleMarketRoute = (request: Request, path: string, url: URL) => {
@@ -14,6 +14,8 @@ export const handleMarketRoute = (request: Request, path: string, url: URL) => {
     return completeOrder(request, orderId)
   }
   if (path === '/market/conversations' && request.method === 'GET') return listConversations(request)
+  const conversationReadMatch = path.match(/^\/market\/conversations\/(\d+)\/read$/)
+  if (conversationReadMatch && request.method === 'POST') return markConversationRead(request, Number(conversationReadMatch[1]))
   const conversationMatch = path.match(/^\/market\/conversations\/(\d+)\/messages$/)
   if (conversationMatch) {
     const conversationId = Number(conversationMatch[1])
