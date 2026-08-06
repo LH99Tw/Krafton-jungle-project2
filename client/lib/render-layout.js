@@ -10,7 +10,7 @@ function readPartial(name) {
 
 function renderHeader(options) {
   const values = new Set(options.trim().split(/\s+/).filter(Boolean))
-  const activePage = ['home', 'feed', 'skin', 'forum'].find((page) => values.has(page))
+  const activePage = ['home', 'feed', 'skin', 'ai'].find((page) => values.has(page))
   const account = values.has('signed')
     ? '<a class="profile-trigger" href="./manage.html" aria-label="블로그 관리">정</a>'
     : '<a class="outline-button" href="./login.html">시작하기</a>'

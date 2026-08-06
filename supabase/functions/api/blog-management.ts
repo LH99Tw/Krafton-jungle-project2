@@ -3,7 +3,8 @@ import { apiError, corsHeaders, getSession, json, requireCsrfSession, supabase, 
 const imageUrl = (path?: string | null) => path ? `${supabaseUrl}/storage/v1/object/public/blog-profile-images/${path}` : null
 const blogJson = (blog: Record<string, any>) => ({
   id: blog.id, name: blog.name, slug: blog.slug, url: `/blog/${blog.slug}`,
-  description: blog.description, profileImageUrl: imageUrl(blog.profile_image_path),
+  description: blog.description, shopName: blog.shop_name, shopDescription: blog.shop_description,
+  profileImageUrl: imageUrl(blog.profile_image_path),
   createdAt: blog.created_at, updatedAt: blog.updated_at,
 })
 
@@ -34,6 +35,16 @@ const updateBlog = async (request: Request) => {
     const description = typeof body.description === 'string' ? body.description.trim() : ''
     if (description.length > 160) fields.description = '블로그 설명은 160자 이하로 입력해 주세요.'
     else values.description = description
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'shopName')) {
+    const shopName = typeof body.shopName === 'string' ? body.shopName.trim() : ''
+    if (!shopName || shopName.length > 40) fields.shopName = '상점 이름은 1~40자로 입력해 주세요.'
+    else values.shop_name = shopName
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'shopDescription')) {
+    const shopDescription = typeof body.shopDescription === 'string' ? body.shopDescription.trim() : ''
+    if (shopDescription.length > 120) fields.shopDescription = '상점 설명은 120자 이하로 입력해 주세요.'
+    else values.shop_description = shopDescription
   }
   if (!Object.keys(values).length && !Object.keys(fields).length) fields.request = '수정할 값을 입력해 주세요.'
   if (Object.keys(fields).length) return apiError(400, 'VALIDATION_ERROR', '입력값을 확인해 주세요.', fields)
@@ -153,6 +164,76 @@ const deleteCategory = async (request: Request, id: number) => {
   return new Response(null, { status: 204, headers: corsHeaders })
 }
 
+const listClassifications = async (request: Request) => {
+  const ownership = await ownedBlog(request)
+  if (ownership.error) return ownership.error
+  const { data, error } = await supabase.from('blog_classifications').select('*').eq('blog_id', ownership.blog.id).order('position')
+  if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '분류를 불러오지 못했습니다.')
+  const ids = (data ?? []).map((item: Record<string, any>) => item.id)
+  const { data: links } = ids.length ? await supabase.from('post_classifications').select('classification_id,post_id').in('classification_id', ids) : { data: [] }
+  const postIds = [...new Set((links ?? []).map((link: Record<string, any>) => link.post_id))]
+  const { data: posts } = postIds.length ? await supabase.from('posts').select('id,deleted_at').in('id', postIds) : { data: [] }
+  const postMap = new Map((posts ?? []).map((post: Record<string, any>) => [post.id, post]))
+  return json({ data: (data ?? []).map((item: Record<string, any>) => {
+    const linked = (links ?? []).filter((link: Record<string, any>) => link.classification_id === item.id).map((link: Record<string, any>) => postMap.get(link.post_id)).filter(Boolean) as Record<string, any>[]
+    return { id: item.id, name: item.name, position: item.position, source: item.source ?? 'CUSTOM', activePostCount: linked.filter((post) => !post.deleted_at).length, trashPostCount: linked.filter((post) => post.deleted_at).length }
+  }) })
+}
+
+const createClassification = async (request: Request) => {
+  const ownership = await ownedBlog(request, true)
+  if (ownership.error) return ownership.error
+  const body = await request.json().catch(() => null); const parsed = categoryName(body?.name)
+  const source = body?.source === 'INTEREST' ? 'INTEREST' : 'CUSTOM'
+  if (!parsed.name || parsed.name.length > 30) return apiError(400, 'VALIDATION_ERROR', '분류 이름은 1~30자로 입력해 주세요.')
+  if (source === 'INTEREST') {
+    const { data: owner } = await supabase.from('users').select('interests').eq('id', ownership.session!.user_id).maybeSingle()
+    const allowed = Array.isArray(owner?.interests) && owner.interests.some((interest: unknown) => typeof interest === 'string' && categoryName(interest).normalized === parsed.normalized)
+    if (!allowed) return apiError(400, 'VALIDATION_ERROR', '현재 관심분야에 포함된 항목만 관심분야 분류로 만들 수 있습니다.')
+  }
+  const { count } = await supabase.from('blog_classifications').select('id', { count: 'exact', head: true }).eq('blog_id', ownership.blog.id)
+  if ((count ?? 0) >= 30) return apiError(409, 'CLASSIFICATION_LIMIT_REACHED', '분류는 최대 30개까지 만들 수 있습니다.')
+  const { data, error } = await supabase.from('blog_classifications').insert({ blog_id: ownership.blog.id, name: parsed.name, normalized_name: parsed.normalized, position: count ?? 0, source }).select('*').single()
+  if (error?.code === '23505') return apiError(409, 'CLASSIFICATION_ALREADY_EXISTS', '같은 이름의 분류가 이미 있습니다.')
+  if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '분류를 추가하지 못했습니다.')
+  return json({ data: { id: data.id, name: data.name, position: data.position, source: data.source, activePostCount: 0, trashPostCount: 0 } }, 201)
+}
+
+const updateClassification = async (request: Request, id: number) => {
+  const ownership = await ownedBlog(request, true)
+  if (ownership.error) return ownership.error
+  const body = await request.json().catch(() => null); const parsed = categoryName(body?.name)
+  if (!parsed.name || parsed.name.length > 30) return apiError(400, 'VALIDATION_ERROR', '분류 이름은 1~30자로 입력해 주세요.')
+  const { data, error } = await supabase.from('blog_classifications').update({ name: parsed.name, normalized_name: parsed.normalized, updated_at: new Date().toISOString() }).eq('id', id).eq('blog_id', ownership.blog.id).select('*').maybeSingle()
+  if (error?.code === '23505') return apiError(409, 'CLASSIFICATION_ALREADY_EXISTS', '같은 이름의 분류가 이미 있습니다.')
+  if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '분류를 수정하지 못했습니다.')
+  return data ? json({ data: { id: data.id, name: data.name, position: data.position } }) : apiError(404, 'NOT_FOUND', '분류를 찾을 수 없습니다.')
+}
+
+const reorderClassifications = async (request: Request) => {
+  const ownership = await ownedBlog(request, true)
+  if (ownership.error) return ownership.error
+  const body = await request.json().catch(() => null)
+  const ids = Array.isArray(body?.classificationIds) ? body.classificationIds.filter((id: unknown) => Number.isSafeInteger(id)) as number[] : []
+  const { data } = await supabase.from('blog_classifications').select('id').eq('blog_id', ownership.blog.id).order('position')
+  const current = (data ?? []).map((item: Record<string, any>) => item.id)
+  if (ids.length !== current.length || new Set(ids).size !== ids.length || ids.some((id) => !current.includes(id))) return apiError(400, 'VALIDATION_ERROR', '현재 분류 전체 순서를 정확히 보내 주세요.')
+  for (let index = 0; index < current.length; index++) await supabase.from('blog_classifications').update({ position: 1000 + index }).eq('id', current[index])
+  for (let index = 0; index < ids.length; index++) await supabase.from('blog_classifications').update({ position: index, updated_at: new Date().toISOString() }).eq('id', ids[index])
+  return json({ data: { classificationIds: ids } })
+}
+
+const deleteClassification = async (request: Request, id: number) => {
+  const ownership = await ownedBlog(request, true)
+  if (ownership.error) return ownership.error
+  const { data: item } = await supabase.from('blog_classifications').select('id').eq('id', id).eq('blog_id', ownership.blog.id).maybeSingle()
+  if (!item) return apiError(404, 'NOT_FOUND', '분류를 찾을 수 없습니다.')
+  const { count } = await supabase.from('post_classifications').select('post_id', { count: 'exact', head: true }).eq('classification_id', id)
+  if (count) return apiError(409, 'CLASSIFICATION_IN_USE', `글 ${count}개가 사용 중인 분류는 삭제할 수 없습니다.`)
+  const { error } = await supabase.from('blog_classifications').delete().eq('id', id)
+  return error ? apiError(500, 'INTERNAL_SERVER_ERROR', '분류를 삭제하지 못했습니다.') : new Response(null, { status: 204, headers: corsHeaders })
+}
+
 const dashboard = async (request: Request) => {
   const ownership = await ownedBlog(request)
   if (ownership.error) return ownership.error
@@ -188,6 +269,14 @@ export const handleBlogManagementRoute = (request: Request, path: string) => {
     if (request.method === 'POST') return createCategory(request)
   }
   if (path === '/blogs/me/categories/order' && request.method === 'PATCH') return reorderCategories(request)
+  if (path === '/blogs/me/classifications') {
+    if (request.method === 'GET') return listClassifications(request)
+    if (request.method === 'POST') return createClassification(request)
+  }
+  if (path === '/blogs/me/classifications/order' && request.method === 'PATCH') return reorderClassifications(request)
+  const classificationMatch = path.match(/^\/blogs\/me\/classifications\/(\d+)$/)
+  if (classificationMatch && request.method === 'PATCH') return updateClassification(request, Number(classificationMatch[1]))
+  if (classificationMatch && request.method === 'DELETE') return deleteClassification(request, Number(classificationMatch[1]))
   const match = path.match(/^\/blogs\/me\/categories\/(\d+)$/)
   if (!match) return null
   const id = Number(match[1])

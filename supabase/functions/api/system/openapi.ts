@@ -65,13 +65,22 @@ export const openApiDocument = {
     },
     '/blogs/me/dashboard': { get: { summary: 'Get blog management dashboard', responses: { '200': { description: 'Counts and recent content' } } } },
     '/blogs/me/categories': {
-      get: { summary: 'List ordered blog categories and post counts', responses: { '200': { description: 'Category list' } } },
-      post: { summary: 'Create a blog category', responses: { '201': { description: 'Category created' }, '409': { description: 'Duplicate or category limit' } } },
+      get: { summary: 'List selectable blog categories and post counts', description: 'The post editor reads this list but never creates categories.', responses: { '200': { description: 'Category list' } } },
+      post: { summary: 'Create a blog category from blog management', responses: { '201': { description: 'Category created' }, '409': { description: 'Duplicate or category limit' } } },
     },
     '/blogs/me/categories/order': { patch: { summary: 'Replace complete category order', responses: { '200': { description: 'Order saved' } } } },
     '/blogs/me/categories/{id}': {
       patch: { summary: 'Rename a category', responses: { '200': { description: 'Category updated' } } },
       delete: { summary: 'Delete an unused category', responses: { '204': { description: 'Category deleted' }, '409': { description: 'CATEGORY_IN_USE' } } },
+    },
+    '/blogs/me/classifications': {
+      get: { summary: 'List writer classifications, source, and usage counts', responses: { '200': { description: 'Classification list with source INTEREST or CUSTOM' } } },
+      post: { summary: 'Create an interest or custom classification', description: 'INTEREST names must exist in the current user interests. CUSTOM classifications are created explicitly in the post editor.', requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['name', 'source'], properties: { name: { type: 'string', minLength: 1, maxLength: 30 }, source: { type: 'string', enum: ['INTEREST', 'CUSTOM'] } } } } } }, responses: { '201': { description: 'Classification created with source' }, '400': { description: 'Invalid name or interest source' } } },
+    },
+    '/blogs/me/classifications/order': { patch: { summary: 'Replace complete classification order', responses: { '200': { description: 'Order saved' } } } },
+    '/blogs/me/classifications/{id}': {
+      patch: { summary: 'Rename a classification', responses: { '200': { description: 'Classification updated' } } },
+      delete: { summary: 'Delete an unused classification', responses: { '204': { description: 'Classification deleted' }, '409': { description: 'CLASSIFICATION_IN_USE' } } },
     },
     '/blogs/{slug}': { get: {
       summary: 'Get a public creator blog, posts, and shop items',
@@ -83,8 +92,26 @@ export const openApiDocument = {
       delete: { summary: 'Unsubscribe from a blog', responses: { '204': { description: 'Unsubscribed' } } },
     },
     '/posts': {
-      get: { summary: 'List public or owned posts', responses: { '200': { description: 'Post list' } } },
-      post: { summary: 'Create a draft or published post', responses: { '201': { description: 'Post created' } } },
+      get: {
+        summary: 'List public, owned, followed, or bookmarked posts',
+        parameters: [
+          { name: 'scope', in: 'query', schema: { type: 'string', enum: ['public', 'mine', 'following', 'bookmarked'], default: 'public' } },
+          { name: 'sort', in: 'query', schema: { type: 'string', enum: ['recent', 'popular'], default: 'recent' } },
+        ],
+        responses: { '200': { description: 'Post list with category, classifications, reaction counts, and the current user state' } },
+      },
+      post: {
+        summary: 'Create a draft or published post',
+        requestBody: { required: true, content: { 'application/json': { schema: {
+          type: 'object', required: ['title', 'content', 'status'],
+          properties: {
+            title: { type: 'string', minLength: 1, maxLength: 120 }, content: { type: 'string', minLength: 1 },
+            status: { type: 'string', enum: ['DRAFT', 'PUBLISHED'] }, categoryId: { type: 'integer', nullable: true },
+            classificationIds: { type: 'array', maxItems: 5, uniqueItems: true, items: { type: 'integer' } },
+          },
+        } } } },
+        responses: { '201': { description: 'Post created' }, '400': { description: 'Invalid category or classifications' } },
+      },
     },
     '/posts/{id}': {
       get: { summary: 'Read a post', responses: { '200': { description: 'Post detail' } } },
@@ -93,6 +120,52 @@ export const openApiDocument = {
     },
     '/posts/{id}/restore': { post: { summary: 'Restore a trashed post', responses: { '200': { description: 'Post restored' } } } },
     '/posts/{id}/permanent': { delete: { summary: 'Permanently delete a trashed post', responses: { '204': { description: 'Post deleted' } } } },
+    '/posts/{id}/like': {
+      post: { summary: 'Like a published post', responses: { '201': { description: 'Liked' } } },
+      delete: { summary: 'Remove my post like', responses: { '204': { description: 'Like removed' } } },
+    },
+    '/posts/{id}/bookmark': {
+      post: { summary: 'Bookmark a published post', responses: { '201': { description: 'Bookmarked' } } },
+      delete: { summary: 'Remove my post bookmark', responses: { '204': { description: 'Bookmark removed' } } },
+    },
+    '/posts/{id}/comments': {
+      get: { summary: 'List comments and one-level replies', responses: { '200': { description: 'Comment list' } } },
+      post: { summary: 'Create a comment or one-level reply', responses: { '201': { description: 'Comment created' } } },
+    },
+    '/comments/{id}': {
+      patch: { summary: 'Edit my comment', responses: { '200': { description: 'Comment updated' } } },
+      delete: { summary: 'Delete or tombstone my comment', responses: { '204': { description: 'Comment deleted' } } },
+    },
+    '/home': { get: { summary: 'Get banners and ranked home modules', description: 'Includes marketItems: up to five public SELLING items ordered by likeCount DESC, createdAt DESC, id DESC. Creator entries include subscriberCount, current-user isSubscribed, and enriched popular posts.', responses: { '200': { description: 'Home payload with marketItems' } } } },
+    '/home/banners': { get: { summary: 'List active scheduled home banners', responses: { '200': { description: 'Active banners' } } } },
+    '/admin/home-banners': {
+      get: { summary: 'List every home banner as an operator', responses: { '200': { description: 'Banner list' }, '403': { description: 'Admin required' } } },
+      post: { summary: 'Create a scheduled home banner', responses: { '201': { description: 'Banner created' }, '403': { description: 'Admin required' } } },
+    },
+    '/admin/home-banners/{id}': {
+      patch: { summary: 'Update a scheduled home banner', responses: { '200': { description: 'Banner updated' } } },
+      delete: { summary: 'Delete a home banner', responses: { '204': { description: 'Banner deleted' } } },
+    },
+    '/market/items': {
+      get: { summary: 'List and search market items', description: 'Each item includes likeCount and current-user isLiked.', parameters: [{ name: 'sort', in: 'query', schema: { type: 'string', enum: ['latest', 'popular', 'price_asc', 'price_desc'], default: 'latest' }, description: 'popular orders by likeCount DESC, createdAt DESC, id DESC.' }], responses: { '200': { description: 'Market item list' } } },
+      post: { summary: 'Create a market item', responses: { '201': { description: 'Market item created' } } },
+    },
+    '/market/items/{id}': {
+      get: { summary: 'Read a market item', responses: { '200': { description: 'Market item' } } },
+      patch: { summary: 'Update an owned market item', responses: { '200': { description: 'Market item updated' } } },
+      delete: { summary: 'Move an owned market item to trash', responses: { '204': { description: 'Market item moved to trash' } } },
+    },
+    '/market/items/{id}/images': { put: { summary: 'Replace 1-5 owned market item WebP images', responses: { '200': { description: 'Images replaced' }, '400': { description: 'Invalid image count, type, or size' } } } },
+    '/market/items/{id}/like': {
+      post: { summary: 'Like a public SELLING market item', responses: { '201': { description: 'Like active' }, '401': { description: 'Login required' }, '404': { description: 'Selling item not found' } } },
+      delete: { summary: 'Remove my market item like idempotently', responses: { '204': { description: 'Like inactive' }, '401': { description: 'Login required' } } },
+    },
+    '/market/items/{id}/conversations': { post: { summary: 'Start or reuse a buyer conversation', responses: { '201': { description: 'Conversation' } } } },
+    '/market/conversations': { get: { summary: 'List my market conversations', responses: { '200': { description: 'Conversation list' } } } },
+    '/market/conversations/{id}/messages': {
+      get: { summary: 'List conversation messages', responses: { '200': { description: 'Message list' } } },
+      post: { summary: 'Send a conversation message', responses: { '201': { description: 'Message sent' } } },
+    },
     '/market/items/{id}/restore': { post: { summary: 'Restore a trashed market item', responses: { '200': { description: 'Item restored' } } } },
     '/market/items/{id}/permanent': { delete: { summary: 'Permanently delete or tombstone a trashed item', responses: { '204': { description: 'Item purged' } } } },
     '/health': { get: { summary: 'Check API health', responses: { '200': { description: 'API is healthy' } } } },

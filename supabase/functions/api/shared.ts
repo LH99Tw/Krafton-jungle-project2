@@ -13,7 +13,7 @@ export const corsHeaders = {
   'Access-Control-Allow-Origin': frontendOrigin,
   'Access-Control-Allow-Credentials': 'true',
   'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info, x-csrf-token',
-  'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
   Vary: 'Origin',
 }
 

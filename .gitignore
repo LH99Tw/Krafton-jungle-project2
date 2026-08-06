@@ -10,5 +10,9 @@ supabase/functions/api/.env.local
 supabase/.temp/
 /.od-skills/
 *.md
+!docs/API.md
+!docs/DB_SCHEMA.md
+!docs/HOME_CONTENT.md
+!docs/MARKET_IMAGE_UPLOAD_DESIGN.md
 /*.png
 supabase/.branches/

@@ -1,5 +1,5 @@
 import { apiError } from '../shared.ts'
-import { createMarketItem, deleteMarketItem, listMarketItems, permanentlyDeleteMarketItem, readMarketItem, restoreMarketItem, updateMarketItem } from './market.service.ts'
+import { changeMarketItemLike, createMarketItem, deleteMarketItem, listMarketItems, permanentlyDeleteMarketItem, readMarketItem, replaceMarketItemImages, restoreMarketItem, updateMarketItem } from './market.service.ts'
 import { listConversations, listMessages, sendMessage, startConversation } from './market-chat.service.ts'
 
 export const handleMarketRoute = (request: Request, path: string, url: URL) => {
@@ -21,6 +21,10 @@ export const handleMarketRoute = (request: Request, path: string, url: URL) => {
   if (restoreMatch && request.method === 'POST') return restoreMarketItem(request, Number(restoreMatch[1]))
   const permanentMatch = path.match(/^\/market\/items\/(\d+)\/permanent$/)
   if (permanentMatch && request.method === 'DELETE') return permanentlyDeleteMarketItem(request, Number(permanentMatch[1]))
+  const likeMatch = path.match(/^\/market\/items\/(\d+)\/like$/)
+  if (likeMatch && (request.method === 'POST' || request.method === 'DELETE')) return changeMarketItemLike(request, Number(likeMatch[1]), request.method === 'POST')
+  const imagesMatch = path.match(/^\/market\/items\/(\d+)\/images$/)
+  if (imagesMatch && request.method === 'PUT') return replaceMarketItemImages(request, Number(imagesMatch[1]))
   if (path === '/market/items') {
     if (request.method === 'GET') return listMarketItems(request, url)
     if (request.method === 'POST') return createMarketItem(request)
@@ -30,7 +34,7 @@ export const handleMarketRoute = (request: Request, path: string, url: URL) => {
   if (!match) return null
   const id = Number(match[1])
   if (!Number.isSafeInteger(id) || id < 1) return apiError(404, 'NOT_FOUND', '상품을 찾을 수 없습니다.')
-  if (request.method === 'GET') return readMarketItem(id)
+  if (request.method === 'GET') return readMarketItem(request, id)
   if (request.method === 'PATCH') return updateMarketItem(request, id)
   if (request.method === 'DELETE') return deleteMarketItem(request, id)
   return null

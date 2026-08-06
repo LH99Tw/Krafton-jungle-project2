@@ -178,7 +178,7 @@ CSRF 토큰과 초기 세션 쿠키를 발급한다. 로그인 전 회원가입�
 
 - 이름 2~30자, 소개 최대 160자
 - slug 3~30자의 영문 소문자·숫자·하이픈
-- 예약어: `api`, `login`, `signup`, `feed`, `post`, `blog`, `me`, `new`
+- 예약어: `api`, `login`, `signup`, `feed`, `post`, `blog`, `me`, `new`, `ai`
 
 ### `posts`
 
@@ -197,7 +197,7 @@ CSRF 토큰과 초기 세션 쿠키를 발급한다. 로그인 전 회원가입�
 - `slug`는 앞뒤 공백을 제거하고 영문 소문자로 정규화한다.
 - 영문 소문자, 숫자, 하이픈만 사용할 수 있으며 길이는 3~30자다.
 - 하이픈으로 시작하거나 끝날 수 없고 연속된 하이픈(`--`)은 허용하지 않는다.
-- `api`, `login`, `signup`, `feed`, `post`, `blog`, `me`, `new`, `manage`는 예약어다.
+- `api`, `login`, `signup`, `feed`, `post`, `blog`, `me`, `new`, `manage`, `ai`는 예약어다.
 - 공개 블로그의 canonical path는 `/blog/{slug}`다. 전체 URL은 프론트엔드 origin과 응답의 `url`을 조합한다.
 - 전체 URL을 DB에 중복 저장하지 않고 `blogs.slug`만 저장한다. `url`은 API 응답에서 파생한다.
 

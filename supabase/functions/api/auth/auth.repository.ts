@@ -39,7 +39,10 @@ export const deleteSession = (sessionHash: string) =>
   supabase.from('sessions').delete().eq('session_hash', sessionHash)
 
 export const findCurrentUser = (userId: number) =>
-  supabase.from('users').select('id, email, nickname, created_at, updated_at').eq('id', userId).maybeSingle()
+  supabase.from('users').select('id, email, nickname, interests, created_at, updated_at').eq('id', userId).maybeSingle()
+
+export const saveUserInterests = (userId: number, interests: string[]) =>
+  supabase.from('users').update({ interests, updated_at: new Date().toISOString() }).eq('id', userId).select('interests').single()
 
 export const findCurrentBlog = (userId: number) =>
   supabase.from('blogs').select('id, name, slug').eq('owner_id', userId).maybeSingle()
