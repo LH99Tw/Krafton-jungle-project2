@@ -9,16 +9,24 @@ export const supabase = createClient(supabaseUrl, serviceRoleKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 })
 
-export const corsHeaders = {
-  'Access-Control-Allow-Origin': frontendOrigin,
-  'Access-Control-Allow-Credentials': 'true',
-  'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info, x-csrf-token',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-  Vary: 'Origin',
+export function getCorsHeaders(request?: Request): Record<string, string> {
+  const origin = request?.headers.get('origin') ?? request?.headers.get('Origin') ?? ''
+  const allowed = origin && (origin.endsWith('.vercel.app') || origin.includes('localhost') || origin === frontendOrigin)
+    ? origin
+    : frontendOrigin
+  return {
+    'Access-Control-Allow-Origin': allowed,
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info, x-csrf-token',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+    Vary: 'Origin',
+  }
 }
 
-export const responseHeaders = (extra: HeadersInit = {}) => ({
-  ...corsHeaders,
+export const corsHeaders = getCorsHeaders()
+
+export const responseHeaders = (extra: HeadersInit = {}, request?: Request) => ({
+  ...getCorsHeaders(request),
   'Content-Type': 'application/json; charset=utf-8',
   ...extra,
 })
