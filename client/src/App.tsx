@@ -1,9 +1,11 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bell, BookOpen, Check, ChevronDown, ChevronRight, Clipboard, Compass, Eye, FileText, Image, Layers3, LayoutDashboard, Menu, MessageCircle, Package, Palette, Pencil, PenLine, RotateCcw, Search, Settings, Sparkles, Tags, Trash2, Upload, Volume2, X } from 'lucide-react'
-type User = { id: number; email: string; nickname: string; blog?: { id: number; name: string; slug: string } | null }
+type User = { id: number; email: string; nickname: string; blog?: { id: number; name: string; slug: string } | null; preferenceOnboardingCompleted?: boolean }
 type Blog = { id: number; name: string; slug: string; url?: string; description: string; profileImageUrl?: string | null; owner?: { id: number; nickname: string }; isSubscribed?: boolean; subscriberCount?: number }
 type BlogCategory = { id: number; name: string; position: number; activePostCount: number; trashPostCount: number }
-type Post = { id: number; url?: string; title: string; content?: string; excerpt?: string; status: 'DRAFT' | 'PUBLISHED'; category?: { id: number; name: string } | null; viewCount: number; author: { id: number; nickname: string }; blog: { id: number; name: string; slug: string }; publishedAt?: string | null; createdAt?: string; updatedAt?: string; deletedAt?: string | null; purgeAfter?: string | null }
+type InterestTag = { id: number; key: string; label: string; group: 'WORK' | 'FORM' | 'APPEARANCE_RELATIONSHIP' | 'PERSONALITY'; sortOrder: number }
+type Preferences = { catalog: InterestTag[]; selectedTagIds: number[]; onboardingCompleted: boolean }
+type Post = { id: number; url?: string; title: string; content?: string; excerpt?: string; status: 'DRAFT' | 'PUBLISHED'; category?: { id: number; name: string } | null; tags?: InterestTag[]; viewCount: number; author: { id: number; nickname: string }; blog: { id: number; name: string; slug: string }; publishedAt?: string | null; createdAt?: string; updatedAt?: string; deletedAt?: string | null; purgeAfter?: string | null }
 type Page = { page: number; size: number; totalItems: number; totalPages: number }
 type MarketItem = { id: number | string; title: string; description: string; category: string; tags: string[]; condition: 'NEW' | 'LIKE_NEW' | 'USED'; pricePoints: number; status: 'SELLING' | 'RESERVED' | 'SOLD'; imageUrls?: string[]; seller: { id: number | string; nickname: string }; createdAt?: string; updatedAt?: string; deletedAt?: string | null; purgeAfter?: string | null }
 type Conversation = { id: number | string; itemId: number | string; buyerId?: number; sellerId?: number }
@@ -366,7 +368,7 @@ function Auth({ mode, go, onSuccess }: { mode: 'login' | 'signup'; go: (to: stri
 function Agreement({ go }: { go: (to: string) => void }) {
   const decide = (accepted: boolean) => {
     sessionStorage.setItem('tistory-third-party-consent', accepted ? 'accepted' : 'declined')
-    go('/')
+    go('/blog/new')
   }
   return <main id="main" className="agreement-page">
     <section className="agreement-panel">
@@ -418,11 +420,34 @@ function NoticeArticle({ go }: { go: (to: string) => void }) {
   </div>
 }
 
+const preferenceGroups: Array<{ key: InterestTag['group']; label: string; description: string }> = [
+  { key: 'WORK', label: '관심 작품 카테고리', description: '좋아하는 작품의 분야를 골라주세요.' },
+  { key: 'FORM', label: '형태 카테고리', description: '즐겨보는 콘텐츠 형태를 선택해주세요.' },
+  { key: 'APPEARANCE_RELATIONSHIP', label: '외형/관계성 카테고리', description: '끌리는 외형과 관계성을 알려주세요.' },
+  { key: 'PERSONALITY', label: '성격 카테고리', description: '좋아하는 성격 유형을 골라주세요.' },
+]
+
+function PreferenceSelector({ catalog, selected, onChange, mode }: { catalog: InterestTag[]; selected: number[]; onChange: (ids: number[]) => void; mode: 'preference' | 'post' }) {
+  const toggle = (tag: InterestTag) => {
+    if (selected.includes(tag.id)) return onChange(selected.filter((id) => id !== tag.id))
+    if (mode === 'post' && selected.length >= 10) return
+    if (mode === 'preference' && selected.filter((id) => catalog.find((item) => item.id === id)?.group === tag.group).length >= 3) return
+    onChange([...selected, tag.id])
+  }
+  return <div className={`preference-selector ${mode}`}>{preferenceGroups.map((group) => { const tags = catalog.filter((tag) => tag.group === group.key); const count = tags.filter((tag) => selected.includes(tag.id)).length; return <section className="preference-group" key={group.key}><div className="preference-group-head"><div><h3>{group.label}</h3><p>{group.description}</p></div>{mode === 'preference' && <strong>{count}/3</strong>}</div><div className="preference-chips">{tags.map((tag) => { const active = selected.includes(tag.id); const disabled = !active && (mode === 'post' ? selected.length >= 10 : count >= 3); return <button type="button" aria-pressed={active} disabled={disabled} className={active ? 'active' : ''} onClick={() => toggle(tag)} key={tag.id}>{active && <Check size={14} />} {tag.label}</button> })}</div></section> })}</div>
+}
+
+function PreferenceOnboarding({ go }: { go: (to: string) => void }) {
+  const [data, setData] = useState<Preferences | null>(null); const [selected, setSelected] = useState<number[]>([]); const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
+  useEffect(() => { request<Preferences>('/preferences/me').then((next) => { setData(next); setSelected(next.selectedTagIds) }).catch((e) => setError(e.message)) }, [])
+  const save = async () => { setBusy(true); setError(''); try { await request<Preferences>('/preferences/me', { method: 'PUT', body: JSON.stringify({ tagIds: selected }) }); go('/') } catch (e) { setError((e as Error).message) } finally { setBusy(false) } }
+  return <main id="main" className="preference-page"><div className="preference-panel"><p className="eyebrow">TELL US WHAT YOU LOVE</p><h1>좋아하는 이야기를<br />알려주세요.</h1><p className="muted">각 카테고리에서 최대 3개까지 선택할 수 있어요. 관리 페이지에서 언제든 바꿀 수 있습니다.</p>{error && <p className="form-error">{error}</p>}{data ? <PreferenceSelector catalog={data.catalog} selected={selected} onChange={setSelected} mode="preference" /> : !error && <p className="preference-loading">선호 항목을 불러오는 중입니다…</p>}<div className="preference-actions"><button className="primary-button" disabled={busy || !data} onClick={save}>{busy ? '저장 중…' : '선호 저장하고 시작하기'} <ArrowRight size={16} /></button></div></div></main>
+}
+
 function BlogSetup({ go, onDone }: { go: (to: string) => void; onDone: (blog: Blog) => void }) {
   const [form, setForm] = useState({ name: '', slug: '', description: '' })
   const [checkedSlug, setCheckedSlug] = useState('')
   const [available, setAvailable] = useState<boolean | null>(null)
-  const [publicUrl, setPublicUrl] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const check = async () => {
@@ -431,11 +456,9 @@ function BlogSetup({ go, onDone }: { go: (to: string) => void; onDone: (blog: Bl
       const data = await request<{ slug: string; url: string; available: boolean }>(`/blogs/check-slug?slug=${encodeURIComponent(form.slug)}`)
       setForm((current) => ({ ...current, slug: data.slug }))
       setCheckedSlug(data.slug)
-      setPublicUrl(data.url)
       setAvailable(data.available)
     } catch (e) {
       setCheckedSlug('')
-      setPublicUrl('')
       setAvailable(null)
       setError((e as Error).message)
     }
@@ -456,7 +479,7 @@ function BlogSetup({ go, onDone }: { go: (to: string) => void; onDone: (blog: Bl
       setError((e as Error).message)
     } finally { setBusy(false) }
   }
-  return <main id="main" className="setup-page"><div className="setup-panel"><button className="back-button" onClick={() => go('/')}><ArrowLeft size={16} /> 홈으로</button><p className="eyebrow">SET UP YOUR BLOG</p><h1>이제 블로그를<br />만들어볼까요?</h1><p className="muted">공개 주소와 이름은 나중에 변경할 수 없으니 신중하게 정해주세요.</p><form onSubmit={submit}><label>블로그 이름<input required minLength={2} maxLength={30} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="예: 정글 개발 기록" /></label><label>블로그 주소<div className="slug-field"><input required pattern="(?!.*--)[a-z0-9](?:[a-z0-9-]{1,28}[a-z0-9])?" value={form.slug} onChange={(e) => { setForm({ ...form, slug: e.target.value.trim().toLowerCase() }); setCheckedSlug(''); setPublicUrl(''); setAvailable(null); setError('') }} placeholder="jungle-dev" /><span>.tistory.com</span><button type="button" onClick={check}>중복 확인</button></div>{available !== null && <small className={available ? 'available' : 'unavailable'}>{available ? `사용할 수 있는 주소입니다: ${window.location.origin}${publicUrl}` : '이미 사용 중인 주소입니다.'}</small>}</label><label>블로그 소개 <span className="counter">{form.description.length}/160</span><textarea maxLength={160} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="블로그를 한 줄로 소개해보세요." /></label>{error && <p className="form-error">{error}</p>}<button className="primary-button" disabled={busy || !available || checkedSlug !== form.slug}>{busy ? '생성 중…' : '블로그 만들기'} <ArrowRight size={16} /></button></form></div></main>
+  return <main id="main" className="setup-page"><div className="setup-panel"><button className="back-button" onClick={() => go('/')}><ArrowLeft size={16} /> 홈으로</button><p className="eyebrow">SET UP YOUR BLOG</p><h1>이제 블로그를<br />만들어볼까요?</h1><p className="muted">공개 주소와 이름은 나중에 변경할 수 없으니 신중하게 정해주세요.</p><form onSubmit={submit}><label>블로그 이름<input required minLength={2} maxLength={30} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="예: 정글 개발 기록" /></label><label>블로그 주소<div className="slug-field"><input required pattern="(?!.*--)[a-z0-9](?:[a-z0-9-]{1,28}[a-z0-9])?" value={form.slug} onChange={(e) => { setForm({ ...form, slug: e.target.value.trim().toLowerCase() }); setCheckedSlug(''); setAvailable(null); setError('') }} placeholder="jungle-dev" /><span>.tistory.com</span><button type="button" onClick={check}>중복 확인</button></div>{available !== null && <small className={available ? 'available' : 'unavailable'}>{available ? '사용할 수 있는 주소입니다.' : '이미 사용 중인 주소입니다.'}</small>}</label><label>블로그 소개 <span className="counter">{form.description.length}/160</span><textarea maxLength={160} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="블로그를 한 줄로 소개해보세요." /></label>{error && <p className="form-error">{error}</p>}<button className="primary-button" disabled={busy || !available || checkedSlug !== form.slug}>{busy ? '생성 중…' : '블로그 만들기'} <ArrowRight size={16} /></button></form></div></main>
 }
 
 function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) => void; user: User | null; onLogin: () => void }) {
@@ -516,10 +539,10 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
 
 function Editor({ id, go }: { id?: string; go: (to: string) => void }) {
   const [title, setTitle] = useState(''); const [content, setContent] = useState(''); const [categoryId, setCategoryId] = useState<number | null>(null)
-  const [categories, setCategories] = useState<BlogCategory[]>([]); const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
-  useEffect(() => { request<BlogCategory[]>('/blogs/me/categories').then(setCategories).catch(() => {}); if (id) request<Post>(`/posts/${id}`).then((p) => { setTitle(p.title); setContent(p.content ?? ''); setCategoryId(p.category?.id ?? null) }).catch((e) => setError(e.message)) }, [id])
-  const save = async (status: 'DRAFT' | 'PUBLISHED') => { setBusy(true); setError(''); try { const body = JSON.stringify({ title, content, status, categoryId }); const data = id ? await request<Post>(`/posts/${id}`, { method: 'PATCH', body }) : await request<Post>('/posts', { method: 'POST', body }); go(status === 'PUBLISHED' ? `/post/${data.id}` : '/blog/me/manage/posts?status=DRAFT&page=1') } catch (e) { setError((e as Error).message) } finally { setBusy(false) } }
-  return <main id="main" className="editor-page"><div className="editor-top"><button onClick={() => go('/blog/me/manage/posts')}><ArrowLeft size={17} /> 나가기</button><div><button className="save-button" disabled={busy} onClick={() => save('DRAFT')}>임시저장</button><button className="publish-button" disabled={busy} onClick={() => save('PUBLISHED')}>발행하기</button></div></div><div className="editor-body"><input className="title-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목을 입력하세요" maxLength={100} /><div className="editor-meta"><label>카테고리 <select value={categoryId ?? ''} onChange={(e) => setCategoryId(e.target.value ? Number(e.target.value) : null)}><option value="">미분류</option>{categories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label><span>{title.length}/100 · {content.length.toLocaleString()}/20,000</span></div><textarea className="content-editor" value={content} onChange={(e) => setContent(e.target.value)} maxLength={20000} placeholder="여기에 이야기를 적어보세요." />{error && <p className="form-error">{error}</p>}</div></main>
+  const [categories, setCategories] = useState<BlogCategory[]>([]); const [catalog, setCatalog] = useState<InterestTag[]>([]); const [tagIds, setTagIds] = useState<number[]>([]); const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
+  useEffect(() => { request<BlogCategory[]>('/blogs/me/categories').then(setCategories).catch(() => {}); request<Preferences>('/preferences/me').then((p) => setCatalog(p.catalog)).catch((e) => setError(e.message)); if (id) request<Post>(`/posts/${id}`).then((p) => { setTitle(p.title); setContent(p.content ?? ''); setCategoryId(p.category?.id ?? null); setTagIds((p.tags ?? []).map((tag) => tag.id)) }).catch((e) => setError(e.message)) }, [id])
+  const save = async (status: 'DRAFT' | 'PUBLISHED') => { setBusy(true); setError(''); try { const body = JSON.stringify({ title, content, status, categoryId, tagIds }); const data = id ? await request<Post>(`/posts/${id}`, { method: 'PATCH', body }) : await request<Post>('/posts', { method: 'POST', body }); go(status === 'PUBLISHED' ? `/post/${data.id}` : '/blog/me/manage/posts?status=DRAFT&page=1') } catch (e) { setError((e as Error).message) } finally { setBusy(false) } }
+  return <main id="main" className="editor-page"><div className="editor-top"><button onClick={() => go('/blog/me/manage/posts')}><ArrowLeft size={17} /> 나가기</button><div><button className="save-button" disabled={busy} onClick={() => save('DRAFT')}>임시저장</button><button className="publish-button" disabled={busy} onClick={() => save('PUBLISHED')}>발행하기</button></div></div><div className="editor-body"><input className="title-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목을 입력하세요" maxLength={100} /><div className="editor-meta"><label>카테고리 <select value={categoryId ?? ''} onChange={(e) => setCategoryId(e.target.value ? Number(e.target.value) : null)}><option value="">미분류</option>{categories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label><span>{title.length}/100 · {content.length.toLocaleString()}/20,000</span></div><textarea className="content-editor" value={content} onChange={(e) => setContent(e.target.value)} maxLength={20000} placeholder="여기에 이야기를 적어보세요." /><section className="editor-tag-section"><div className="editor-tag-head"><div><h2>분류 태그</h2><p>글과 관련된 태그를 전체 최대 10개까지 선택하세요.</p></div><strong>{tagIds.length}/10</strong></div>{catalog.length ? <PreferenceSelector catalog={catalog} selected={tagIds} onChange={setTagIds} mode="post" /> : <p className="preference-loading">태그를 불러오는 중입니다…</p>}</section>{error && <p className="form-error">{error}</p>}</div></main>
 }
 
 function PostDetail({ id, go, user, onLogin }: { id: string; go: (to: string) => void; user: User | null; onLogin: () => void }) { const [post, setPost] = useState<Post | null>(null); const [error, setError] = useState(''); useEffect(() => { request<Post>(`/posts/${id}`).then(setPost).catch((e) => setError(e.message)) }, [id]); const mine = post && user?.id === post.author.id; const remove = async () => { if (!post || !confirm('이 글을 삭제할까요?')) return; try { await request(`/posts/${post.id}`, { method: 'DELETE' }); go(`/blog/${post.blog.slug}`) } catch (e) { setError((e as Error).message) } }; return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="detail-page"><div className="detail-inner">{error ? <Empty text={error} /> : post && <><p className="eyebrow">{post.blog.name}</p><h1>{post.title}</h1><div className="detail-info"><span>{post.author.nickname}</span><span>{new Date(post.publishedAt ?? post.updatedAt ?? '').toLocaleDateString('ko-KR')}</span><span><Eye size={14} /> {post.viewCount}</span></div><div className="detail-content">{post.content}</div><div className="detail-actions">{mine && <><button className="outline-button" onClick={() => go(`/post/${post.id}/edit`)}>수정하기</button><button className="danger-button" onClick={remove}><Trash2 size={15} /> 삭제</button></>}</div></>}</div></main></Shell> }
@@ -538,9 +561,16 @@ function Manage({ path, go, user, onLogin }: { path: string; go: (to: string) =>
   if (!user) return <Shell go={go} user={user} onLogin={onLogin}><main className="manage-auth"><Empty text="로그인이 필요합니다." detail="관리 콘솔은 블로그 소유자만 사용할 수 있습니다." /><button className="manage-primary" onClick={onLogin}>로그인</button></main></Shell>
   const section = path.split('/')[4] || 'overview'
   const nav = [
-    ['overview', '운영 요약', LayoutDashboard], ['settings', '블로그 설정', Settings], ['categories', '카테고리', Tags], ['posts', '글 관리', FileText], ['market', '마켓 관리', Package], ['trash', '휴지통', Trash2],
+    ['overview', '운영 요약', LayoutDashboard], ['settings', '블로그 설정', Settings], ['preferences', '나의 선호 항목', Sparkles], ['categories', '카테고리', Tags], ['posts', '글 관리', FileText], ['market', '마켓 관리', Package], ['trash', '휴지통', Trash2],
   ] as const
-  return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="manage-console"><aside className="manage-sidebar"><p>MANAGEMENT</p><nav>{nav.map(([key, label, Icon]) => <button className={section === key ? 'active' : ''} key={key} onClick={() => go(key === 'overview' ? '/blog/me/manage' : `/blog/me/manage/${key}`)}><Icon size={17} />{label}</button>)}</nav></aside><section className="manage-workspace"><header className="manage-console-head"><div><p className="eyebrow">MY TISTORY</p><h1>{nav.find(([key]) => key === section)?.[1] ?? '블로그 관리'}</h1><span>{blog?.name ?? '블로그 정보를 불러오는 중입니다.'}</span></div><div><button onClick={() => go('/write')}><PenLine size={15} /> 새 글</button><button onClick={() => go('/market/new')}><Package size={15} /> 상품 등록</button><button onClick={() => blog && go(`/blog/${blog.slug}`)}>내 블로그 <ArrowRight size={15} /></button></div></header>{error && <p className="manage-error">{error}</p>}{section === 'overview' && <ManageOverview go={go} />}{section === 'settings' && blog && <ManageSettings blog={blog} setBlog={setBlog} />}{section === 'categories' && <ManageCategories go={go} />}{section === 'posts' && <ManagePosts go={go} />}{section === 'market' && <ManageMarket go={go} />}{section === 'trash' && <ManageTrash />}</section></main></Shell>
+  return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="manage-console"><aside className="manage-sidebar"><p>MANAGEMENT</p><nav>{nav.map(([key, label, Icon]) => <button className={section === key ? 'active' : ''} key={key} onClick={() => go(key === 'overview' ? '/blog/me/manage' : `/blog/me/manage/${key}`)}><Icon size={17} />{label}</button>)}</nav></aside><section className="manage-workspace"><header className="manage-console-head"><div><p className="eyebrow">MY TISTORY</p><h1>{nav.find(([key]) => key === section)?.[1] ?? '블로그 관리'}</h1><span>{blog?.name ?? '블로그 정보를 불러오는 중입니다.'}</span></div><div><button onClick={() => go('/write')}><PenLine size={15} /> 새 글</button><button onClick={() => go('/market/new')}><Package size={15} /> 상품 등록</button><button onClick={() => blog && go(`/blog/${blog.slug}`)}>내 블로그 <ArrowRight size={15} /></button></div></header>{error && <p className="manage-error">{error}</p>}{section === 'overview' && <ManageOverview go={go} />}{section === 'settings' && blog && <ManageSettings blog={blog} setBlog={setBlog} />}{section === 'preferences' && <ManagePreferences />}{section === 'categories' && <ManageCategories go={go} />}{section === 'posts' && <ManagePosts go={go} />}{section === 'market' && <ManageMarket go={go} />}{section === 'trash' && <ManageTrash />}</section></main></Shell>
+}
+
+function ManagePreferences() {
+  const [preferences, setPreferences] = useState<Preferences | null>(null); const [selected, setSelected] = useState<number[]>([]); const [notice, setNotice] = useState(''); const [busy, setBusy] = useState(false)
+  useEffect(() => { request<Preferences>('/preferences/me').then((data) => { setPreferences(data); setSelected(data.selectedTagIds) }).catch((e) => setNotice(e.message)) }, [])
+  const save = async () => { setBusy(true); setNotice(''); try { const data = await request<Preferences>('/preferences/me', { method: 'PUT', body: JSON.stringify({ tagIds: selected }) }); setPreferences(data); setSelected(data.selectedTagIds); setNotice('선호 항목을 저장했습니다.') } catch (e) { setNotice((e as Error).message) } finally { setBusy(false) } }
+  return <section className="manage-preferences"><div className="manage-preferences-head"><div><h2>나의 선호 항목</h2><p>각 카테고리에서 최대 3개까지 선택할 수 있습니다.</p></div><button className="manage-primary" disabled={busy || !preferences} onClick={save}>{busy ? '저장 중…' : '변경사항 저장'}</button></div>{notice && <p className={notice.includes('저장했습니다') ? 'form-success' : 'form-error'}>{notice}</p>}{preferences ? <PreferenceSelector catalog={preferences.catalog} selected={selected} onChange={setSelected} mode="preference" /> : <p className="preference-loading">선호 항목을 불러오는 중입니다…</p>}</section>
 }
 
 function ManageOverview({ go }: { go: (to: string) => void }) {
@@ -699,14 +729,25 @@ function App() {
   const { path, go } = useRoute()
   const [user, setUser] = useState<User | null>(null)
   const [loginOpen, setLoginOpen] = useState(false)
-  useEffect(() => { request<{ user: User; blog: Blog | null }>('/me').then((data) => setUser({ ...data.user, blog: data.blog })).catch(() => {}) }, [])
+  useEffect(() => { request<{ user: User; blog: Blog | null }>('/me').then((data) => { setUser({ ...data.user, blog: data.blog }); if (data.blog && !data.user.preferenceOnboardingCompleted && path !== '/onboarding/preferences') go('/onboarding/preferences') }).catch(() => {}) }, [])
   const onLogin = () => setLoginOpen(true)
+  const finishLogin = async (nextUser: User, fallback = '/') => {
+    setUser(nextUser)
+    try {
+      const current = await request<{ user: User; blog: Blog | null }>('/me')
+      setUser({ ...current.user, blog: current.blog })
+      if (!current.blog) return go('/blog/new')
+      if (!current.user.preferenceOnboardingCompleted) return go('/onboarding/preferences')
+    } catch { /* retain fallback navigation */ }
+    go(fallback)
+  }
   let content: React.ReactNode
-  if (path === '/login') content = <Auth mode="login" go={go} onSuccess={(nextUser) => { setUser(nextUser); go('/agreement/third-party-consent') }} />
-  else if (path === '/signup') content = <Auth mode="signup" go={go} onSuccess={(nextUser) => { setUser(nextUser); go('/blog/new') }} />
+  if (path === '/login') content = <Auth mode="login" go={go} onSuccess={(nextUser) => { void finishLogin(nextUser) }} />
+  else if (path === '/signup') content = <Auth mode="signup" go={go} onSuccess={(nextUser) => { setUser(nextUser); go('/agreement/third-party-consent') }} />
   else if (path === '/agreement/third-party-consent') content = user ? <Agreement go={go} /> : <Auth mode="login" go={go} onSuccess={(nextUser) => { setUser(nextUser); go('/agreement/third-party-consent') }} />
   else if (path === '/notice/2702') content = <NoticeArticle go={go} />
-  else if (path === '/blog/new') content = <BlogSetup go={go} onDone={(blog) => { setUser((current) => current ? { ...current, blog } : current); go(blog.url ?? '/blog/' + blog.slug) }} />
+  else if (path === '/blog/new') content = user ? <BlogSetup go={go} onDone={(blog) => { setUser((current) => current ? { ...current, blog } : current); go('/onboarding/preferences') }} /> : <Auth mode="login" go={go} onSuccess={(nextUser) => { setUser(nextUser); go('/blog/new') }} />
+  else if (path === '/onboarding/preferences') content = user ? <PreferenceOnboarding go={go} /> : <Auth mode="login" go={go} onSuccess={(nextUser) => { void finishLogin(nextUser, '/onboarding/preferences') }} />
   else if (path === '/feed') content = <Feed go={go} user={user} onLogin={onLogin} />
   else if (path === '/search') content = <SearchPage go={go} user={user} onLogin={onLogin} />
   else if (path === '/market/new') content = user ? <MarketEditor go={go} /> : <Auth mode="login" go={go} onSuccess={(nextUser) => { setUser(nextUser); go('/market/new') }} />
