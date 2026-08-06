@@ -607,6 +607,15 @@ body:has(.home-main) .character-grid button:active img{transform:scale(.98)}
 .tistory-auth-card.credentials{padding-top:72px}
 .tistory-auth-card.credentials .login-wordmark{font-size:24px}
 .credential-title{margin:42px 0 34px;color:#191919;font-size:20px;line-height:28px;font-weight:600}
+.profile-wallet{display:flex;width:100%;padding:14px 20px;align-items:center;gap:8px;border-top:1px solid #eee;text-align:left;font-size:12px}
+.wallet-page{min-height:760px;padding:56px 0 100px;background:#fafafa}
+.wallet-hero{display:flex;margin:28px 0 42px;padding:38px 42px;align-items:end;justify-content:space-between;border-radius:8px;background:#171717;color:#fff}
+.wallet-hero h1{margin:8px 0;font-size:34px}.wallet-hero p{margin:0;color:#aaa;font-size:12px}.wallet-hero>strong{font-size:38px}.wallet-hero>strong small{font-size:15px}
+.wallet-charge{display:flex;gap:6px;margin-top:18px}.wallet-charge button{padding:8px 10px;border:1px solid #555;border-radius:3px;color:#fff;font-size:10px}.wallet-charge button:hover{background:#fff;color:#111}
+.wallet-section{margin-top:24px;padding:30px;background:#fff;border:1px solid #eee}.wallet-section h2{margin:0 0 20px;font-size:18px}
+.wallet-history article{display:flex;padding:16px 0;align-items:center;justify-content:space-between;border-top:1px solid #eee}.wallet-history article:first-child{border-top:0}.wallet-history article div{display:flex;flex-direction:column;gap:4px}.wallet-history time{color:#999;font-size:10px}.wallet-history article>span{font-weight:700}.wallet-history .positive{color:#e45d54}
+.wallet-order-head{display:flex;align-items:center;justify-content:space-between}.wallet-order-head>div{display:flex;gap:6px}.wallet-order-head button{padding:8px 12px;background:#f3f3f3;font-size:11px}.wallet-order-head button.active{background:#222;color:#fff}
+.order-list article{display:grid;padding:16px 0;align-items:center;border-top:1px solid #eee;grid-template-columns:74px minmax(0,1fr) auto;gap:16px}.order-list img,.order-no-image{display:grid;width:74px;height:74px;place-items:center;background:#f3f3f3;object-fit:cover;color:#aaa;font-size:8px}.order-list article>div{display:flex;flex-direction:column;gap:5px}.order-list small,.order-list p{margin:0;color:#999;font-size:10px}.order-list strong{font-size:14px}.order-complete{display:flex;padding:10px 14px;align-items:center;gap:5px;background:#222;color:#fff;font-size:11px}
 .credential-form{width:340px;margin:0 auto;text-align:left}
 .credential-form label{display:block;margin:0}
 .credential-form label+label{margin-top:12px}
