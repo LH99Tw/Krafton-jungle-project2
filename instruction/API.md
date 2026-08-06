@@ -191,6 +191,16 @@ CSRF 토큰과 초기 세션 쿠키를 발급한다. 로그인 전 회원가입�
 
 ## 5. 블로그 API
 
+### 블로그 주소 규칙
+
+- 사용자가 입력하는 주소 식별자는 `slug`다.
+- `slug`는 앞뒤 공백을 제거하고 영문 소문자로 정규화한다.
+- 영문 소문자, 숫자, 하이픈만 사용할 수 있으며 길이는 3~30자다.
+- 하이픈으로 시작하거나 끝날 수 없고 연속된 하이픈(`--`)은 허용하지 않는다.
+- `api`, `login`, `signup`, `feed`, `post`, `blog`, `me`, `new`, `manage`는 예약어다.
+- 공개 블로그의 canonical path는 `/blog/{slug}`다. 전체 URL은 프론트엔드 origin과 응답의 `url`을 조합한다.
+- 전체 URL을 DB에 중복 저장하지 않고 `blogs.slug`만 저장한다. `url`은 API 응답에서 파생한다.
+
 ### POST `/blogs`
 
 인증 사용자에게 블로그를 생성한다.
@@ -203,6 +213,20 @@ CSRF 토큰과 초기 세션 쿠키를 발급한다. 로그인 전 회원가입�
 }
 ```
 
+성공 시 생성된 공개 주소를 포함한 블로그를 반환한다.
+
+```json
+{
+  "data": {
+    "id": 10,
+    "name": "정글 개발 기록",
+    "slug": "jungle-dev",
+    "url": "/blog/jungle-dev",
+    "description": "매일 배우고 기록합니다."
+  }
+}
+```
+
 가능한 오류: `400 VALIDATION_ERROR`, `401 UNAUTHENTICATED`, `403 CSRF_TOKEN_INVALID`, `409 BLOG_ALREADY_EXISTS`, `409 SLUG_ALREADY_EXISTS`.
 
 ### GET `/blogs/check-slug?slug=jungle-dev`
@@ -210,8 +234,16 @@ CSRF 토큰과 초기 세션 쿠키를 발급한다. 로그인 전 회원가입�
 인증 없이 slug 사용 가능 여부를 확인한다.
 
 ```json
-{ "data": { "slug": "jungle-dev", "available": true } }
+{
+  "data": {
+    "slug": "jungle-dev",
+    "url": "/blog/jungle-dev",
+    "available": true
+  }
+}
 ```
+
+형식이 잘못됐거나 예약어인 경우 `400 VALIDATION_ERROR`, 이미 존재하면 `available: false`를 반환한다. 중복 확인 결과는 안내용이며, 생성 시점의 unique constraint가 최종 중복을 방지한다.
 
 ### GET `/blogs/me`
 
@@ -219,7 +251,7 @@ CSRF 토큰과 초기 세션 쿠키를 발급한다. 로그인 전 회원가입�
 
 ### GET `/blogs/{slug}`
 
-공개 블로그와 발행 글 목록을 반환한다. `DRAFT`는 포함하지 않는다.
+공개 블로그와 발행 글, 블로그 소유자의 마켓 상품을 반환한다. `DRAFT`는 포함하지 않는다.
 
 쿼리: `page` 기본 1, `size` 기본 10·최대 50
 
@@ -233,15 +265,22 @@ CSRF 토큰과 초기 세션 쿠키를 발급한다. 로그인 전 회원가입�
       "name": "정글 개발 기록",
       "slug": "jungle-dev",
       "url": "/blog/jungle-dev",
+      "subscriberCount": 12,
       "description": "매일 배우고 기록합니다."
     },
     "posts": {
       "items": [],
       "pagination": { "page": 1, "size": 10, "totalItems": 0, "totalPages": 0 }
+    },
+    "market": {
+      "items": [],
+      "pagination": { "page": 1, "size": 8, "totalItems": 0, "totalPages": 0 }
     }
   }
 }
 ```
+
+`market.items`는 블로그 소유자가 등록한 `SELLING`, `RESERVED`, `SOLD` 상품을 최신순 최대 8개 반환한다. 상품이 없으면 빈 배열이며, `subscriberCount`는 현재 전체 구독자 수다.
 
 ## 6. 글 API
 
@@ -304,9 +343,23 @@ CSRF 토큰과 초기 세션 쿠키를 발급한다. 로그인 전 회원가입�
 
 ### DELETE `/posts/{id}`
 
-작성자 본인만 물리 삭제할 수 있다. 성공 시 `204 No Content`다.
+작성자 본인만 휴지통으로 이동할 수 있다. `deleted_at`과 30일 뒤의 `purge_after`를 기록하고 성공 시 `204 No Content`다. `POST /posts/{id}/restore`로 복원하고 `DELETE /posts/{id}/permanent`로 영구 삭제한다.
 
-## 7. 구독 API
+## 7. 블로그 관리 API
+
+- `PATCH /blogs/me`: `name`, `description`만 수정한다. `slug`가 포함되면 `400 IMMUTABLE_FIELD`다.
+- `POST /blogs/me/profile-image`: `file` 필드의 512×512 WebP(최대 2MB)를 저장한다.
+- `DELETE /blogs/me/profile-image`: 기본 프로필 이미지로 되돌린다.
+- `GET /blogs/me/dashboard`: 글·구독자·상품·휴지통 수와 최근 글·상품 5개를 반환한다.
+- `GET|POST /blogs/me/categories`: 카테고리 목록 조회와 생성.
+- `PATCH|DELETE /blogs/me/categories/{id}`: 이름 수정과 미사용 카테고리 삭제.
+- `PATCH /blogs/me/categories/order`: 현재 카테고리 ID 전체 배열로 노출 순서를 교체한다.
+
+글 생성·수정의 `categoryId`는 현재 블로그 소유 카테고리 또는 `null`만 허용한다. 사용 중이거나 휴지통 글이 연결된 카테고리 삭제는 `409 CATEGORY_IN_USE`다.
+
+마켓 상품의 `DELETE /market/items/{id}`도 30일 휴지통 이동이다. `POST /market/items/{id}/restore`, `DELETE /market/items/{id}/permanent`를 제공한다. 채팅이 있는 상품은 영구 삭제 시 거래 참조용 tombstone으로 남는다.
+
+## 8. 구독 API
 
 ### POST `/blogs/{slug}/subscription`
 
@@ -320,7 +373,7 @@ CSRF 토큰과 초기 세션 쿠키를 발급한다. 로그인 전 회원가입�
 
 구독을 취소한다. 성공 시 `204 No Content`다.
 
-## 8. 시스템 API
+## 9. 시스템 API
 
 ### GET `/health`
 
@@ -336,7 +389,7 @@ CSRF 토큰과 초기 세션 쿠키를 발급한다. 로그인 전 회원가입�
 
 클라이언트의 `api-docs.html`로 이동한다. `/swagger-ui.css`, `/swagger-ui-bundle.js`는 문서 화면용 정적 리소스다.
 
-## 9. 구현 체크리스트
+## 10. 구현 체크리스트
 
 - `server/` Express 백엔드는 사용하지 않는다.
 - `supabase/functions/api`의 공통 CORS·쿠키·세션 처리는 `shared.ts`에서 담당한다.

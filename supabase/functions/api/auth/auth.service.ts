@@ -80,7 +80,8 @@ export const login = async (request: Request) => {
   if (sessionError) return sessionError.message?.includes('CSRF_TOKEN_INVALID')
     ? apiError(403, 'CSRF_TOKEN_INVALID', 'CSRF 토큰이 유효하지 않습니다.')
     : apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
-  return json({ data: { user: { id: user.id, email: user.email, nickname: user.nickname }, message: '로그인되었습니다.' } }, 200, { 'Set-Cookie': sessionCookie(newSessionId) })
+  const { data: blog } = await findCurrentBlog(user.id)
+  return json({ data: { user: { id: user.id, email: user.email, nickname: user.nickname }, blog: blog ?? null, message: '로그인되었습니다.' } }, 200, { 'Set-Cookie': sessionCookie(newSessionId) })
 }
 
 export const logout = async (request: Request) => {
