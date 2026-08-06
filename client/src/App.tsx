@@ -104,10 +104,10 @@ const categoryTemplates = (category: string) => category === '전체' ? fallback
 }))
 
 const sidebarTips = [
-  ['첫 문장에 핵심을 담아 제목 완성하기', 'TITLE', '#f3ece3'],
-  ['직접 찍은 사진으로 기록에 온도 더하기', 'PHOTO', '#e5eeea'],
-  ['작품명과 캐릭터명을 검색 키워드로 쓰기', 'KEYWORD', '#e9eaf3'],
-  ['상태와 구성품이 보이는 거래 후기 남기기', 'REVIEW', '#f2e8e6'],
+  ['첫 문장에 핵심을 담아\n제목 완성하기', 'TITLE', '#f3ece3'],
+  ['직접 찍은 사진으로\n기록에 온도 더하기', 'PHOTO', '#e5eeea'],
+  ['작품명과 캐릭터명을\n검색 키워드로 쓰기', 'KEYWORD', '#e9eaf3'],
+  ['상태와 구성품이 보이는\n거래 후기 남기기', 'REVIEW', '#f2e8e6'],
 ]
 
 const popularCharacters = [
@@ -373,15 +373,15 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
     queryFn: () => request<HomeData>('/home'),
     refetchInterval: 30_000,
   })
-  const categories = ['전체', '애니메이션', '게임', '버튜버', '웹툰·캐릭터']
+  const categories = ['전체', '애니메이션·만화', '게임', '버튜버', '웹툰·캐릭터']
   const recommendations = fillPostSlots(home?.popularPosts, fallbackPopular, 5)
-  const connectedCategoryPosts = (home?.categoryPosts ?? []).filter((post) => category === '전체' || post.category?.name === category)
+  const connectedCategoryPosts = (home?.categoryPosts ?? []).filter((post) => category === '전체' || post.category?.name === category || (category === '애니메이션·만화' && (post.category?.name === '애니메이션' || post.category?.name === '만화')))
   const categoryPosts = fillPostSlots(connectedCategoryPosts, categoryTemplates(category), 7)
   const categoryPagePosts = categoryPosts.map((_, index) => categoryPosts[(index + categoryPage - 1) % categoryPosts.length])
   const latestPosts = fillPostSlots(home?.latestPosts, fallbackLatest, 5)
   const popularMarketItems = fillMarketSlots(home?.marketItems, 5)
   const shownTips = tipPage === 1 ? sidebarTips : [...sidebarTips].reverse()
-  const banner: HomeBanner = home?.banners[0] ?? { id: 0, eyebrow: 'NOTICE · EVENT', title: '최애를 기록하고 취향을 나누는 새로운 공간', description: '팬들이 함께 만드는 굿즈 이야기와 새로운 이벤트를 만나보세요.', imageUrl: null, ctaLabel: '이벤트 자세히 보기', ctaUrl: '/notice/2702', startsAt: '', position: 0, isActive: true }
+  const banner: HomeBanner = home?.banners[0] ?? { id: 0, eyebrow: 'NOTICE · EVENT', title: '최애를 기록하고\n취향을 나누는 새로운 공간', description: '팬들이 함께 만드는 굿즈 이야기와 새로운 이벤트를 만나보세요.', imageUrl: null, ctaLabel: '이벤트 자세히 보기', ctaUrl: '/notice/2702', startsAt: '', position: 0, isActive: true }
   const openPost = (post: Post) => post.id > 0 ? go(`/post/${post.id}`) : go('/feed')
   const tags = (post: Post) => <span className="home-post-tags">{post.classifications.slice(0, 2).map((item) => `#${item.name}`).join(' ')}</span>
 
@@ -879,7 +879,7 @@ function MarketSavedList({ kind, go, user, onLogin }: { kind: 'recent' | 'wishli
     request<MarketItem[]>('/market/items?scope=liked&sort=latest&page=1&size=50').then((data) => setItems(data ?? [])).catch((reason) => setError(reason.message)).finally(() => setLoading(false))
   }, [recent, user])
   if (!recent && !user) return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="page-main"><div className="section-inner"><Empty text="로그인 후 찜한 상품을 확인할 수 있습니다." /><button className="primary-button compact saved-login" onClick={onLogin}>로그인</button></div></main></Shell>
-  return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="page-main market-saved-page"><div className="section-inner"><div className="page-intro saved-intro"><p className="eyebrow">{recent ? 'RECENTLY VIEWED' : 'MY WISHLIST'}</p><h1>{recent ? <>최근 본<br />상품</> : <>마음에 담아둔<br />상품</>}</h1><p>{recent ? '최근 확인한 상품을 최신순으로 최대 20개까지 보관합니다.' : '좋아요를 누른 상품을 한곳에서 다시 확인하세요.'}</p></div>{error ? <Empty text="상품을 불러오지 못했습니다." detail={error} /> : loading ? <Empty text="상품을 불러오는 중입니다." /> : items.length ? <div className="feed-list">{items.map((item) => <MarketRow key={item.id} item={item} go={go} />)}</div> : <Empty text={recent ? '최근 본 상품이 없습니다.' : '아직 찜한 상품이 없습니다.'} detail="마켓에서 마음에 드는 상품을 둘러보세요." />}</div></main></Shell>
+  return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="page-main market-saved-page"><div className="section-inner"><div className="page-intro saved-intro"><p className="eyebrow">{recent ? 'RECENTLY VIEWED' : 'MY WISHLIST'}</p><h1>{recent ? '최근 본 상품' : '마음에 담아둔 상품'}</h1><p>{recent ? '최근 확인한 상품을 최신순으로 최대 20개까지 보관합니다.' : '좋아요를 누른 상품을 한곳에서 다시 확인하세요.'}</p></div>{error ? <Empty text="상품을 불러오지 못했습니다." detail={error} /> : loading ? <Empty text="상품을 불러오는 중입니다." /> : items.length ? <div className="feed-list">{items.map((item) => <MarketRow key={item.id} item={item} go={go} />)}</div> : <Empty text={recent ? '최근 본 상품이 없습니다.' : '아직 찜한 상품이 없습니다.'} detail="마켓에서 마음에 드는 상품을 둘러보세요." />}</div></main></Shell>
 
 }
 
