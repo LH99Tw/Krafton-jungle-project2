@@ -9,7 +9,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = __dirname
 const port = Number(process.env.PORT || 5173)
 const apiTarget = new URL(
-  process.env.API_PROXY_TARGET || 'https://tirnfqlznctbvwzfolmq.supabase.co/functions/v1',
+  process.env.API_PROXY_TARGET || 'https://npuyxiqjowqeewesmctq.supabase.co/functions/v1',
 )
 const mime = {
   '.css': 'text/css; charset=utf-8',

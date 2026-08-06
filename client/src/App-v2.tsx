@@ -6,7 +6,7 @@ type Blog = { id: number; name: string; slug: string; description: string; owner
 type Post = { id: number; url?: string; title: string; content?: string; excerpt?: string; status: 'DRAFT' | 'PUBLISHED'; viewCount: number; author: { id: number; nickname: string }; blog: { id: number; name: string; slug: string }; publishedAt?: string | null; updatedAt?: string }
 type Page = { page: number; size: number; totalItems: number; totalPages: number }
 
-const API = import.meta.env.VITE_API_URL ?? ''
+const API = import.meta.env.DEV ? (import.meta.env.VITE_API_URL ?? '') : ''
 const bestPosts = [
   ['건강생활 연구소', '대장암 초기증상 10가지, 몸이 보내는 신호를 놓치지 마세요', 'chamber9.tistory.com', 'HEALTH', 'https://img1.daumcdn.net/thumb/S280x160@2x.fwebp/?fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdna%2Fmtr8f%2FdJMcabLXQWr%2FAAAAAAAAAAAAAAAAAAAAAKLHTZKhMdkJ3fg2Ds_nj_2p7KstVnTr2n6qoioxUDQG%2Fimg.png'],
   ['프레임속 풍경', '명옥헌원림 백일홍꽃', 'yobo1700.tistory.com', 'TRAVEL', 'https://img1.daumcdn.net/thumb/S280x160@2x.fwebp/?fname=https%3A%2F%2Fblog.kakaocdn.net%2Fdna%2FcatrlD%2FdJMcagsTLDu%2FAAAAAAAAAAAAAAAAAAAAAF1Y7fNG8GNmLGToC3wUlJk4gCCEwIVFKX2k4Ri2X15e%2Fimg.jpg'],

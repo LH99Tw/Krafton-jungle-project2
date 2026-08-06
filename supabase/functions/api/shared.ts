@@ -51,6 +51,11 @@ export const readCookie = (request: Request, name: string) => {
   return null
 }
 
+export const getSessionHash = async (request: Request) => {
+  const sessionId = readCookie(request, 'session_id')
+  return sessionId ? sha256(sessionId) : null
+}
+
 export const sessionCookie = (sessionId: string) => {
   const parts = [`session_id=${encodeURIComponent(sessionId)}`, 'Path=/', 'HttpOnly', 'SameSite=Lax', 'Max-Age=604800']
   if (secureCookie) parts.push('Secure')
