@@ -21,7 +21,7 @@ export const createUser = (input: {
 })
 
 export const findUserByEmail = (email: string) =>
-  supabase.from('users').select('id, email, nickname, password_hash').eq('email', email).maybeSingle()
+  supabase.from('users').select('id, email, nickname, password_hash, third_party_consent_decided_at').eq('email', email).maybeSingle()
 
 export const rotateUserSession = (input: {
   userId: number
@@ -39,7 +39,14 @@ export const deleteSession = (sessionHash: string) =>
   supabase.from('sessions').delete().eq('session_hash', sessionHash)
 
 export const findCurrentUser = (userId: number) =>
-  supabase.from('users').select('id, email, nickname, preference_onboarding_completed_at, created_at, updated_at').eq('id', userId).maybeSingle()
+  supabase.from('users').select('id, email, nickname, preference_onboarding_completed_at, third_party_consent_decided_at, created_at, updated_at').eq('id', userId).maybeSingle()
+
+export const saveThirdPartyConsent = (userId: number, accepted: boolean) =>
+  supabase.from('users').update({
+    third_party_consent: accepted,
+    third_party_consent_decided_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }).eq('id', userId).is('third_party_consent_decided_at', null).select('id').maybeSingle()
 
 export const findCurrentBlog = (userId: number) =>
   supabase.from('blogs').select('id, name, slug').eq('owner_id', userId).maybeSingle()

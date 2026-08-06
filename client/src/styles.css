@@ -756,6 +756,7 @@ body:has(.home-main) .my-tistory button{width:375px;height:52px;margin:14px auto
 }
 
 /* The notice is a real control and remains visible in both auth states. */
+.blog-url-preview{display:block;margin-top:8px;color:#777;font-size:11px;overflow-wrap:anywhere}.available,.unavailable{display:block;margin-top:6px;overflow-wrap:anywhere}
 .site-header .header-actions:before{content:none!important;display:none!important}
 .header-notice{display:flex;max-width:235px;height:40px;align-items:center;gap:8px;overflow:hidden;color:#555;font-size:11px;white-space:nowrap;text-overflow:ellipsis}
 .header-notice svg{flex:0 0 auto;color:#111}
