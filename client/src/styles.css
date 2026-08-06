@@ -378,7 +378,7 @@ body:has(.home-main) .header-actions:before{content:'●　불법촬영물 유�
 body:has(.home-main) .outline-button,body:has(.home-main) .account-button{display:block;width:120px;height:40px;padding:0;border:0;border-radius:20px;background:#111;color:#fff;font-size:12px;font-weight:600}
 body:has(.home-main) .mobile-trigger{display:none}
 
-body:has(.home-main) .home-main{width:1100px;max-width:none;min-height:4490px;margin:0 auto;padding:30px 0 0}
+body:has(.home-main) .home-main{width:1100px;max-width:none;min-height:0;margin:0 auto;padding:30px 0 50px}
 body:has(.home-main) .home-frame{display:grid;grid-template-columns:645px 395px;gap:60px;align-items:start}
 body:has(.home-main) .home-frame>.left-menu{display:none}
 body:has(.home-main) .home-content{width:645px;min-width:0}
@@ -389,7 +389,7 @@ body:has(.home-main) .today-card{display:block;width:645px;height:320px;padding:
 body:has(.home-main) .today-card:before{background:linear-gradient(90deg,rgba(0,0,0,.58),rgba(0,0,0,.08) 64%,transparent)}
 body:has(.home-main) .today-card>div{position:absolute;top:108px;left:43px;width:370px}
 body:has(.home-main) .today-card p{margin:0 0 16px;font-size:13px;font-weight:700;opacity:1}
-body:has(.home-main) .today-card h1{margin:0;font-size:27px;line-height:1.42;font-weight:700;letter-spacing:-1.4px}
+body:has(.home-main) .today-card h1{margin:0;font-size:26px;line-height:1.4;font-weight:700;letter-spacing:-1.2px;white-space:pre-line!important;word-break:keep-all!important;word-wrap:break-word!important}
 body:has(.home-main) .today-card button{min-height:0;margin:15px 0 0;padding:0;color:#fff;font-size:11px;opacity:.8}
 body:has(.home-main) .today-dots{height:25px;margin:0;padding-top:14px;gap:5px}
 body:has(.home-main) .today-dots>*{width:4px;height:4px;background:#d8d8d8}
@@ -1241,11 +1241,14 @@ button:not(.main-nav button):not(.category-tabs button):not(.feed-toolbar button
 .font-dalseo {
   font-family: 'DalseoHealing', sans-serif !important;
 }
-/* 5. 블로그 작성 Tip 8칸 문장 두께 얇게 조정 */
+/* 5. 블로그 작성 Tip 8칸 문장 두께 얇게 조정 및 단어/조사 결합 줄바꿈 */
 .tip-grid button span {
   font-weight: 300 !important;
   letter-spacing: -0.2px;
   font-family: 'SBAggro', sans-serif !important;
+  white-space: pre-line !important;
+  word-break: keep-all !important;
+  word-wrap: break-word !important;
 }
 
 .interest-search-terms{display:flex;flex-wrap:wrap;gap:7px;margin-top:18px}
