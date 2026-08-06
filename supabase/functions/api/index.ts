@@ -524,6 +524,10 @@ Deno.serve(async (request) => {
     .replace(/^\/functions\/v1\/api/, '')
     .replace(/^\/api(?=\/|$)/, '') || '/'
 
+  if (Deno.env.get('MAINTENANCE_MODE') === 'true' && !['GET', 'HEAD'].includes(request.method)) {
+    return apiError(503, 'MAINTENANCE', '데이터 이전을 위해 잠시 점검 중입니다.', undefined)
+  }
+
   const authResponse = handleAuthRoute(request, path)
   if (authResponse) return authResponse
 

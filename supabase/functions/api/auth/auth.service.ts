@@ -1,7 +1,7 @@
 import bcrypt from 'npm:bcryptjs@3.0.2'
 import {
-  apiError, corsHeaders, expiredSessionCookie, getSession, json, randomToken, readCookie,
-  requireCsrfSession, serviceRoleKey, sessionCookie, sha256, supabaseUrl,
+  apiError, corsHeaders, expiredSessionCookie, getSession, getSessionHash, json, randomToken, readCookie,
+  requireCsrfSession, serviceRoleKey, sessionCookie, sha256, supabase, supabaseUrl,
 } from '../shared.ts'
 import {
   createUser, deleteSession, findCurrentBlog, findCurrentUser, findUserByEmail,
@@ -37,7 +37,11 @@ const validateSignup = (body: SignupBody) => {
 
 export const issueCsrfToken = async (request: Request) => {
   if (!supabaseUrl || !serviceRoleKey) return apiError(500, 'INTERNAL_SERVER_ERROR', '서버 설정을 확인해 주세요.')
-  const sessionId = readCookie(request, 'session_id') ?? randomToken()
+  const existing = await getSession(request)
+  if (existing) {
+    return json({ data: { csrfToken: existing.csrf_token } }, 200, { 'Set-Cookie': sessionCookie(existing.sessionId) })
+  }
+  const sessionId = randomToken()
   const csrfToken = randomToken()
   const { error } = await saveCsrfSession(
     await sha256(sessionId),
@@ -113,13 +117,15 @@ export const logout = async (request: Request) => {
 }
 
 export const me = async (request: Request) => {
-  const session = await getSession(request)
-  if (!session?.user_id) return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
-  const { data: user, error } = await findCurrentUser(session.user_id)
-  if (error || !user) return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
-  const { data: blog, error: blogError } = await findCurrentBlog(user.id)
-  if (blogError && blogError.code !== '42P01') return apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
-  return json({ data: { user: { id: user.id, email: user.email, nickname: user.nickname, interests: user.interests ?? [], createdAt: user.created_at, updatedAt: user.updated_at }, requiresThirdPartyConsent: !user.third_party_consent_decided_at, blog: blog ?? null } })
+  const sessionHash = await getSessionHash(request)
+  if (!sessionHash) return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
+  const { data, error } = await supabase.rpc('get_session_context', { p_session_hash: sessionHash })
+  if (error) {
+    console.error('Failed to read session context', error)
+    return apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
+  }
+  if (!data) return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
+  return json({ data })
 }
 
 export const updateInterests = async (request: Request) => {

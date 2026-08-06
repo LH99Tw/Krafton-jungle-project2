@@ -1,6 +1,8 @@
 import { FormEvent, useEffect, useRef, useState } from 'react'
 import { ArrowRight, Check, ChevronDown, MessageCircle, Plus, RotateCcw, Send, Sparkles, X } from 'lucide-react'
 import './ai-mission.css'
+import { assetUrl } from './assets'
+import { ProgressiveImage } from './ProgressiveImage'
 
 export type AiCapability = 'missions' | 'writing-coach' | 'content-recommendations' | 'market-assistant'
 export type AiCharacter = {
@@ -42,9 +44,9 @@ export const AI_ACTIVITY_EVENT = 'tistory:activity'
 export const emitAiActivity = (activity: AiActivity) => window.dispatchEvent(new CustomEvent<AiActivity>(AI_ACTIVITY_EVENT, { detail: activity }))
 
 export const AI_CHARACTERS: AiCharacter[] = [
-  { id: 'chiikawa', name: '치이카와', role: '다정한 응원 친구', description: '조금 떨려도 괜찮아. 작은 용기를 모아 한 걸음씩 함께해요.', image: '/assets/ai/chiikawa.webp', accent: '#ef9bb4', accentSoft: '#3b252d', capabilities: ['missions'], greeting: '와…! 와아… 만나서 반가워. 조금씩, 같이 해보자…!', success: ['해, 해냈어…! 정말 대단해!', '와아…! 완료했어. 같이 기뻐해도 되지?', '용기 냈구나…! 다음 것도 천천히 함께하자.'], nudge: '괜찮아… 아주 작은 것부터 해도 돼. 내가 옆에 있을게!' },
-  { id: 'hachiware', name: '하치와레', role: '긍정적인 안내 친구', description: '어려운 미션도 알기 쉽게 풀어주고 밝은 쪽을 찾아줘요.', image: '/assets/ai/hachiware.webp', accent: '#80b8d2', accentSoft: '#20333c', capabilities: ['missions'], greeting: '왔구나! 오늘 할 일을 하나씩 살펴보면 생각보다 금방 끝낼 수 있을 거야. 같이 시작해보자!', success: ['됐다! 차근차근 하니까 정말 해냈네!', '완료 확인! 다음 미션도 방법부터 같이 살펴보자.', '좋은 선택이었어! 기록이 제대로 남았어.'], nudge: '어디서 막혔는지 말해주면 순서대로 설명해줄게. 하나씩 하면 괜찮아!' },
-  { id: 'usagi', name: '우사기', role: '용감한 도전 친구', description: '망설임 없이 출발하고 미션을 신나는 도전으로 바꿔줘요.', image: '/assets/ai/usagi.webp', accent: '#e7c76c', accentSoft: '#3b3420', capabilities: ['missions'], greeting: '야하—! 미션 발견! 준비됐으면 바로 출발이다!', success: ['우라라—! 미션 완료! 다음으로 간다!', '야하! 해냈다! 보상 기록도 꽉 잡아뒀다!', '우라—! 이 기세면 전부 모을 수 있어!'], nudge: '야하! 고민은 짧게, 행동은 빠르게! 버튼부터 눌러보자!' },
+  { id: 'chiikawa', name: '치이카와', role: '다정한 응원 친구', description: '조금 떨려도 괜찮아. 작은 용기를 모아 한 걸음씩 함께해요.', image: assetUrl('ai/chiikawa.webp'), accent: '#ef9bb4', accentSoft: '#3b252d', capabilities: ['missions'], greeting: '와…! 와아… 만나서 반가워. 조금씩, 같이 해보자…!', success: ['해, 해냈어…! 정말 대단해!', '와아…! 완료했어. 같이 기뻐해도 되지?', '용기 냈구나…! 다음 것도 천천히 함께하자.'], nudge: '괜찮아… 아주 작은 것부터 해도 돼. 내가 옆에 있을게!' },
+  { id: 'hachiware', name: '하치와레', role: '긍정적인 안내 친구', description: '어려운 미션도 알기 쉽게 풀어주고 밝은 쪽을 찾아줘요.', image: assetUrl('ai/hachiware.webp'), accent: '#80b8d2', accentSoft: '#20333c', capabilities: ['missions'], greeting: '왔구나! 오늘 할 일을 하나씩 살펴보면 생각보다 금방 끝낼 수 있을 거야. 같이 시작해보자!', success: ['됐다! 차근차근 하니까 정말 해냈네!', '완료 확인! 다음 미션도 방법부터 같이 살펴보자.', '좋은 선택이었어! 기록이 제대로 남았어.'], nudge: '어디서 막혔는지 말해주면 순서대로 설명해줄게. 하나씩 하면 괜찮아!' },
+  { id: 'usagi', name: '우사기', role: '용감한 도전 친구', description: '망설임 없이 출발하고 미션을 신나는 도전으로 바꿔줘요.', image: assetUrl('ai/usagi.webp'), accent: '#e7c76c', accentSoft: '#3b3420', capabilities: ['missions'], greeting: '야하—! 미션 발견! 준비됐으면 바로 출발이다!', success: ['우라라—! 미션 완료! 다음으로 간다!', '야하! 해냈다! 보상 기록도 꽉 잡아뒀다!', '우라—! 이 기세면 전부 모을 수 있어!'], nudge: '야하! 고민은 짧게, 행동은 빠르게! 버튼부터 눌러보자!' },
 ]
 
 type AiPalette = { accent: string; soft: string }
@@ -75,6 +77,7 @@ function useImagePalette(imageUrl: string, fallback: string): AiPalette {
     const cached = paletteCache.get(imageUrl)
     if (cached) { setPalette(cached); return }
     const image = new Image()
+    image.crossOrigin = 'anonymous'
     image.onload = () => {
       try {
         const canvas = document.createElement('canvas'); canvas.width = 48; canvas.height = 48
@@ -178,7 +181,7 @@ const replyFor = (text: string, controller: Controller) => {
 function CharacterCard({ entry, index, onSelect }: { entry: AiCharacter; index: number; onSelect: () => void }) {
   const palette = useImagePalette(entry.image, entry.accent)
   return <button className="ai-character-card" style={{ '--ai-accent': palette.accent, '--ai-soft': palette.soft } as React.CSSProperties} onClick={onSelect}>
-    <span className="ai-card-number">0{index + 1}</span><img src={entry.image} alt={`${entry.name}, ${entry.role}`} /><span className="ai-card-shade" /><span className="ai-card-copy"><small>{entry.role}</small><strong>{entry.name}</strong><em>{entry.description}</em><b>이 캐릭터와 시작 <ArrowRight size={16} /></b></span>
+    <span className="ai-card-number">0{index + 1}</span><ProgressiveImage eager src={entry.image} alt={`${entry.name}, ${entry.role}`} /><span className="ai-card-shade" /><span className="ai-card-copy"><small>{entry.role}</small><strong>{entry.name}</strong><em>{entry.description}</em><b>이 캐릭터와 시작 <ArrowRight size={16} /></b></span>
   </button>
 }
 
@@ -201,8 +204,8 @@ export function AiMissionPage({ controller, nickname, go }: { controller: Contro
   const messages = state.messages[character.id] ?? []
   const submit = (event: FormEvent) => { event.preventDefault(); const text = input.trim(); if (!text) return; addChat(text); setInput(''); window.setTimeout(() => addReply(replyFor(text, controller)), 320) }
   return <main id="main" className="ai-stage ai-room" style={{ '--ai-accent': palette.accent, '--ai-soft': palette.soft } as React.CSSProperties}>
-    <section className="ai-portrait-pane"><img src={character.image} alt="" /><div className="ai-portrait-overlay" /><div className="ai-character-meta"><p>YOUR AI COMPANION</p><h1>{character.name}</h1><span>{character.role}</span><div><i /> missions 활성화</div></div><button className="ai-switch" onClick={() => setChoosing(true)}><RotateCcw size={14} /> 캐릭터 변경</button></section>
-    <section className="ai-chat-pane"><header><div><span className="ai-online" /><div><strong>{character.name}</strong><small>당신의 활동을 함께 보고 있어요</small></div></div><span>{completedCount}/3 COMPLETE</span></header><div className="ai-chat-log" ref={logRef}>{messages.map((entry) => <div className={`ai-bubble ${entry.sender}`} key={entry.id}>{entry.sender === 'ai' && <img src={character.image} alt="" />}<p>{entry.body}</p></div>)}</div><form className="ai-chat-form" onSubmit={submit}><input value={input} onChange={(event) => setInput(event.target.value)} maxLength={300} placeholder={`${character.name}에게 무엇이든 말해보세요`} /><button aria-label="메시지 보내기" disabled={!input.trim()}><Send size={17} /></button></form><div className="ai-suggests"><button onClick={() => { addChat('지금 미션 어떻게 해?'); addReply(replyFor('지금 미션 어떻게 해?', controller)) }}>미션 도움</button><button onClick={() => { addChat('진행 상태 알려줘'); addReply(replyFor('진행 상태 알려줘', controller)) }}>진행 상황</button><button onClick={() => { addChat('보상은 어떻게 받아?'); addReply(replyFor('보상은 어떻게 받아?', controller)) }}>보상 질문</button></div></section>
+    <section className="ai-portrait-pane"><ProgressiveImage src={character.image} alt="" /><div className="ai-portrait-overlay" /><div className="ai-character-meta"><p>YOUR AI COMPANION</p><h1>{character.name}</h1><span>{character.role}</span><div><i /> missions 활성화</div></div><button className="ai-switch" onClick={() => setChoosing(true)}><RotateCcw size={14} /> 캐릭터 변경</button></section>
+    <section className="ai-chat-pane"><header><div><span className="ai-online" /><div><strong>{character.name}</strong><small>당신의 활동을 함께 보고 있어요</small></div></div><span>{completedCount}/3 COMPLETE</span></header><div className="ai-chat-log" ref={logRef}>{messages.map((entry) => <div className={`ai-bubble ${entry.sender}`} key={entry.id}>{entry.sender === 'ai' && <ProgressiveImage src={character.image} alt="" />}<p>{entry.body}</p></div>)}</div><form className="ai-chat-form" onSubmit={submit}><input value={input} onChange={(event) => setInput(event.target.value)} maxLength={300} placeholder={`${character.name}에게 무엇이든 말해보세요`} /><button aria-label="메시지 보내기" disabled={!input.trim()}><Send size={17} /></button></form><div className="ai-suggests"><button onClick={() => { addChat('지금 미션 어떻게 해?'); addReply(replyFor('지금 미션 어떻게 해?', controller)) }}>미션 도움</button><button onClick={() => { addChat('진행 상태 알려줘'); addReply(replyFor('진행 상태 알려줘', controller)) }}>진행 상황</button><button onClick={() => { addChat('보상은 어떻게 받아?'); addReply(replyFor('보상은 어떻게 받아?', controller)) }}>보상 질문</button></div></section>
     <aside className="ai-mission-pane"><header><p>MISSION QUEUE</p><span>{completedCount} / {AI_MISSIONS.length}</span></header>{currentMission ? <div className="ai-current-mission"><small>NEXT MISSION · {currentMission.index}</small><h2>{currentMission.title}</h2><p>{currentMission.description}</p><strong>+{currentMission.reward}P <em>지급 예정</em></strong><button onClick={() => go(currentMission.route)}>{currentMission.action} <ArrowRight size={16} /></button></div> : <div className="ai-all-clear"><Sparkles size={28} /><h2>오늘의 미션 완료</h2><p>모든 예정 보상이 기록됐어요.</p></div>}<div className="ai-mission-list">{AI_MISSIONS.map((mission) => { const done = Boolean(state.progress[mission.id].completedAt); return <div className={done ? 'done' : currentMission?.id === mission.id ? 'active' : ''} key={mission.id}><span>{done ? <Check size={14} /> : mission.index}</span><div><strong>{mission.title}</strong><small>+{mission.reward}P · 지급 예정</small></div></div> })}</div><footer>현재는 프론트엔드 미션 기록만 제공하며<br />실제 포인트 잔액은 변경하지 않습니다.</footer></aside>
   </main>
 }
@@ -212,7 +215,7 @@ export function AiCompanionDock({ controller, path, go }: { controller: Controll
   const palette = useImagePalette(character?.image ?? '', character?.accent ?? '#ef9bb4')
   const wasHidden = state.dock === 'hidden'
   if (!character || path === '/ai' || (wasHidden && !completion)) return null
-  if (state.dock === 'minimized' && !completion) return <button className="ai-dock-min" aria-label="AI 동반자 열기" style={{ '--ai-accent': palette.accent } as React.CSSProperties} onClick={() => setDock('open')}><img src={character.image} alt="" /><MessageCircle size={16} /></button>
+  if (state.dock === 'minimized' && !completion) return <button className="ai-dock-min" aria-label="AI 동반자 열기" style={{ '--ai-accent': palette.accent } as React.CSSProperties} onClick={() => setDock('open')}><ProgressiveImage src={character.image} alt="" /><MessageCircle size={16} /></button>
   const mission = completion ?? currentMission
-  return <aside className={`ai-dock${completion ? ' success' : ''}`} style={{ '--ai-accent': palette.accent, '--ai-soft': palette.soft } as React.CSSProperties} aria-live="polite"><img src={character.image} alt="" /><div><small>{completion ? 'MISSION COMPLETE' : `WITH ${character.name}`}</small><strong>{completion ? `${mission?.title} 완료!` : mission?.title ?? '오늘의 미션 완료'}</strong><p>{completion ? character.success[0] : mission?.description ?? '새 미션이 열릴 때까지 기록을 이어가요.'}</p><button onClick={() => go('/ai')}>AI 공간 열기 <ArrowRight size={13} /></button></div><div className="ai-dock-controls"><button aria-label="최소화" onClick={() => { setCompletion(null); setDock('minimized') }}><ChevronDown size={15} /></button><button aria-label="닫기" onClick={() => { setCompletion(null); setDock('hidden') }}><X size={15} /></button></div></aside>
+  return <aside className={`ai-dock${completion ? ' success' : ''}`} style={{ '--ai-accent': palette.accent, '--ai-soft': palette.soft } as React.CSSProperties} aria-live="polite"><ProgressiveImage src={character.image} alt="" /><div><small>{completion ? 'MISSION COMPLETE' : `WITH ${character.name}`}</small><strong>{completion ? `${mission?.title} 완료!` : mission?.title ?? '오늘의 미션 완료'}</strong><p>{completion ? character.success[0] : mission?.description ?? '새 미션이 열릴 때까지 기록을 이어가요.'}</p><button onClick={() => go('/ai')}>AI 공간 열기 <ArrowRight size={13} /></button></div><div className="ai-dock-controls"><button aria-label="최소화" onClick={() => { setCompletion(null); setDock('minimized') }}><ChevronDown size={15} /></button><button aria-label="닫기" onClick={() => { setCompletion(null); setDock('hidden') }}><X size={15} /></button></div></aside>
 }

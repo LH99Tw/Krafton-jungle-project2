@@ -31,20 +31,25 @@ export const marketItemJson = (item: Record<string, any>, seller?: Record<string
   purgeAfter: item.purge_after,
 })
 
-export const marketDtos = async (request: Request, items: Record<string, any>[]) => {
+export const marketDtos = async (request: Request, items: Record<string, any>[], knownUserId?: number | null) => {
   if (!items.length) return []
   const sellerIds = [...new Set(items.map((item) => item.seller_id))]
-  const { data: sellers, error: sellerError } = await supabase.from('users').select('id,nickname').in('id', sellerIds)
+  const itemIds = items.map((item) => item.id)
+  const userId = knownUserId === undefined ? (await getSession(request))?.user_id ?? null : knownUserId
+  const [sellerResult, likeResult, imageResult] = await Promise.all([
+    supabase.from('users').select('id,nickname').in('id', sellerIds),
+    userId
+      ? supabase.from('market_item_likes').select('item_id').eq('user_id', userId).in('item_id', itemIds)
+      : Promise.resolve({ data: [], error: null }),
+    supabase.from('market_item_images').select('id,item_id,storage_path,position').in('item_id', itemIds).order('position'),
+  ])
+  const { data: sellers, error: sellerError } = sellerResult
   if (sellerError) throw sellerError
   const sellerMap = new Map((sellers ?? []).map((seller: Record<string, any>) => [seller.id, seller]))
-  const session = await getSession(request)
-  const itemIds = items.map((item) => item.id)
-  const { data: mine, error: likeError } = session?.user_id
-    ? await supabase.from('market_item_likes').select('item_id').eq('user_id', session.user_id).in('item_id', itemIds)
-    : { data: [], error: null }
+  const { data: mine, error: likeError } = likeResult
   if (likeError) throw likeError
   const likedIds = new Set((mine ?? []).map((item: Record<string, any>) => item.item_id))
-  const { data: imageRows, error: imageError } = await supabase.from('market_item_images').select('id,item_id,storage_path,position').in('item_id', itemIds).order('position')
+  const { data: imageRows, error: imageError } = imageResult
   if (imageError) throw imageError
   const imagesByItem = new Map<number, { id: number; url: string; position: number }[]>()
   for (const image of imageRows ?? []) {
@@ -58,12 +63,12 @@ export const marketDtos = async (request: Request, items: Record<string, any>[])
   })
 }
 
-export const getPopularMarketItems = async (request: Request, limit = 5) => {
+export const getPopularMarketItems = async (request: Request, limit = 5, knownUserId?: number | null) => {
   const { data, error } = await supabase.from('market_item_details').select(marketItemDetailFields)
     .eq('status', 'SELLING').is('deleted_at', null)
     .order('like_count', { ascending: false }).order('created_at', { ascending: false }).order('id', { ascending: false }).limit(limit)
   if (error) return { data: [], error }
-  try { return { data: await marketDtos(request, data ?? []), error: null } }
+  try { return { data: await marketDtos(request, data ?? [], knownUserId), error: null } }
   catch (error) { return { data: [], error } }
 }
 
@@ -266,7 +271,7 @@ export const replaceMarketItemImages = async (request: Request, id: number) => {
   }
   const uploaded: string[] = []
   for (const image of uploads) {
-    const { error } = await supabase.storage.from('market-item-images').upload(image.path, image.bytes, { contentType: 'image/webp', upsert: false })
+    const { error } = await supabase.storage.from('market-item-images').upload(image.path, image.bytes, { contentType: 'image/webp', cacheControl: '31536000', upsert: false })
     if (error) {
       if (uploaded.length) await supabase.storage.from('market-item-images').remove(uploaded)
       return apiError(500, 'MARKET_IMAGE_UPLOAD_FAILED', '상품 이미지를 업로드하지 못했습니다.')
