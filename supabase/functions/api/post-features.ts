@@ -71,18 +71,23 @@ const toggleRelation = async (request: Request, postId: number, table: 'post_lik
   return enabled ? json({ data: { active: true } }, 201) : new Response(null, { status: 204, headers: corsHeaders })
 }
 
-const commentJson = (comment: Record<string, any>, author: Record<string, any>) => ({
+const commentJson = (comment: Record<string, any>, author: Record<string, any>, viewerId?: number | null) => {
+  const anonymous = Boolean(comment.is_anonymous) && !comment.deleted_at
+  const ownComment = viewerId === comment.author_id
+  return {
   id: comment.id,
   postId: comment.post_id,
   parentId: comment.parent_id,
   body: comment.deleted_at ? '삭제된 댓글입니다.' : comment.body,
-  author: { id: author.id, nickname: author.nickname },
+  author: { id: anonymous && !ownComment ? 0 : author.id, nickname: anonymous ? '익명' : author.nickname },
+  anonymous,
   deleted: Boolean(comment.deleted_at),
   createdAt: comment.created_at,
   updatedAt: comment.updated_at,
-})
+  }
+}
 
-const listComments = async (postId: number, url: URL) => {
+const listComments = async (request: Request, postId: number, url: URL) => {
   if (!(await publishedPost(postId))) return apiError(404, 'NOT_FOUND', '글을 찾을 수 없습니다.')
   const page = Math.max(1, Number(url.searchParams.get('page') ?? 1) || 1)
   const size = Math.min(100, Math.max(1, Number(url.searchParams.get('size') ?? 50) || 50))
@@ -93,7 +98,8 @@ const listComments = async (postId: number, url: URL) => {
   const { data: authors } = authorIds.length ? await supabase.from('users').select('id,nickname').in('id', authorIds) : { data: [] }
   const authorMap = new Map((authors ?? []).map((author: Record<string, any>) => [author.id, author]))
   const totalItems = count ?? 0
-  return json({ data: (data ?? []).map((row: Record<string, any>) => commentJson(row, authorMap.get(row.author_id) ?? { id: row.author_id, nickname: '알 수 없음' })), pagination: { page, size, totalItems, totalPages: totalItems ? Math.ceil(totalItems / size) : 0 } })
+  const viewerId = (await getSession(request))?.user_id ?? null
+  return json({ data: (data ?? []).map((row: Record<string, any>) => commentJson(row, authorMap.get(row.author_id) ?? { id: row.author_id, nickname: '알 수 없음' }, viewerId)), pagination: { page, size, totalItems, totalPages: totalItems ? Math.ceil(totalItems / size) : 0 } })
 }
 
 const createComment = async (request: Request, postId: number) => {
@@ -104,6 +110,7 @@ const createComment = async (request: Request, postId: number) => {
   const input = await request.json().catch(() => null)
   const body = typeof input?.body === 'string' ? input.body.trim() : ''
   const parentId = input?.parentId == null ? null : Number(input.parentId)
+  const anonymous = input?.anonymous === true
   if (!body || body.length > 1000) return apiError(400, 'VALIDATION_ERROR', '댓글은 1~1,000자로 입력해 주세요.')
   if (parentId !== null) {
     const { data: parent } = await supabase.from('post_comments').select('id,post_id,parent_id,deleted_at').eq('id', parentId).maybeSingle()
@@ -111,10 +118,10 @@ const createComment = async (request: Request, postId: number) => {
     if (parent.deleted_at) return apiError(400, 'INVALID_PARENT_COMMENT', '삭제된 댓글에는 답글을 작성할 수 없습니다.')
     if (parent.parent_id) return apiError(400, 'REPLY_DEPTH_EXCEEDED', '답글에는 다시 답글을 작성할 수 없습니다.')
   }
-  const { data, error } = await supabase.from('post_comments').insert({ post_id: postId, author_id: session.user_id, parent_id: parentId, body }).select('*').single()
+  const { data, error } = await supabase.from('post_comments').insert({ post_id: postId, author_id: session.user_id, parent_id: parentId, body, is_anonymous: anonymous }).select('*').single()
   if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '댓글을 저장하지 못했습니다.')
   const { data: author } = await supabase.from('users').select('id,nickname').eq('id', session.user_id).single()
-  return json({ data: commentJson(data, author!) }, 201)
+  return json({ data: commentJson(data, author!, session.user_id) }, 201)
 }
 
 const changeComment = async (request: Request, id: number, remove: boolean) => {
@@ -139,14 +146,14 @@ const changeComment = async (request: Request, id: number, remove: boolean) => {
   const { data, error } = await supabase.from('post_comments').update({ body, updated_at: new Date().toISOString() }).eq('id', id).select('*').single()
   if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '댓글을 수정하지 못했습니다.')
   const { data: author } = await supabase.from('users').select('id,nickname').eq('id', session.user_id).single()
-  return json({ data: commentJson(data, author!) })
+  return json({ data: commentJson(data, author!, session.user_id) })
 }
 
 export const handlePostFeatureRoute = (request: Request, path: string, url: URL) => {
   const relation = path.match(/^\/posts\/(\d+)\/(like|bookmark)$/)
   if (relation && (request.method === 'POST' || request.method === 'DELETE')) return toggleRelation(request, Number(relation[1]), relation[2] === 'like' ? 'post_likes' : 'post_bookmarks', request.method === 'POST')
   const comments = path.match(/^\/posts\/(\d+)\/comments$/)
-  if (comments && request.method === 'GET') return listComments(Number(comments[1]), url)
+  if (comments && request.method === 'GET') return listComments(request, Number(comments[1]), url)
   if (comments && request.method === 'POST') return createComment(request, Number(comments[1]))
   const comment = path.match(/^\/comments\/(\d+)$/)
   if (comment && request.method === 'PATCH') return changeComment(request, Number(comment[1]), false)
