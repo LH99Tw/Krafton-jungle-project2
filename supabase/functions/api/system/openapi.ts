@@ -87,6 +87,10 @@ export const openApiDocument = {
       description: 'Returns the blog profile with subscriberCount, published posts, and up to eight market items owned by the blogger.',
       responses: { '200': { description: 'Public personalized blog' }, '404': { description: 'Blog not found' } },
     } },
+    '/preferences/me': {
+      get: { summary: 'Get preference catalog and current selections', responses: { '200': { description: 'Preferences' } } },
+      put: { summary: 'Replace current user preferences and complete onboarding', responses: { '200': { description: 'Preferences saved' } } },
+    },
     '/blogs/{slug}/subscription': {
       post: { summary: 'Subscribe to a blog', responses: { '201': { description: 'Subscribed' } } },
       delete: { summary: 'Unsubscribe from a blog', responses: { '204': { description: 'Unsubscribed' } } },
