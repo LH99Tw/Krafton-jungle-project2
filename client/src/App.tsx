@@ -4,7 +4,7 @@ import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bell, BookOpen, Bookmark, Ch
 import { AiCompanionDock, AiMissionPage, emitAiActivity, useAiMission } from "./AiMission";
 import { assetUrl } from "./assets";
 import { ProgressiveImage } from "./ProgressiveImage";
-import { clearUserQueryState } from "./query-client";
+import { clearUserQueryState, subscribeMarketChatChanges } from "./query-client";
 import { RichContent, RichTextEditor, type RichDocument, type UploadedPostImage } from "./RichTextEditor";
 type User = {
   id: number;
@@ -98,7 +98,7 @@ type Conversation = {
   buyerId?: number;
   sellerId?: number;
   item?: { id: number; title: string } | null;
-  peer?: { id: number; nickname: string } | null;
+  peer?: { id: number; nickname: string; profileImageUrl?: string | null } | null;
   lastMessage?: { id: number; body: string; senderId: number; createdAt: string } | null;
   unreadCount?: number;
 };
@@ -4879,7 +4879,8 @@ function MarketChatDock({ user, onLogin }: { user: User | null; onLogin: () => v
     try {
       const next = await request<ChatMessage[]>(`/market/conversations/${room.id}/messages`) ?? []
       setMessages(next)
-      if (markRead && (room.unreadCount ?? 0) > 0) {
+      const hasUnreadReceivedMessage = next.some((entry) => String(entry.senderId) !== String(user?.id) && !entry.readAt)
+      if (markRead && hasUnreadReceivedMessage) {
         await request(`/market/conversations/${room.id}/read`, { method: 'POST' })
         setRooms((current) => current.map((item) => String(item.id) === String(room.id) ? { ...item, unreadCount: 0 } : item))
       }
@@ -4890,15 +4891,12 @@ function MarketChatDock({ user, onLogin }: { user: User | null; onLogin: () => v
   useEffect(() => { void loadRooms() }, [user?.id])
   useEffect(() => {
     if (!user) return
-    const timer = window.setInterval(() => { void loadRooms() }, 5000)
-    return () => window.clearInterval(timer)
-  }, [user?.id])
-  useEffect(() => {
-    if (!open || !active) return
-    void loadMessages(active)
-    const timer = window.setInterval(() => { void loadMessages(active) }, 3000)
-    return () => window.clearInterval(timer)
-  }, [open, active?.id])
+    return subscribeMarketChatChanges((conversationId) => {
+      void loadRooms()
+      if (open && active && (!conversationId || String(conversationId) === String(active.id))) void loadMessages(active)
+    })
+  }, [user?.id, open, active?.id])
+  useEffect(() => { if (open && active) void loadMessages(active) }, [open, active?.id])
   useEffect(() => {
     const resize = () => setPosition((current) => clampChatBall(current))
     window.addEventListener('resize', resize)
@@ -4950,7 +4948,7 @@ function MarketChatDock({ user, onLogin }: { user: User | null; onLogin: () => v
         <button className="market-chat-back" onClick={() => { setActive(null); setMessages([]) }}><ArrowLeft size={14} /> 모든 대화 <span>{active.item?.title}</span></button>
         <div className="market-chat-inbox-messages">{messages.length ? messages.map((entry) => <div className={`chat-message${String(entry.senderId) === String(user.id) ? ' mine' : ''}`} key={entry.id}><p>{entry.body}</p><time>{new Date(entry.createdAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time></div>) : <p className="market-chat-empty">아직 메시지가 없습니다.</p>}</div>
         <form onSubmit={sendMessage}><input maxLength={1000} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="메시지를 입력하세요" /><button disabled={!draft.trim()} aria-label="메시지 전송"><Send size={17} /></button></form>
-      </> : <div className="market-chat-room-list">{rooms.length ? rooms.map((room) => <button key={room.id} onClick={() => selectRoom(room)}><span className="market-chat-peer">{room.peer?.nickname?.[0] ?? '?'}</span><span><strong>{room.peer?.nickname ?? '상대방'}</strong><small>{room.item?.title ?? '마켓 상품'}</small><p>{room.lastMessage?.body ?? '대화를 시작해 보세요.'}</p></span>{(room.unreadCount ?? 0) > 0 && <b>{room.unreadCount}</b>}</button>) : <p className="market-chat-empty">아직 시작한 마켓 대화가 없습니다.<br />상품에서 채팅하기를 눌러 시작해 보세요.</p>}</div>}
+      </> : <div className="market-chat-room-list">{rooms.length ? rooms.map((room) => <button key={room.id} onClick={() => selectRoom(room)}><span className={`market-chat-peer${room.peer?.profileImageUrl ? ' has-photo' : ''}`} style={room.peer?.profileImageUrl ? { backgroundImage: `url(${room.peer.profileImageUrl})` } : undefined} aria-label={`${room.peer?.nickname ?? '상대방'} 프로필 이미지`}>{room.peer?.profileImageUrl ? '' : room.peer?.nickname?.[0] ?? '?'}</span><span><strong>{room.peer?.nickname ?? '상대방'}</strong><small>{room.item?.title ?? '마켓 상품'}</small><p>{room.lastMessage?.body ?? '대화를 시작해 보세요.'}</p></span>{(room.unreadCount ?? 0) > 0 && <b>{room.unreadCount}</b>}</button>) : <p className="market-chat-empty">아직 시작한 마켓 대화가 없습니다.<br />상품에서 채팅하기를 눌러 시작해 보세요.</p>}</div>}
       {error && <p className="market-chat-error">{error}</p>}
     </aside>}
   </>

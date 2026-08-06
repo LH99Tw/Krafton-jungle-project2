@@ -92,3 +92,44 @@ export const startContentInvalidation = () => {
     channel = null
   }
 }
+
+export const subscribeMarketChatChanges = (onChange: (conversationId?: number) => void) => {
+  const url = import.meta.env.VITE_SUPABASE_URL
+  const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
+  if (!url || !publishableKey) return () => {}
+
+  const realtime = createClient(url, publishableKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  })
+  let debounceTimer: number | null = null
+  let pendingConversationId: number | undefined
+  const notify = (conversationId?: number) => {
+    pendingConversationId = conversationId ?? pendingConversationId
+    if (debounceTimer !== null) window.clearTimeout(debounceTimer)
+    debounceTimer = window.setTimeout(() => {
+      const nextId = pendingConversationId
+      pendingConversationId = undefined
+      debounceTimer = null
+      onChange(nextId)
+    }, 120)
+  }
+
+  const nextChannel = realtime.channel('market-chat', { config: { private: false } })
+    .on('broadcast', { event: 'changed' }, ({ payload }) => {
+      const id = Number(payload?.conversationId)
+      notify(Number.isSafeInteger(id) && id > 0 ? id : undefined)
+    })
+    .on('postgres_changes', {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'market_chat_versions',
+    }, () => notify())
+    .subscribe((status) => {
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') notify()
+    })
+
+  return () => {
+    if (debounceTimer !== null) window.clearTimeout(debounceTimer)
+    void realtime.removeChannel(nextChannel)
+  }
+}

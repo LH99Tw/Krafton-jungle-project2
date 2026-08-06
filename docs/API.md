@@ -53,7 +53,7 @@
 
 ## 마켓
 
-상품 CRUD·검색·휴지통, 상품 이미지 업로드, 상품별 채팅방, 메시지 조회·전송·읽음 처리를 지원한다. 채팅함은 대화 목록을 5초, 열린 대화를 3초 간격으로 갱신하는 MVP 준실시간 방식이다. 이미지 업로드의 구현 계약은 [MARKET_IMAGE_UPLOAD_DESIGN.md](./MARKET_IMAGE_UPLOAD_DESIGN.md)를 따른다.
+상품 CRUD·검색·휴지통, 상품 이미지 업로드, 상품별 채팅방, 메시지 조회·전송·읽음 처리를 지원한다. 채팅함은 Supabase Realtime WebSocket의 변경 신호를 수신한 뒤 인증된 API가 RPC로 최신 대화 목록과 메시지를 조회한다. WebSocket에는 메시지 본문을 싣지 않는다. 이미지 업로드의 구현 계약은 [MARKET_IMAGE_UPLOAD_DESIGN.md](./MARKET_IMAGE_UPLOAD_DESIGN.md)를 따른다.
 
 - `GET /market/items`: `sort=latest|popular|price_asc|price_desc`. `popular`는 `likeCount DESC → createdAt DESC → id DESC` 순이다.
 - 목록·상세·홈의 상품 응답은 같은 DTO를 사용하며 `likeCount`, 현재 사용자 기준 `isLiked`를 포함한다. 비로그인은 `isLiked=false`다.
@@ -61,3 +61,5 @@
 - `DELETE /market/items/{id}/like`: 자신의 좋아요를 제거하며 중복 호출에도 `204`를 반환한다.
 - `GET /market/conversations`: 구매자·판매자 공용 채팅 목록과 상대방, 상품, 마지막 메시지, 안 읽은 개수를 반환한다.
 - `POST /market/conversations/{id}/read`: 상대방이 보낸 안 읽은 메시지를 읽음 처리한다.
+- 대화 목록과 메시지 조회는 service role 전용 `get_market_chat_conversations`, `get_market_chat_messages` RPC를 사용한다.
+- `market-chat` Broadcast와 `market_chat_versions`의 Postgres Changes는 데이터가 아닌 갱신 신호만 전달한다.
