@@ -349,16 +349,16 @@ const categoryTemplates = (category: string) =>
     ? fallbackPopular.slice(0, 7)
     : fallbackPopular.slice(0, 7).map((post, index) => ({
         ...post,
-        id: -(1000 + ["애니메이션", "게임", "버튜버", "웹툰·캐릭터"].indexOf(category) * 10 + index),
+        id: -(1000 + ["애니메이션·만화", "게임", "버튜버", "웹툰·캐릭터"].indexOf(category) * 10 + index),
         category: { id: 100 + index, name: category },
         classifications: [{ id: 1000 + index * 2, name: category }, post.classifications[1] ?? post.classifications[0]],
       }));
 
 const sidebarTips = [
-  ["첫 문장에 핵심을 담아 제목 완성하기", "TITLE", "#f3ece3"],
-  ["직접 찍은 사진으로 기록에 온도 더하기", "PHOTO", "#e5eeea"],
-  ["작품명과 캐릭터명을 검색 키워드로 쓰기", "KEYWORD", "#e9eaf3"],
-  ["상태와 구성품이 보이는 거래 후기 남기기", "REVIEW", "#f2e8e6"],
+  ["첫 문장에 핵심을 담아\n제목 완성하기", "TITLE", "#f3ece3"],
+  ["직접 찍은 사진으로\n기록에 온도 더하기", "PHOTO", "#e5eeea"],
+  ["작품명과 캐릭터명을\n검색 키워드로 쓰기", "KEYWORD", "#e9eaf3"],
+  ["상태와 구성품이 보이는\n거래 후기 남기기", "REVIEW", "#f2e8e6"],
 ];
 
 const popularCharacters = [
@@ -985,9 +985,9 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
     queryFn: () => request<HomeData>("/home"),
     refetchInterval: 30_000,
   });
-  const categories = ["전체", "애니메이션", "게임", "버튜버", "웹툰·캐릭터"];
+  const categories = ["전체", "애니메이션·만화", "게임", "버튜버", "웹툰·캐릭터"];
   const recommendations = fillPostSlots(home?.popularPosts, fallbackPopular, 5);
-  const connectedCategoryPosts = (home?.categoryPosts ?? []).filter((post) => category === "전체" || post.category?.name === category);
+  const connectedCategoryPosts = (home?.categoryPosts ?? []).filter((post) => category === "전체" || post.category?.name === category || (category === "애니메이션·만화" && (post.category?.name === "애니메이션" || post.category?.name === "만화")));
   const categoryPosts = fillPostSlots(connectedCategoryPosts, categoryTemplates(category), 7);
   const categoryPagePosts = categoryPosts.map((_, index) => categoryPosts[(index + categoryPage - 1) % categoryPosts.length]);
   const latestPosts = fillPostSlots(home?.latestPosts, fallbackLatest, 5);
@@ -996,7 +996,7 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
   const banner: HomeBanner = home?.banners[0] ?? {
     id: 0,
     eyebrow: "NOTICE · EVENT",
-    title: "최애를 기록하고 취향을 나누는 새로운 공간",
+    title: "최애를 기록하고\n취향을 나누는 새로운 공간",
     description: "팬들이 함께 만드는 굿즈 이야기와 새로운 이벤트를 만나보세요.",
     imageUrl: null,
     ctaLabel: "이벤트 자세히 보기",
