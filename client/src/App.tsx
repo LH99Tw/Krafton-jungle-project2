@@ -1,6 +1,6 @@
 import { createContext, FormEvent, PointerEvent as ReactPointerEvent, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bell, BookOpen, Bookmark, Check, ChevronDown, ChevronRight, Clipboard, Clock3, Compass, Eye, FileText, Heart, Image, Layers3, LayoutDashboard, LineChart, Lock, Menu, MessageCircle, Package, Palette, Pencil, PenLine, RotateCcw, Search, Settings, ShoppingCart, Sparkles, Tags, TicketPercent, Trash2, Upload, Volume2, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bell, BookOpen, Bookmark, Check, ChevronDown, ChevronRight, Clipboard, Clock3, Compass, Eye, FileText, Heart, Image, Layers3, LayoutDashboard, LineChart, Lock, Menu, MessageCircle, Package, Palette, Pencil, PenLine, RotateCcw, Search, Send, Settings, ShoppingCart, Sparkles, Tags, TicketPercent, Trash2, Upload, Volume2, X } from "lucide-react";
 import { AiCompanionDock, AiMissionPage, emitAiActivity, useAiMission } from "./AiMission";
 import { assetUrl } from "./assets";
 import { ProgressiveImage } from "./ProgressiveImage";
@@ -97,12 +97,17 @@ type Conversation = {
   itemId: number | string;
   buyerId?: number;
   sellerId?: number;
+  item?: { id: number; title: string } | null;
+  peer?: { id: number; nickname: string } | null;
+  lastMessage?: { id: number; body: string; senderId: number; createdAt: string } | null;
+  unreadCount?: number;
 };
 type ChatMessage = {
   id: number | string;
   conversationId?: number | string;
   senderId: number | string;
   body: string;
+  readAt?: string | null;
   createdAt: string;
 };
 type WalletTransaction = {
@@ -4844,6 +4849,113 @@ function InterestMockup({ go }: { go: (to: string) => void }) {
   );
 }
 
+const CHAT_BALL_POSITION_KEY = 'tistory.market-chat-ball.v1'
+const clampChatBall = (position: { x: number; y: number }) => ({
+  x: Math.max(12, Math.min(window.innerWidth - 72, position.x)),
+  y: Math.max(72, Math.min(window.innerHeight - 72, position.y)),
+})
+
+function MarketChatDock({ user, onLogin }: { user: User | null; onLogin: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [rooms, setRooms] = useState<Conversation[]>([])
+  const [active, setActive] = useState<Conversation | null>(null)
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [draft, setDraft] = useState('')
+  const [error, setError] = useState('')
+  const [position, setPosition] = useState(() => {
+    try { return clampChatBall(JSON.parse(localStorage.getItem(CHAT_BALL_POSITION_KEY) ?? 'null') ?? { x: window.innerWidth - 88, y: window.innerHeight - 104 }) }
+    catch { return clampChatBall({ x: window.innerWidth - 88, y: window.innerHeight - 104 }) }
+  })
+  const drag = useRef<{ pointerId: number; offsetX: number; offsetY: number; moved: boolean } | null>(null)
+  const suppressClick = useRef(false)
+  const unread = rooms.reduce((sum, room) => sum + (room.unreadCount ?? 0), 0)
+
+  const loadRooms = async () => {
+    if (!user) { setRooms([]); return }
+    try { setRooms(await request<Conversation[]>('/market/conversations') ?? []); setError('') }
+    catch (reason) { setError((reason as Error).message) }
+  }
+  const loadMessages = async (room: Conversation, markRead = true) => {
+    try {
+      const next = await request<ChatMessage[]>(`/market/conversations/${room.id}/messages`) ?? []
+      setMessages(next)
+      if (markRead && (room.unreadCount ?? 0) > 0) {
+        await request(`/market/conversations/${room.id}/read`, { method: 'POST' })
+        setRooms((current) => current.map((item) => String(item.id) === String(room.id) ? { ...item, unreadCount: 0 } : item))
+      }
+      setError('')
+    } catch (reason) { setError((reason as Error).message) }
+  }
+
+  useEffect(() => { void loadRooms() }, [user?.id])
+  useEffect(() => {
+    if (!user) return
+    const timer = window.setInterval(() => { void loadRooms() }, 5000)
+    return () => window.clearInterval(timer)
+  }, [user?.id])
+  useEffect(() => {
+    if (!open || !active) return
+    void loadMessages(active)
+    const timer = window.setInterval(() => { void loadMessages(active) }, 3000)
+    return () => window.clearInterval(timer)
+  }, [open, active?.id])
+  useEffect(() => {
+    const resize = () => setPosition((current) => clampChatBall(current))
+    window.addEventListener('resize', resize)
+    return () => window.removeEventListener('resize', resize)
+  }, [])
+
+  const beginDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId)
+    drag.current = { pointerId: event.pointerId, offsetX: event.clientX - position.x, offsetY: event.clientY - position.y, moved: false }
+  }
+  const moveDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!drag.current || drag.current.pointerId !== event.pointerId) return
+    const next = clampChatBall({ x: event.clientX - drag.current.offsetX, y: event.clientY - drag.current.offsetY })
+    if (Math.abs(next.x - position.x) > 3 || Math.abs(next.y - position.y) > 3) drag.current.moved = true
+    setPosition(next)
+  }
+  const endDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!drag.current || drag.current.pointerId !== event.pointerId) return
+    suppressClick.current = drag.current.moved
+    const finalPosition = clampChatBall({ x: event.clientX - drag.current.offsetX, y: event.clientY - drag.current.offsetY })
+    setPosition(finalPosition)
+    drag.current = null
+    localStorage.setItem(CHAT_BALL_POSITION_KEY, JSON.stringify(finalPosition))
+  }
+  const toggle = () => {
+    if (suppressClick.current) { suppressClick.current = false; return }
+    if (!user) return onLogin()
+    setOpen((value) => !value)
+    void loadRooms()
+  }
+  const selectRoom = (room: Conversation) => { setActive(room); void loadMessages(room) }
+  const sendMessage = async (event: FormEvent) => {
+    event.preventDefault()
+    const body = draft.trim()
+    if (!active || !body) return
+    try {
+      const sent = await request<ChatMessage>(`/market/conversations/${active.id}/messages`, { method: 'POST', body: JSON.stringify({ body }) })
+      setMessages((current) => [...current, sent]); setDraft(''); await loadRooms()
+    } catch (reason) { setError((reason as Error).message) }
+  }
+
+  return <>
+    <button className={`market-chat-float${open ? ' active' : ''}`} style={{ left: position.x, top: position.y }} aria-label={user ? `다이렉트 메시지${unread ? `, 읽지 않은 메시지 ${unread}개` : ''}` : '로그인하고 다이렉트 메시지 열기'} onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onClick={toggle}>
+      <Send size={24} fill="currentColor" />{unread > 0 && <b>{unread > 99 ? '99+' : unread}</b>}
+    </button>
+    {open && user && <aside className="market-chat-inbox" aria-label="마켓 다이렉트 메시지">
+      <header><div><small>DIRECT MESSAGE</small><strong>{active ? active.peer?.nickname ?? '채팅' : '마켓 채팅'}</strong></div><button onClick={() => setOpen(false)} aria-label="채팅함 닫기"><X size={18} /></button></header>
+      {active ? <>
+        <button className="market-chat-back" onClick={() => { setActive(null); setMessages([]) }}><ArrowLeft size={14} /> 모든 대화 <span>{active.item?.title}</span></button>
+        <div className="market-chat-inbox-messages">{messages.length ? messages.map((entry) => <div className={`chat-message${String(entry.senderId) === String(user.id) ? ' mine' : ''}`} key={entry.id}><p>{entry.body}</p><time>{new Date(entry.createdAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time></div>) : <p className="market-chat-empty">아직 메시지가 없습니다.</p>}</div>
+        <form onSubmit={sendMessage}><input maxLength={1000} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="메시지를 입력하세요" /><button disabled={!draft.trim()} aria-label="메시지 전송"><Send size={17} /></button></form>
+      </> : <div className="market-chat-room-list">{rooms.length ? rooms.map((room) => <button key={room.id} onClick={() => selectRoom(room)}><span className="market-chat-peer">{room.peer?.nickname?.[0] ?? '?'}</span><span><strong>{room.peer?.nickname ?? '상대방'}</strong><small>{room.item?.title ?? '마켓 상품'}</small><p>{room.lastMessage?.body ?? '대화를 시작해 보세요.'}</p></span>{(room.unreadCount ?? 0) > 0 && <b>{room.unreadCount}</b>}</button>) : <p className="market-chat-empty">아직 시작한 마켓 대화가 없습니다.<br />상품에서 채팅하기를 눌러 시작해 보세요.</p>}</div>}
+      {error && <p className="market-chat-error">{error}</p>}
+    </aside>}
+  </>
+}
+
 function App() {
   const { path, go } = useRoute();
   const [cachedUser, setCachedUser] = useState<User | null>(() => readAuthSnapshot());
@@ -5100,6 +5212,7 @@ function App() {
       <div className={authPending ? "auth-verifying" : undefined} aria-busy={authPending}>
         {content}
         <AiCompanionDock controller={aiMission} path={path} go={go} />
+        <MarketChatDock user={visibleUser} onLogin={onLogin} />
       </div>
       {loginOpen && (
         <div className="modal-backdrop tistory-login-backdrop" role="dialog" aria-modal="true" aria-label="티스토리 로그인" onMouseDown={() => setLoginOpen(false)}>

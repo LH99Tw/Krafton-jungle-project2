@@ -10,6 +10,23 @@ const conversationJson = (item: Record<string, any>) => ({
   updatedAt: item.updated_at,
 })
 
+const conversationSummary = async (item: Record<string, any>, userId: number) => {
+  const peerId = item.buyer_id === userId ? item.seller_id : item.buyer_id
+  const [{ data: marketItem }, { data: peer }, { data: lastMessage }, { count: unreadCount }] = await Promise.all([
+    supabase.from('market_items').select('id, title').eq('id', item.item_id).maybeSingle(),
+    supabase.from('users').select('id, nickname').eq('id', peerId).maybeSingle(),
+    supabase.from('market_messages').select('id, body, sender_id, created_at').eq('conversation_id', item.id).order('id', { ascending: false }).limit(1).maybeSingle(),
+    supabase.from('market_messages').select('id', { count: 'exact', head: true }).eq('conversation_id', item.id).neq('sender_id', userId).is('read_at', null),
+  ])
+  return {
+    ...conversationJson(item),
+    item: marketItem ? { id: marketItem.id, title: marketItem.title } : null,
+    peer: peer ? { id: peer.id, nickname: peer.nickname } : null,
+    lastMessage: lastMessage ? { id: lastMessage.id, body: lastMessage.body, senderId: lastMessage.sender_id, createdAt: lastMessage.created_at } : null,
+    unreadCount: unreadCount ?? 0,
+  }
+}
+
 const requireParticipant = async (request: Request, id: number, csrf = false) => {
   const session = csrf ? await requireCsrfSession(request) : await getSession(request)
   if (!session) return { error: apiError(csrf ? 403 : 401, csrf ? 'CSRF_TOKEN_INVALID' : 'UNAUTHENTICATED', csrf ? 'CSRF 토큰이 유효하지 않습니다.' : '로그인이 필요합니다.') }
@@ -46,7 +63,16 @@ export const listConversations = async (request: Request) => {
     .or(`buyer_id.eq.${session.user_id},seller_id.eq.${session.user_id}`)
     .order('updated_at', { ascending: false })
   if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '채팅 목록을 불러오지 못했습니다.')
-  return json({ data: (data ?? []).map(conversationJson) })
+  return json({ data: await Promise.all((data ?? []).map((item: Record<string, any>) => conversationSummary(item, session.user_id))) })
+}
+
+export const markConversationRead = async (request: Request, conversationId: number) => {
+  const access = await requireParticipant(request, conversationId, true)
+  if (access.error) return access.error
+  const { error } = await supabase.from('market_messages').update({ read_at: new Date().toISOString() })
+    .eq('conversation_id', conversationId).neq('sender_id', access.session!.user_id).is('read_at', null)
+  if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '읽음 상태를 저장하지 못했습니다.')
+  return new Response(null, { status: 204 })
 }
 
 export const listMessages = async (request: Request, conversationId: number) => {
