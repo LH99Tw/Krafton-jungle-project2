@@ -1046,7 +1046,7 @@ function App() {
           if (attempt < 2) await new Promise((resolve) => window.setTimeout(resolve, [250, 1_000][attempt]))
         }
       }
-      if (!cancelled) setAuthState('degraded')
+      if (!cancelled) setAuthState(cachedUser ? 'authenticated' : 'anonymous')
     }
     void load()
     return () => { cancelled = true }
