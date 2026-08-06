@@ -1263,3 +1263,62 @@ button:not(.main-nav button):not(.category-tabs button):not(.feed-toolbar button
 .rich-editor-content [data-image-group-grid],.post-image-group>div{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
 .editor-loading{min-height:480px;margin-top:16px;padding:34px 0;border-top:1px solid #e8e9e7;color:#9aa09b;font-size:12px}
 @media(max-width:700px){.rich-editor-content [data-image-group-grid],.post-image-group>div{grid-template-columns:1fr}}
+
+/* ==========================================================================
+   Detailed UI Typography Assignments
+   ========================================================================== */
+
+/* 1. 계정 정보 & 사이드바 (내 닉네임, 조회수, 방문자, 수익, 1회, 1명) */
+.account-dashboard-head strong,
+.account-dashboard dl dt,
+.account-dashboard dl dd b {
+  font-family: 'Jua', sans-serif !important;
+}
+
+/* 2. 내 블로그 메인 (첫글, 요즘의 기록, 글, 구독자, 상품, 0, 취향을 나누는 상점) */
+.creator-profile-panel h1,
+.creator-stats dd,
+.creator-stats dt,
+.creator-section-head h2,
+.creator-shop h2 {
+  font-family: 'Jua', sans-serif !important;
+}
+
+/* 3. 관리 콘솔 (운영 요약, 블로그 설정, 관심분야, 카테고리, 글 관리, 마켓 관리, 휴지통 등) */
+.manage-console-head h1,
+.manage-head h1,
+.manage-console-grid h2,
+.manage-console-grid h3,
+.manage-console-metric strong,
+.manage-settings-section h2,
+.manage-settings-field label,
+.manage-settings-field small,
+.manage-interests-page h1,
+.manage-interests-page h2,
+.manage-categories-page h1,
+.manage-categories-page h2,
+.manage-posts-page h1,
+.manage-market-page h1,
+.manage-trash-page h1 {
+  font-family: 'Jua', sans-serif !important;
+}
+
+/* 4. AI 동료 페이지 (캐릭터 이름, 닉네임님의 동료를 선택하세요., COMING SOON, 미션 타이틀) */
+.ai-casting-inner header h1 {
+  font-family: 'Maplestory', sans-serif !important;
+  font-size: clamp(26px, 3.6vw, 38px) !important;
+  line-height: 1.25 !important;
+  letter-spacing: -0.5px !important;
+}
+
+.ai-character-meta h1,
+.ai-card-copy strong,
+.ai-card-copy small,
+.ai-chat-pane header strong,
+.ai-create-character strong,
+.ai-create-character em,
+.ai-current-mission h2,
+.ai-mission-list strong {
+  font-family: 'Jua', sans-serif !important;
+}
+

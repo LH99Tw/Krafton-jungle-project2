@@ -1,7 +1,7 @@
 -- Search the interests explicitly attached to a post. Writer-created custom
 -- classifications remain separate from the shared interest taxonomy.
 
-drop function if exists public.get_posts_payload(text, text, text, integer, integer, text, text, text, text);
+drop function if exists public.get_posts_payload(text, text, text, integer, integer, text, text, text, text, text);
 
 create or replace function public.get_posts_payload(
   p_session_hash text,
