@@ -124,6 +124,81 @@ const positiveInteger = (value: string | null, fallback: number, max?: number) =
   return parsed
 }
 
+const tagJson = (tag: Record<string, any>) => ({
+  id: tag.id,
+  key: tag.tag_key,
+  label: tag.label,
+  group: tag.group_key,
+  sortOrder: tag.sort_order,
+})
+
+const loadTagsByPost = async (postIds: number[]) => {
+  const result = new Map<number, ReturnType<typeof tagJson>[]>()
+  if (!postIds.length) return result
+  const { data: links, error } = await supabase.from('post_interest_tags').select('post_id, tag_id').in('post_id', postIds)
+  if (error) throw error
+  const tagIds = [...new Set((links ?? []).map((link: Record<string, any>) => link.tag_id))]
+  const { data: tags, error: tagError } = tagIds.length
+    ? await supabase.from('interest_tags').select('*').in('id', tagIds)
+    : { data: [], error: null }
+  if (tagError) throw tagError
+  const tagMap = new Map((tags ?? []).map((tag: Record<string, any>) => [tag.id, tagJson(tag)]))
+  for (const link of links ?? []) {
+    const tag = tagMap.get(link.tag_id)
+    if (tag) result.set(link.post_id, [...(result.get(link.post_id) ?? []), tag])
+  }
+  for (const values of result.values()) values.sort((a, b) => a.group.localeCompare(b.group) || a.sortOrder - b.sortOrder)
+  return result
+}
+
+const readPreferences = async (request: Request) => {
+  const session = await getSession(request)
+  if (!session?.user_id) return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
+  const [{ data: catalog, error }, { data: selected, error: selectedError }, { data: user, error: userError }] = await Promise.all([
+    supabase.from('interest_tags').select('*').order('group_key').order('sort_order'),
+    supabase.from('user_preferences').select('tag_id').eq('user_id', session.user_id),
+    supabase.from('users').select('preference_onboarding_completed_at').eq('id', session.user_id).single(),
+  ])
+  if (error || selectedError || userError) return apiError(500, 'INTERNAL_SERVER_ERROR', '선호 항목을 불러오지 못했습니다.')
+  return json({ data: {
+    catalog: (catalog ?? []).map(tagJson),
+    selectedTagIds: (selected ?? []).map((item: Record<string, any>) => item.tag_id),
+    onboardingCompleted: Boolean(user?.preference_onboarding_completed_at),
+  } })
+}
+
+const parseTagIds = (value: unknown, max: number) => {
+  if (!Array.isArray(value)) return { error: '태그 목록을 확인해 주세요.', tagIds: [] as number[] }
+  const tagIds = value.filter((id): id is number => Number.isSafeInteger(id) && id > 0)
+  if (tagIds.length !== value.length) return { error: '태그 목록을 확인해 주세요.', tagIds }
+  if (new Set(tagIds).size !== tagIds.length) return { error: '같은 태그를 중복 선택할 수 없습니다.', tagIds }
+  if (tagIds.length > max) return { error: `태그는 최대 ${max}개까지 선택할 수 있습니다.`, tagIds }
+  return { tagIds }
+}
+
+const tagsAreRegistered = async (tagIds: number[]) => {
+  if (!tagIds.length) return true
+  const { count, error } = await supabase.from('interest_tags').select('id', { count: 'exact', head: true }).in('id', tagIds)
+  return !error && count === tagIds.length
+}
+
+const updatePreferences = async (request: Request) => {
+  const session = await requireCsrfSession(request)
+  if (!session) return apiError(403, 'CSRF_TOKEN_INVALID', 'CSRF 토큰이 유효하지 않습니다.')
+  if (!session.user_id) return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
+  const body = await request.json().catch(() => null) as Record<string, unknown> | null
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return apiError(400, 'VALIDATION_ERROR', '입력값을 확인해 주세요.')
+  const parsed = parseTagIds(body.tagIds, 12)
+  if (parsed.error) return apiError(400, 'VALIDATION_ERROR', parsed.error, { tagIds: parsed.error })
+  const { error } = await supabase.rpc('replace_user_preferences', { p_user_id: session.user_id, p_tag_ids: parsed.tagIds })
+  if (error) {
+    if (error.message.includes('GROUP_LIMIT_EXCEEDED')) return apiError(400, 'VALIDATION_ERROR', '각 그룹은 최대 3개까지 선택할 수 있습니다.', { tagIds: '각 그룹은 최대 3개까지 선택할 수 있습니다.' })
+    if (error.message.includes('INVALID_TAG')) return apiError(400, 'VALIDATION_ERROR', '존재하지 않는 관심 항목입니다.', { tagIds: '존재하지 않는 관심 항목입니다.' })
+    return apiError(500, 'INTERNAL_SERVER_ERROR', '선호 항목을 저장하지 못했습니다.')
+  }
+  return readPreferences(request)
+}
+
 const getPublicBlog = async (request: Request, slugValue: string, url: URL) => {
   const { slug, valid } = validateSlug(decodeURIComponent(slugValue))
   if (!valid) return apiError(404, 'NOT_FOUND', '블로그를 찾을 수 없습니다.')
@@ -152,6 +227,8 @@ const getPublicBlog = async (request: Request, slugValue: string, url: URL) => {
     console.error('Failed to read blog posts', postsError)
     return apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
   }
+  let tagsByPost = new Map<number, ReturnType<typeof tagJson>[]>()
+  try { tagsByPost = await loadTagsByPost((posts ?? []).map((post: Record<string, any>) => post.id)) } catch { /* migrations may not yet be applied */ }
   const items = (posts ?? []).map((post: Record<string, any>) => ({
     id: post.id,
     url: `/post/${post.id}`,
@@ -164,6 +241,7 @@ const getPublicBlog = async (request: Request, slugValue: string, url: URL) => {
     publishedAt: post.published_at,
     createdAt: post.created_at,
     updatedAt: post.updated_at,
+    tags: tagsByPost.get(post.id) ?? [],
   }))
   const totalItems = count ?? 0
   return json({ data: {
@@ -175,7 +253,7 @@ const getPublicBlog = async (request: Request, slugValue: string, url: URL) => {
   } })
 }
 
-const postJson = (post: Record<string, any>, includeContent = false) => ({
+const postJson = (post: Record<string, any>, includeContent = false, tags: ReturnType<typeof tagJson>[] = []) => ({
   id: post.id,
   url: `/post/${post.id}`,
   title: post.title,
@@ -189,6 +267,7 @@ const postJson = (post: Record<string, any>, includeContent = false) => ({
   publishedAt: post.published_at,
   createdAt: post.created_at,
   updatedAt: post.updated_at,
+  tags,
 })
 
 const postInput = (body: Record<string, unknown>, partial = false) => {
@@ -197,6 +276,7 @@ const postInput = (body: Record<string, unknown>, partial = false) => {
   const hasTitle = Object.prototype.hasOwnProperty.call(body, 'title')
   const hasContent = Object.prototype.hasOwnProperty.call(body, 'content')
   const hasStatus = Object.prototype.hasOwnProperty.call(body, 'status')
+  const hasTags = Object.prototype.hasOwnProperty.call(body, 'tagIds')
   if (!partial || hasTitle) {
     const title = typeof body.title === 'string' ? body.title.trim() : ''
     if (!title || title.length > 100) fields.title = '제목은 1~100자로 입력해 주세요.'
@@ -212,8 +292,10 @@ const postInput = (body: Record<string, unknown>, partial = false) => {
     if (status !== 'DRAFT' && status !== 'PUBLISHED') fields.status = '상태 값을 확인해 주세요.'
     else result.status = status
   }
-  if (partial && !hasTitle && !hasContent && !hasStatus) fields.request = '수정할 값을 입력해 주세요.'
-  return { fields, values: result }
+  const parsedTags = hasTags || !partial ? parseTagIds(body.tagIds ?? [], 10) : { tagIds: undefined as number[] | undefined }
+  if (parsedTags.error) fields.tagIds = parsedTags.error
+  if (partial && !hasTitle && !hasContent && !hasStatus && !hasTags) fields.request = '수정할 값을 입력해 주세요.'
+  return { fields, values: result, tagIds: parsedTags.tagIds }
 }
 
 const listPosts = async (request: Request, url: URL) => {
@@ -275,8 +357,12 @@ const listPosts = async (request: Request, url: URL) => {
     return apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
   }
   const totalItems = count ?? 0
+  let tagsByPost = new Map<number, ReturnType<typeof tagJson>[]>()
+  try { tagsByPost = await loadTagsByPost((data ?? []).map((post: Record<string, any>) => post.id)) } catch (tagError) {
+    console.error('Failed to load post tags', tagError)
+  }
   return json({
-    data: (data ?? []).map((post: Record<string, any>) => postJson(post)),
+    data: (data ?? []).map((post: Record<string, any>) => postJson(post, false, tagsByPost.get(post.id) ?? [])),
     pagination: { page, size, totalItems, totalPages: totalItems ? Math.ceil(totalItems / size) : 0 },
   })
 }
@@ -308,8 +394,9 @@ const createPost = async (request: Request) => {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return apiError(400, 'VALIDATION_ERROR', '입력값을 확인해 주세요.')
   }
-  const { fields, values } = postInput(body as Record<string, unknown>)
+  const { fields, values, tagIds } = postInput(body as Record<string, unknown>)
   if (Object.keys(fields).length) return apiError(400, 'VALIDATION_ERROR', '입력값을 확인해 주세요.', fields)
+  if (!(await tagsAreRegistered(tagIds ?? []))) return apiError(400, 'VALIDATION_ERROR', '존재하지 않는 관심 항목입니다.', { tagIds: '존재하지 않는 관심 항목입니다.' })
   const { data: blog } = await supabase.from('blogs').select('id, name, slug').eq('owner_id', session.user_id).maybeSingle()
   if (!blog) return apiError(409, 'BLOG_REQUIRED', '먼저 블로그를 만들어 주세요.')
   const publishedAt = values.status === 'PUBLISHED' ? new Date().toISOString() : null
@@ -324,6 +411,12 @@ const createPost = async (request: Request) => {
     console.error('Failed to create post', error)
     return apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
   }
+  const { error: tagError } = await supabase.rpc('replace_post_interest_tags', { p_post_id: data.id, p_tag_ids: tagIds ?? [] })
+  if (tagError) {
+    await supabase.from('posts').delete().eq('id', data.id)
+    if (tagError.message.includes('INVALID_TAG')) return apiError(400, 'VALIDATION_ERROR', '존재하지 않는 관심 항목입니다.', { tagIds: '존재하지 않는 관심 항목입니다.' })
+    return apiError(500, 'INTERNAL_SERVER_ERROR', '글 태그를 저장하지 못했습니다.')
+  }
   const { data: user } = await supabase.from('users').select('nickname').eq('id', session.user_id).single()
   return json({ data: postJson({
     ...data,
@@ -331,7 +424,7 @@ const createPost = async (request: Request) => {
     blog_slug: blog.slug,
     owner_id: session.user_id,
     author_nickname: user?.nickname,
-  }, true) }, 201)
+  }, true, (await loadTagsByPost([data.id])).get(data.id) ?? []) }, 201)
 }
 
 const readPost = async (request: Request, id: number) => {
@@ -346,7 +439,8 @@ const readPost = async (request: Request, id: number) => {
   }
   const post = data?.[0]
   if (!post) return apiError(404, 'NOT_FOUND', '글을 찾을 수 없습니다.')
-  return json({ data: postJson(post, true) })
+  const tags = (await loadTagsByPost([post.id])).get(post.id) ?? []
+  return json({ data: postJson(post, true, tags) })
 }
 
 const ownedPost = async (userId: number, id: number) => {
@@ -365,8 +459,9 @@ const updatePost = async (request: Request, id: number) => {
   if (ownership.error) return ownership.error
   const body = await request.json().catch(() => null)
   if (!body || typeof body !== 'object' || Array.isArray(body)) return apiError(400, 'VALIDATION_ERROR', '입력값을 확인해 주세요.')
-  const { fields, values } = postInput(body as Record<string, unknown>, true)
+  const { fields, values, tagIds } = postInput(body as Record<string, unknown>, true)
   if (Object.keys(fields).length) return apiError(400, 'VALIDATION_ERROR', '입력값을 확인해 주세요.', fields)
+  if (tagIds && !(await tagsAreRegistered(tagIds))) return apiError(400, 'VALIDATION_ERROR', '존재하지 않는 관심 항목입니다.', { tagIds: '존재하지 않는 관심 항목입니다.' })
   const previous = ownership.data!
   let publishedAt = previous.published_at
   if (values.status === 'PUBLISHED' && previous.status === 'DRAFT') publishedAt = new Date().toISOString()
@@ -377,7 +472,13 @@ const updatePost = async (request: Request, id: number) => {
     updated_at: new Date().toISOString(),
   }).eq('id', id).select('*').single()
   if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
-  return json({ data: postJson({ ...previous, ...data }, true) })
+  if (tagIds) {
+    const { error: tagError } = await supabase.rpc('replace_post_interest_tags', { p_post_id: id, p_tag_ids: tagIds })
+    if (tagError?.message.includes('INVALID_TAG')) return apiError(400, 'VALIDATION_ERROR', '존재하지 않는 관심 항목입니다.', { tagIds: '존재하지 않는 관심 항목입니다.' })
+    if (tagError) return apiError(500, 'INTERNAL_SERVER_ERROR', '글 태그를 저장하지 못했습니다.')
+  }
+  const tags = (await loadTagsByPost([id])).get(id) ?? []
+  return json({ data: postJson({ ...previous, ...data }, true, tags) })
 }
 
 const deletePost = async (request: Request, id: number) => {
@@ -414,6 +515,8 @@ Deno.serve(async (request) => {
   if (request.method === 'GET' && path === '/blogs') return listBlogs(url)
   if (request.method === 'GET' && path === '/blogs/check-slug') return checkSlug(url)
   if (request.method === 'GET' && path === '/blogs/me') return getMyBlog(request)
+  if (request.method === 'GET' && path === '/preferences/me') return readPreferences(request)
+  if (request.method === 'PUT' && path === '/preferences/me') return updatePreferences(request)
   const blogMatch = path.match(/^\/blogs\/([^/]+)$/)
   if (request.method === 'GET' && blogMatch) return getPublicBlog(request, blogMatch[1], url)
   const subscriptionMatch = path.match(/^\/blogs\/([^/]+)\/subscription$/)

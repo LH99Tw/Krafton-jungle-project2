@@ -37,6 +37,44 @@
   .account-dropdown{right:-38px}
 }
 
+/* Preference onboarding and shared taxonomy picker */
+.preference-page { min-height: 100vh; padding: 72px 24px; background: #f5f4f0; }
+.preference-panel { width: min(1040px, 100%); margin: 0 auto; background: #fff; padding: clamp(30px, 6vw, 72px); border-radius: 24px; box-shadow: 0 24px 70px rgba(24, 28, 26, .08); }
+.preference-panel > h1 { margin: 10px 0 16px; font-size: clamp(38px, 6vw, 68px); line-height: 1.08; letter-spacing: -.05em; }
+.preference-panel > .muted { max-width: 650px; margin-bottom: 44px; }
+.preference-selector { display: grid; gap: 34px; }
+.preference-group { padding-top: 28px; border-top: 1px solid #e8e8e3; }
+.preference-group-head, .editor-tag-head, .manage-preferences-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 18px; }
+.preference-group-head h3, .editor-tag-head h2, .manage-preferences-head h2 { margin: 0 0 6px; font-size: 20px; }
+.preference-group-head p, .editor-tag-head p, .manage-preferences-head p { margin: 0; color: #777b76; }
+.preference-group-head > strong, .editor-tag-head > strong { flex: none; color: #ef4b3f; font-size: 14px; }
+.preference-chips { display: flex; flex-wrap: wrap; gap: 10px; }
+.preference-chips button { display: inline-flex; align-items: center; min-height: 42px; padding: 9px 16px; border: 1px solid #dcded9; border-radius: 999px; background: #fff; color: #343733; font-weight: 650; transition: .18s ease; }
+.preference-chips button:hover:not(:disabled) { border-color: #9da39c; transform: translateY(-1px); }
+.preference-chips button.active { border-color: #ef4b3f; background: #fff2ef; color: #d93b31; }
+.preference-chips button:disabled:not(.active) { opacity: .35; cursor: not-allowed; }
+.preference-actions { display: flex; justify-content: flex-end; margin-top: 48px; padding-top: 28px; border-top: 1px solid #e8e8e3; }
+.preference-actions .primary-button { width: auto; min-width: 220px; height: 48px; margin: 0; padding: 0 24px; }
+.preference-loading { padding: 38px 0; color: #777b76; }
+.manage-section-tabs { display: flex; gap: 26px; margin: 34px 0 10px; border-bottom: 1px solid #e6e6e1; }
+.manage-section-tabs button { padding: 15px 2px; border-bottom: 2px solid transparent; color: #777b76; font-weight: 750; }
+.manage-section-tabs button.active { border-color: #222521; color: #222521; }
+.manage-preferences { padding: 32px 0 70px; }
+.manage-preferences-head .primary-button { min-width: 132px; height: 48px; }
+.form-success { margin: 16px 0; color: #23845d; font-weight: 650; }
+.editor-tag-section { margin-top: 36px; padding: 30px; border: 1px solid #e3e4df; border-radius: 16px; background: #fafaf8; }
+.editor-tag-section .preference-selector { gap: 24px; }
+.editor-tag-section .preference-group { padding-top: 20px; }
+.editor-tag-section .preference-group-head p { display: none; }
+
+@media (max-width: 680px) {
+  .preference-page { padding: 0; }
+  .preference-panel { border-radius: 0; padding: 32px 20px; }
+  .preference-actions, .manage-preferences-head { flex-direction: column-reverse; }
+  .preference-actions button, .manage-preferences-head button { width: 100%; }
+  .editor-tag-section { padding: 22px 16px; }
+}
+
 .subscribe-button{min-width:92px;padding:10px 17px;border:1px solid #fff;border-radius:3px;background:#fff;color:#222;font-size:12px;font-weight:700}
 .subscribe-button.subscribed{border-color:#888;background:transparent;color:#fff}
 .subscribe-button:disabled{opacity:.55}

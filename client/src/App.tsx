@@ -1,8 +1,10 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, ArrowRight, Bell, BookOpen, Check, ChevronDown, ChevronRight, Compass, Eye, FileText, Layers3, Menu, MessageCircle, Palette, Pencil, PenLine, Search, Settings, Sparkles, Trash2, Volume2, X } from 'lucide-react'
-type User = { id: number; email: string; nickname: string }
+type User = { id: number; email: string; nickname: string; preferenceOnboardingCompleted?: boolean }
 type Blog = { id: number; name: string; slug: string; description: string; owner?: { id: number; nickname: string }; isSubscribed?: boolean }
-type Post = { id: number; url?: string; title: string; content?: string; excerpt?: string; status: 'DRAFT' | 'PUBLISHED'; viewCount: number; author: { id: number; nickname: string }; blog: { id: number; name: string; slug: string }; publishedAt?: string | null; updatedAt?: string }
+type InterestTag = { id: number; key: string; label: string; group: 'WORK' | 'FORM' | 'APPEARANCE_RELATIONSHIP' | 'PERSONALITY'; sortOrder: number }
+type Preferences = { catalog: InterestTag[]; selectedTagIds: number[]; onboardingCompleted: boolean }
+type Post = { id: number; url?: string; title: string; content?: string; excerpt?: string; status: 'DRAFT' | 'PUBLISHED'; viewCount: number; author: { id: number; nickname: string }; blog: { id: number; name: string; slug: string }; tags?: InterestTag[]; publishedAt?: string | null; updatedAt?: string }
 type Page = { page: number; size: number; totalItems: number; totalPages: number }
 type MarketItem = { id: number | string; title: string; description: string; category: string; tags: string[]; condition: 'NEW' | 'LIKE_NEW' | 'USED'; pricePoints: number; status: 'SELLING' | 'RESERVED' | 'SOLD'; seller: { id: number | string; nickname: string }; createdAt?: string }
 type Conversation = { id: number | string; itemId: number | string; buyerId?: number; sellerId?: number }
@@ -351,7 +353,7 @@ function Auth({ mode, go, onSuccess }: { mode: 'login' | 'signup'; go: (to: stri
 function Agreement({ go }: { go: (to: string) => void }) {
   const decide = (accepted: boolean) => {
     sessionStorage.setItem('tistory-third-party-consent', accepted ? 'accepted' : 'declined')
-    go('/')
+    go('/blog/new')
   }
   return <main id="main" className="agreement-page">
     <section className="agreement-panel">
@@ -403,15 +405,62 @@ function NoticeArticle({ go }: { go: (to: string) => void }) {
   </div>
 }
 
+const preferenceGroups: Array<{ key: InterestTag['group']; label: string; description: string }> = [
+  { key: 'WORK', label: '관심 작품 카테고리', description: '좋아하는 작품의 분야를 골라주세요.' },
+  { key: 'FORM', label: '형태 카테고리', description: '즐겨보는 콘텐츠 형태를 선택해주세요.' },
+  { key: 'APPEARANCE_RELATIONSHIP', label: '외형/관계성 카테고리', description: '끌리는 외형과 관계성을 알려주세요.' },
+  { key: 'PERSONALITY', label: '성격 카테고리', description: '좋아하는 성격 유형을 골라주세요.' },
+]
+
+function PreferenceSelector({ catalog, selected, onChange, mode }: { catalog: InterestTag[]; selected: number[]; onChange: (ids: number[]) => void; mode: 'preference' | 'post' }) {
+  const toggle = (tag: InterestTag) => {
+    if (selected.includes(tag.id)) return onChange(selected.filter((id) => id !== tag.id))
+    if (mode === 'post' && selected.length >= 10) return
+    if (mode === 'preference' && selected.filter((id) => catalog.find((item) => item.id === id)?.group === tag.group).length >= 3) return
+    onChange([...selected, tag.id])
+  }
+  return <div className={`preference-selector ${mode}`}>
+    {preferenceGroups.map((group) => {
+      const tags = catalog.filter((tag) => tag.group === group.key)
+      const count = tags.filter((tag) => selected.includes(tag.id)).length
+      return <section className="preference-group" key={group.key}>
+        <div className="preference-group-head"><div><h3>{group.label}</h3><p>{group.description}</p></div>{mode === 'preference' && <strong>{count}/3</strong>}</div>
+        <div className="preference-chips">{tags.map((tag) => { const active = selected.includes(tag.id); const disabled = !active && (mode === 'post' ? selected.length >= 10 : count >= 3); return <button type="button" aria-pressed={active} disabled={disabled} className={active ? 'active' : ''} onClick={() => toggle(tag)} key={tag.id}>{active && <Check size={14} />} {tag.label}</button> })}</div>
+      </section>
+    })}
+  </div>
+}
+
+function PreferenceOnboarding({ go }: { go: (to: string) => void }) {
+  const [data, setData] = useState<Preferences | null>(null)
+  const [selected, setSelected] = useState<number[]>([])
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  useEffect(() => { request<Preferences>('/preferences/me').then((next) => { setData(next); setSelected(next.selectedTagIds) }).catch((e) => setError(e.message)) }, [])
+  const save = async () => { setBusy(true); setError(''); try { await request<Preferences>('/preferences/me', { method: 'PUT', body: JSON.stringify({ tagIds: selected }) }); go('/') } catch (e) { setError((e as Error).message) } finally { setBusy(false) } }
+  return <main id="main" className="preference-page"><div className="preference-panel"><p className="eyebrow">TELL US WHAT YOU LOVE</p><h1>좋아하는 이야기를<br />알려주세요.</h1><p className="muted">각 카테고리에서 최대 3개까지 선택할 수 있어요. 지금 고르지 않아도 관리 페이지에서 언제든 바꿀 수 있습니다.</p>{error && <p className="form-error">{error}</p>}{data ? <PreferenceSelector catalog={data.catalog} selected={selected} onChange={setSelected} mode="preference" /> : !error && <p className="preference-loading">선호 항목을 불러오는 중입니다…</p>}<div className="preference-actions"><button className="primary-button" disabled={busy || !data} onClick={save}>{busy ? '저장 중…' : '선호 저장하고 시작하기'} <ArrowRight size={16} /></button></div></div></main>
+}
+
 function BlogSetup({ go, onDone }: { go: (to: string) => void; onDone: (blog: Blog) => void }) { const [form, setForm] = useState({ name: '', slug: '', description: '' }); const [available, setAvailable] = useState<boolean | null>(null); const [error, setError] = useState(''); const check = async () => { try { const data = await request<{ slug: string; available: boolean }>(`/blogs/check-slug?slug=${encodeURIComponent(form.slug)}`); setAvailable(data.available) } catch (e) { setError((e as Error).message) } }; const submit = async (e: FormEvent) => { e.preventDefault(); try { const blog = await request<Blog>('/blogs', { method: 'POST', body: JSON.stringify(form) }); onDone(blog) } catch (e) { setError((e as Error).message) } }; return <main id="main" className="setup-page"><div className="setup-panel"><button className="back-button" onClick={() => go('/')}><ArrowLeft size={16} /> 홈으로</button><p className="eyebrow">SET UP YOUR BLOG</p><h1>이제 블로그를<br />만들어볼까요?</h1><p className="muted">공개 주소와 이름은 나중에 변경할 수 없으니 신중하게 정해주세요.</p><form onSubmit={submit}><label>블로그 이름<input required minLength={2} maxLength={30} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="예: 정글 개발 기록" /></label><label>블로그 주소<div className="slug-field"><input required pattern="[a-z0-9-]{3,30}" value={form.slug} onChange={(e) => { setForm({ ...form, slug: e.target.value }); setAvailable(null) }} placeholder="jungle-dev" /><span>.tistory.com</span><button type="button" onClick={check}>중복 확인</button></div>{available !== null && <small className={available ? 'available' : 'unavailable'}>{available ? '사용할 수 있는 주소입니다.' : '이미 사용 중인 주소입니다.'}</small>}</label><label>블로그 소개 <span className="counter">{form.description.length}/160</span><textarea maxLength={160} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="블로그를 한 줄로 소개해보세요." /></label>{error && <p className="form-error">{error}</p>}<button className="primary-button" disabled={available === false}>블로그 만들기 <ArrowRight size={16} /></button></form></div></main> }
 
 function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) => void; user: User | null; onLogin: () => void }) { const [data, setData] = useState<{ blog: Blog; posts: { items: Post[]; pagination: Page } } | null>(null); const [busy, setBusy] = useState(false); useEffect(() => { request<typeof data>(`/blogs/${slug}?page=1&size=50`).then(setData).catch(() => setData(null)) }, [slug]); const mine = user && data?.blog.owner?.id === user.id; const toggleSubscription = async () => { if (!user) return onLogin(); if (!data || mine) return; setBusy(true); try { const subscribed = Boolean(data.blog.isSubscribed); await request(`/blogs/${slug}/subscription`, { method: subscribed ? 'DELETE' : 'POST' }); setData({ ...data, blog: { ...data.blog, isSubscribed: !subscribed } }) } finally { setBusy(false) } }; return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="blog-page"><div className="blog-cover"><div className="section-inner"><p className="eyebrow">MY BLOG</p><h1>{data?.blog.name ?? slug}</h1><p>{data?.blog.description ?? '이 블로그의 이야기를 불러오는 중입니다.'}</p>{mine ? <button className="outline-button light" onClick={() => go(`/blog/${slug}/manage`)}>관리하기</button> : data && <button className={`subscribe-button${data.blog.isSubscribed ? ' subscribed' : ''}`} disabled={busy} onClick={toggleSubscription}>{busy ? '처리 중…' : data.blog.isSubscribed ? '구독 중' : '+ 구독하기'}</button>}</div></div><div className="section-inner blog-content"><div className="blog-heading"><h2>최근 글</h2>{mine && <button className="primary-button compact" onClick={() => go('/write')}><PenLine size={15} /> 새 글 쓰기</button>}</div>{data?.posts.items.length ? data.posts.items.map((post) => <PostRow key={post.id} post={post} go={go} />) : <Empty text="아직 발행된 글이 없습니다." detail={mine ? '첫 글을 작성해 블로그를 채워보세요.' : undefined} />}</div></main></Shell> }
 
-function Editor({ id, go }: { id?: string; go: (to: string) => void }) { const [title, setTitle] = useState(''); const [content, setContent] = useState(''); const [status, setStatus] = useState<'DRAFT' | 'PUBLISHED'>('DRAFT'); const [error, setError] = useState(''); const [busy, setBusy] = useState(false); useEffect(() => { if (id) request<Post>(`/posts/${id}`).then((p) => { setTitle(p.title); setContent(p.content ?? ''); setStatus(p.status) }).catch((e) => setError(e.message)) }, [id]); const save = async (nextStatus: 'DRAFT' | 'PUBLISHED') => { setBusy(true); setError(''); try { const data = id ? await request<Post>(`/posts/${id}`, { method: 'PATCH', body: JSON.stringify({ title, content, status: nextStatus }) }) : await request<Post>('/posts', { method: 'POST', body: JSON.stringify({ title, content, status: nextStatus }) }); go(nextStatus === 'PUBLISHED' ? `/post/${data.id}` : '/blog/me/manage') } catch (e) { setError((e as Error).message) } finally { setBusy(false) } }; return <main id="main" className="editor-page"><div className="editor-top"><button onClick={() => go('/blog/me/manage')}><ArrowLeft size={17} /> 나가기</button><div><button className="save-button" disabled={busy} onClick={() => save('DRAFT')}>임시저장</button><button className="publish-button" disabled={busy} onClick={() => save('PUBLISHED')}>발행하기</button></div></div><div className="editor-body"><input className="title-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목을 입력하세요" maxLength={100} /><div className="editor-meta"><span>{title.length}/100</span><span>{content.length.toLocaleString()}/20,000</span></div><textarea className="content-editor" value={content} onChange={(e) => setContent(e.target.value)} maxLength={20000} placeholder="여기에 이야기를 적어보세요." />{error && <p className="form-error">{error}</p>}</div></main> }
+function Editor({ id, go }: { id?: string; go: (to: string) => void }) {
+  const [title, setTitle] = useState(''); const [content, setContent] = useState(''); const [catalog, setCatalog] = useState<InterestTag[]>([]); const [tagIds, setTagIds] = useState<number[]>([]); const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
+  useEffect(() => { request<Preferences>('/preferences/me').then((p) => setCatalog(p.catalog)).catch((e) => setError(e.message)); if (id) request<Post>(`/posts/${id}`).then((p) => { setTitle(p.title); setContent(p.content ?? ''); setTagIds((p.tags ?? []).map((tag) => tag.id)) }).catch((e) => setError(e.message)) }, [id])
+  const save = async (status: 'DRAFT' | 'PUBLISHED') => { setBusy(true); setError(''); try { const body = JSON.stringify({ title, content, status, tagIds }); const data = id ? await request<Post>(`/posts/${id}`, { method: 'PATCH', body }) : await request<Post>('/posts', { method: 'POST', body }); go(status === 'PUBLISHED' ? `/post/${data.id}` : '/blog/me/manage') } catch (e) { setError((e as Error).message) } finally { setBusy(false) } }
+  return <main id="main" className="editor-page"><div className="editor-top"><button onClick={() => go('/blog/me/manage')}><ArrowLeft size={17} /> 나가기</button><div><button className="save-button" disabled={busy} onClick={() => save('DRAFT')}>임시저장</button><button className="publish-button" disabled={busy} onClick={() => save('PUBLISHED')}>발행하기</button></div></div><div className="editor-body"><input className="title-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목을 입력하세요" maxLength={100} /><div className="editor-meta"><span>{title.length}/100</span><span>{content.length.toLocaleString()}/20,000</span></div><textarea className="content-editor" value={content} onChange={(e) => setContent(e.target.value)} maxLength={20000} placeholder="여기에 이야기를 적어보세요." /><section className="editor-tag-section"><div className="editor-tag-head"><div><h2>분류 태그</h2><p>글과 관련된 태그를 전체 최대 10개까지 선택하세요.</p></div><strong>{tagIds.length}/10</strong></div>{catalog.length ? <PreferenceSelector catalog={catalog} selected={tagIds} onChange={setTagIds} mode="post" /> : <p className="preference-loading">태그를 불러오는 중입니다…</p>}</section>{error && <p className="form-error">{error}</p>}</div></main>
+}
 
 function PostDetail({ id, go, user, onLogin }: { id: string; go: (to: string) => void; user: User | null; onLogin: () => void }) { const [post, setPost] = useState<Post | null>(null); const [error, setError] = useState(''); useEffect(() => { request<Post>(`/posts/${id}`).then(setPost).catch((e) => setError(e.message)) }, [id]); const mine = post && user?.id === post.author.id; const remove = async () => { if (!post || !confirm('이 글을 삭제할까요?')) return; try { await request(`/posts/${post.id}`, { method: 'DELETE' }); go(`/blog/${post.blog.slug}`) } catch (e) { setError((e as Error).message) } }; return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="detail-page"><div className="detail-inner">{error ? <Empty text={error} /> : post && <><p className="eyebrow">{post.blog.name}</p><h1>{post.title}</h1><div className="detail-info"><span>{post.author.nickname}</span><span>{new Date(post.publishedAt ?? post.updatedAt ?? '').toLocaleDateString('ko-KR')}</span><span><Eye size={14} /> {post.viewCount}</span></div><div className="detail-content">{post.content}</div><div className="detail-actions">{mine && <><button className="outline-button" onClick={() => go(`/post/${post.id}/edit`)}>수정하기</button><button className="danger-button" onClick={remove}><Trash2 size={15} /> 삭제</button></>}</div></>}</div></main></Shell> }
 
-function Manage({ go, user, onLogin }: { go: (to: string) => void; user: User | null; onLogin: () => void }) { const [blog, setBlog] = useState<Blog | null>(null); const [posts, setPosts] = useState<Post[]>([]); const [filter, setFilter] = useState('ALL'); useEffect(() => { request<Blog>('/blogs/me').then(setBlog).catch(() => {}); request<Post[]>('/posts?scope=mine&size=50').then((r) => setPosts(r ?? [])).catch(() => {}) }, []); const shown = useMemo(() => filter === 'ALL' ? posts : posts.filter((p) => p.status === filter), [filter, posts]); return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="manage-page"><div className="section-inner"><div className="manage-head"><div><p className="eyebrow">MY TISTORY</p><h1>{blog?.name ?? '내 블로그 관리'}</h1><p>{blog?.description}</p></div><button className="primary-button compact" onClick={() => go('/write')}><PenLine size={15} /> 새 글 쓰기</button></div><div className="manage-tabs"><div>{['ALL', 'PUBLISHED', 'DRAFT'].map((tab) => <button className={filter === tab ? 'active' : ''} onClick={() => setFilter(tab)} key={tab}>{tab === 'ALL' ? '전체' : tab === 'PUBLISHED' ? '발행됨' : '임시저장'}</button>)}</div><button onClick={() => blog && go(`/blog/${blog.slug}`)}>내 블로그 보기 <ArrowRight size={15} /></button></div>{shown.length ? <div className="feed-list">{shown.map((post) => <PostRow key={post.id} post={post} go={go} mine />)}</div> : <Empty text="작성한 글이 없습니다." detail="첫 글을 작성해보세요." />}</div></main></Shell> }
+function Manage({ go, user, onLogin }: { go: (to: string) => void; user: User | null; onLogin: () => void }) {
+  const [blog, setBlog] = useState<Blog | null>(null); const [posts, setPosts] = useState<Post[]>([]); const [section, setSection] = useState<'posts' | 'preferences'>('posts'); const [filter, setFilter] = useState('ALL'); const [preferences, setPreferences] = useState<Preferences | null>(null); const [selected, setSelected] = useState<number[]>([]); const [notice, setNotice] = useState(''); const [busy, setBusy] = useState(false)
+  useEffect(() => { request<Blog>('/blogs/me').then(setBlog).catch(() => {}); request<Post[]>('/posts?scope=mine&size=50').then((r) => setPosts(r ?? [])).catch(() => {}); request<Preferences>('/preferences/me').then((data) => { setPreferences(data); setSelected(data.selectedTagIds) }).catch((e) => setNotice(e.message)) }, [])
+  const shown = useMemo(() => filter === 'ALL' ? posts : posts.filter((p) => p.status === filter), [filter, posts])
+  const savePreferences = async () => { setBusy(true); setNotice(''); try { const data = await request<Preferences>('/preferences/me', { method: 'PUT', body: JSON.stringify({ tagIds: selected }) }); setPreferences(data); setSelected(data.selectedTagIds); setNotice('선호 항목을 저장했습니다.') } catch (e) { setNotice((e as Error).message) } finally { setBusy(false) } }
+  return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="manage-page"><div className="section-inner"><div className="manage-head"><div><p className="eyebrow">MY TISTORY</p><h1>{blog?.name ?? '내 블로그 관리'}</h1><p>{blog?.description}</p></div><button className="primary-button compact" onClick={() => go('/write')}><PenLine size={15} /> 새 글 쓰기</button></div><div className="manage-section-tabs"><button className={section === 'posts' ? 'active' : ''} onClick={() => setSection('posts')}>글 관리</button><button className={section === 'preferences' ? 'active' : ''} onClick={() => setSection('preferences')}>나의 선호 항목</button></div>{section === 'posts' ? <><div className="manage-tabs"><div>{['ALL', 'PUBLISHED', 'DRAFT'].map((tab) => <button className={filter === tab ? 'active' : ''} onClick={() => setFilter(tab)} key={tab}>{tab === 'ALL' ? '전체' : tab === 'PUBLISHED' ? '발행됨' : '임시저장'}</button>)}</div><button onClick={() => blog && go(`/blog/${blog.slug}`)}>내 블로그 보기 <ArrowRight size={15} /></button></div>{shown.length ? <div className="feed-list">{shown.map((post) => <PostRow key={post.id} post={post} go={go} mine />)}</div> : <Empty text="작성한 글이 없습니다." detail="첫 글을 작성해보세요." />}</> : <section className="manage-preferences"><div className="manage-preferences-head"><div><h2>나의 선호 항목</h2><p>각 카테고리에서 최대 3개까지 선택할 수 있습니다.</p></div><button className="primary-button compact" disabled={busy || !preferences} onClick={savePreferences}>{busy ? '저장 중…' : '변경사항 저장'}</button></div>{notice && <p className={notice.includes('저장했습니다') ? 'form-success' : 'form-error'}>{notice}</p>}{preferences ? <PreferenceSelector catalog={preferences.catalog} selected={selected} onChange={setSelected} mode="preference" /> : <p className="preference-loading">선호 항목을 불러오는 중입니다…</p>}</section>}</div></main></Shell>
+}
 
 const conditionLabel: Record<MarketItem['condition'], string> = { NEW: '새 상품', LIKE_NEW: '거의 새 상품', USED: '사용감 있음' }
 
@@ -474,14 +523,25 @@ function App() {
   const { path, go } = useRoute()
   const [user, setUser] = useState<User | null>(null)
   const [loginOpen, setLoginOpen] = useState(false)
-  useEffect(() => { request<{ user: User }>('/me').then((data) => setUser(data.user)).catch(() => {}) }, [])
+  useEffect(() => { request<{ user: User; blog: Blog | null }>('/me').then((data) => { setUser(data.user); if (data.blog && !data.user.preferenceOnboardingCompleted && path !== '/onboarding/preferences') go('/onboarding/preferences') }).catch(() => {}) }, [])
   const onLogin = () => setLoginOpen(true)
+  const finishLogin = async (nextUser: User, fallback = '/') => {
+    setUser(nextUser)
+    try {
+      const current = await request<{ user: User; blog: Blog | null }>('/me')
+      setUser(current.user)
+      if (!current.blog) return go('/blog/new')
+      if (!current.user.preferenceOnboardingCompleted) return go('/onboarding/preferences')
+    } catch { /* use the requested destination when session hydration fails */ }
+    go(fallback)
+  }
   let content: React.ReactNode
-  if (path === '/login') content = <Auth mode="login" go={go} onSuccess={(nextUser) => { setUser(nextUser); go('/agreement/third-party-consent') }} />
-  else if (path === '/signup') content = <Auth mode="signup" go={go} onSuccess={(nextUser) => { setUser(nextUser); go('/blog/new') }} />
+  if (path === '/login') content = <Auth mode="login" go={go} onSuccess={(nextUser) => { void finishLogin(nextUser) }} />
+  else if (path === '/signup') content = <Auth mode="signup" go={go} onSuccess={(nextUser) => { setUser(nextUser); go('/agreement/third-party-consent') }} />
   else if (path === '/agreement/third-party-consent') content = user ? <Agreement go={go} /> : <Auth mode="login" go={go} onSuccess={(nextUser) => { setUser(nextUser); go('/agreement/third-party-consent') }} />
   else if (path === '/notice/2702') content = <NoticeArticle go={go} />
-  else if (path === '/blog/new') content = <BlogSetup go={go} onDone={(blog) => go('/blog/' + blog.slug + '/manage')} />
+  else if (path === '/blog/new') content = user ? <BlogSetup go={go} onDone={() => go('/onboarding/preferences')} /> : <Auth mode="login" go={go} onSuccess={(nextUser) => { setUser(nextUser); go('/blog/new') }} />
+  else if (path === '/onboarding/preferences') content = user ? <PreferenceOnboarding go={go} /> : <Auth mode="login" go={go} onSuccess={(nextUser) => { setUser(nextUser); go(nextUser.preferenceOnboardingCompleted ? '/' : '/onboarding/preferences') }} />
   else if (path === '/feed') content = <Feed go={go} user={user} onLogin={onLogin} />
   else if (path === '/search') content = <SearchPage go={go} user={user} onLogin={onLogin} />
   else if (path === '/market/new') content = user ? <MarketEditor go={go} /> : <Auth mode="login" go={go} onSuccess={(nextUser) => { setUser(nextUser); go('/market/new') }} />

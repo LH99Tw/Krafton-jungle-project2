@@ -100,5 +100,5 @@ export const me = async (request: Request) => {
   if (error || !user) return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
   const { data: blog, error: blogError } = await findCurrentBlog(user.id)
   if (blogError && blogError.code !== '42P01') return apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
-  return json({ data: { user: { id: user.id, email: user.email, nickname: user.nickname, createdAt: user.created_at, updatedAt: user.updated_at }, blog: blog ?? null } })
+  return json({ data: { user: { id: user.id, email: user.email, nickname: user.nickname, preferenceOnboardingCompleted: Boolean(user.preference_onboarding_completed_at), createdAt: user.created_at, updatedAt: user.updated_at }, blog: blog ?? null } })
 }
