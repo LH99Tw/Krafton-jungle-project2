@@ -8,7 +8,7 @@
 - **제품 형태**: 반응형 웹 서비스
 - **MVP 목표**: 사용자가 회원가입/로그인 후 자신의 블로그를 만들고, 글을 작성·수정·삭제하며, 공개된 글을 통합 피드에서 읽을 수 있게 한다.
 
-> 참고 사이트의 공개 홈에는 검색, 시작하기/로그인, 인기글 베스트, 내 티스토리, 피드·스킨·포럼 메뉴가 노출된다. 본 프로젝트에서는 구현 난도가 높은 외부 소셜 로그인, 스킨 편집, 포럼은 MVP에서 제외하고 블로그·글·피드의 핵심 루프에 집중한다.
+> 참고 사이트의 공개 홈 메뉴 중 포럼을 AI로 변경한다. AI 메뉴의 화면 경로는 `/ai.html`이며, 이번 단계에서는 메뉴명과 경로 계약만 정의한다. AI 기능의 상세 요구사항과 백엔드 API는 후속 명세에서 확정한다.
 
 ## 2. 문제 정의
 
@@ -52,7 +52,7 @@
 - 다중 블로그, 스킨 편집 및 사용자 제작 스킨
 - 댓글, 좋아요, 알림
 - 이미지 업로드 및 리치 에디터
-- 포럼/커뮤니티
+- AI 상세 기능 및 백엔드 연동
 - 관리자 페이지, 신고/차단, 통계
 - 실시간 알림 및 무한 스크롤
 
@@ -210,14 +210,15 @@
 
 ## 10. 데이터 접근 아키텍처
 
-React 클라이언트가 Supabase Edge Function `api`를 호출하고, Edge Function이 PostgreSQL과 RPC를 사용한다.
+페이지별 HTML에서 공통 Vanilla JavaScript가 Supabase Edge Function `api`를 호출하고,
+Edge Function이 PostgreSQL과 RPC를 사용한다.
 
 ```text
-React SPA
+HTML 페이지 + Vanilla JavaScript
    │ /api
    ▼
 Supabase Edge Function api
-   │ Supabase JS Client
+   │ Supabase JS Client (서버 내부)
    ▼
 Supabase PostgreSQL / RPC
 ```
@@ -229,16 +230,17 @@ Supabase PostgreSQL / RPC
 
 ## 11. 권장 기술 스택 및 아키텍처
 
-별도 Express 백엔드 서버 없이 React 클라이언트가 Supabase Edge Function `api`를 호출한다. 인증·세션은 Edge Function과 PostgreSQL이 담당하고, 원자적 처리가 필요한 기능만 PostgreSQL RPC로 구현한다.
+별도 Express 백엔드 서버 없이 각 HTML 페이지의 브라우저 JavaScript가 Supabase Edge Function
+`api`를 호출한다. 인증·세션은 Edge Function과 PostgreSQL이 담당하고, 원자적 처리가 필요한
+기능만 PostgreSQL RPC로 구현한다.
 
 ### 프론트엔드
 
-- **React + TypeScript + Vite**: 화면과 라우팅 구현
-- **React Router**: 홈, 인증, 블로그, 글 관련 경로 관리
-- **Supabase JS Client**: Auth, PostgREST, RPC 호출
-- **TanStack Query**: 서버 데이터 캐시, 로딩·오류 상태 관리
-- **React Hook Form + Zod**: 폼 상태와 클라이언트 입력 검증
-- **CSS Modules 또는 일반 CSS**: MVP 스타일 구현
+- **HTML**: 화면마다 독립된 문서로 마크업과 접근성 구조를 관리
+- **Vanilla JavaScript**: 화면별 이벤트, 폼 검증, API 호출, 로딩·오류 상태 처리
+- **Fetch API**: 상대 경로 `/api/*`로 Edge Function 호출
+- **일반 CSS**: `src/styles.css`와 `static-pages.css`에서 공통·페이지 스타일 관리
+- **Node.js 스크립트**: 로컬 정적 서버와 배포 산출물 생성
 
 ### Supabase
 
@@ -249,6 +251,7 @@ Supabase PostgreSQL / RPC
 
 ### 사용하지 않는 기술
 
+- React, TypeScript/TSX, Vite, React Router 및 React 전용 상태·폼 라이브러리
 - Express, 별도 `server/` 디렉터리, API Gateway
 - Redis
 - 별도 파일 저장소, 외부 검색 엔진, 소셜 로그인, WebSocket
@@ -256,11 +259,11 @@ Supabase PostgreSQL / RPC
 ### 요청 흐름
 
 ```text
-React SPA
+HTML page
    │ fetch + credentials: include
    ▼
 Supabase Edge Function api
-   │ Supabase JS Client
+   │ Supabase JS Client (서버 내부)
    ▼
 Supabase PostgreSQL / RPC
 ```
@@ -276,19 +279,33 @@ Supabase PostgreSQL / RPC
 
 ```text
 project-root/
-├── client/                              # React + Vite 프론트엔드
+├── client/                              # 다중 HTML 페이지 프론트엔드
 │   ├── public/
-│   │   └── api-docs.html                 # API Swagger 문서 화면
+│   │   ├── api-docs.html                 # API Swagger 문서 화면
+│   │   └── assets/                       # 이미지 등 정적 에셋
 │   ├── src/
-│   │   ├── App.tsx                       # 화면·라우팅·API 호출
-│   │   ├── main.tsx                      # React 진입점
-│   │   ├── styles.css                    # 전역 스타일
-│   │   └── vite-env.d.ts
-│   ├── .env.example                      # VITE_API_URL
-│   ├── index.html
+│   │   └── styles.css                    # 공통 디자인 스타일
+│   ├── index.html                        # 홈
+│   ├── login.html                        # 로그인
+│   ├── signup.html                       # 회원가입
+│   ├── agreement.html                    # 개인정보 동의
+│   ├── blog-new.html                     # 블로그 생성
+│   ├── blog.html                         # 블로그 조회
+│   ├── manage.html                       # 블로그 관리
+│   ├── write.html                        # 글 작성·수정
+│   ├── feed.html                         # 통합 피드
+│   ├── post.html                         # 글 상세
+│   ├── notice.html                       # 공지
+│   ├── skin.html                         # 스킨 소개
+│   ├── ai.html                           # AI 메뉴 화면
+│   ├── app.js                            # 공통 API·세션 및 화면별 동작
+│   ├── layout-client.js                  # 공통 레이아웃의 모바일·스크롤 동작
+│   ├── partials/                         # 공통·공지 헤더와 푸터 원본
+│   ├── lib/render-layout.js              # 개발 서버·빌드용 partial 합성
+│   ├── static-pages.css                  # 페이지별 보조 스타일
+│   ├── build.js                          # HTML·에셋을 dist로 복사
+│   ├── server.js                         # 로컬 정적 서버와 /api 프록시
 │   ├── package.json
-│   ├── tsconfig.json
-│   ├── vite.config.ts
 │   └── vercel.json
 ├── supabase/
 │   ├── config.toml                       # Supabase 로컬 설정
@@ -320,14 +337,13 @@ project-root/
 └── .gitignore
 ```
 
-`client/dist`, `client/tsconfig.tsbuildinfo`, `node_modules`는 빌드·캐시 생성물이므로 권장 소스 구조와 커밋 대상에서 제외한다. 별도의 `server/` 디렉터리는 사용하지 않는다.
+`client/dist`와 `node_modules`는 빌드·캐시 생성물이므로 커밋 대상에서 제외한다.
+`client/server.js`는 프런트엔드 개발용 정적 파일 서버이며 별도의 애플리케이션 백엔드가 아니다.
+Express `server/` 디렉터리는 사용하지 않는다.
 
 ### 환경 변수
 
-```text
-VITE_API_URL=http://127.0.0.1:54321/functions/v1
-```
-
+클라이언트는 상대 경로 `/api/*`만 사용하므로 별도 프런트엔드 환경 변수가 없다.
 Edge Function 환경 변수는 `supabase/functions/api/.env.local`에서 관리한다.
 
 ```text
@@ -343,14 +359,14 @@ SESSION_COOKIE_SECURE=false
 
 | 구성 요소 | 서비스 | 담당 내용 |
 |---|---|---|
-| 웹 애플리케이션 | Vercel 또는 정적 호스팅 | React 빌드 결과 제공 |
+| 웹 애플리케이션 | Vercel 또는 정적 호스팅 | 페이지별 HTML·JavaScript·CSS 제공 |
 | 인증·데이터베이스 | Supabase | Auth, PostgreSQL, RLS, RPC |
 | 데이터베이스 관리 | Supabase CLI/Dashboard | migration, 함수, 데이터 확인 |
 | 소스 저장소 | GitHub | 코드와 migration 관리 |
 
 ### 배포 원칙
 
-- 프론트엔드는 Supabase URL과 `anon` 키로 Supabase에 직접 연결한다.
+- 프론트엔드는 상대 경로 `/api/*`로 Edge Function만 호출한다.
 - `service_role` 키는 클라이언트 환경 변수에 넣지 않는다.
 - 운영과 개발은 Supabase 프로젝트를 분리한다.
 
@@ -365,7 +381,7 @@ SESSION_COOKIE_SECURE=false
 
 ```text
 project-root/
-├── client/                  # React + Vite 프론트엔드
+├── client/                  # HTML + Vanilla JavaScript 프론트엔드
 ├── supabase/migrations/     # Supabase 스키마·RLS·RPC
 └── instruction/             # API 및 제품 명세
 ```
@@ -389,11 +405,64 @@ npx supabase db push
 
 | 환경 | 프론트엔드/API | 데이터베이스 | 목적 |
 |---|---|---|---|
-| 로컬 | Vite 개발 서버 + Supabase 개발 프로젝트 | Supabase 개발 프로젝트 | 기능 개발·테스트 |
+| 로컬 | Node 정적 서버 + Supabase 로컬 서비스 | Supabase 로컬 PostgreSQL | 기능 개발·테스트 |
 | Preview | Vercel Preview | Supabase 개발 프로젝트 | PR별 통합 확인 |
 | Production | Vercel Production | Supabase 운영 프로젝트 | 최종 서비스 |
 
 개발 데이터와 운영 데이터는 Supabase 프로젝트를 분리한다. 운영 데이터베이스에 로컬 테스트 데이터를 직접 입력하지 않는다.
+
+## 12. 페이지 파일 및 URL 기준
+
+화면 전환은 SPA 라우팅이 아니라 문서 이동으로 처리한다. 고정 화면은 HTML 파일명을 URL로
+사용하고, 블로그 slug나 글 id처럼 동적인 값은 query string으로 전달한다.
+
+| 화면 | 파일 | URL 예시 | 전달 값 |
+|---|---|---|---|
+| 홈 | `index.html` | `/` | 없음 |
+| 로그인 | `login.html` | `/login.html` | 필요 시 `redirect` |
+| 회원가입 | `signup.html` | `/signup.html` | 없음 |
+| 개인정보 동의 | `agreement.html` | `/agreement.html` | 가입 진행 상태는 세션에서 확인 |
+| 블로그 생성 | `blog-new.html` | `/blog-new.html` | 없음 |
+| 블로그 조회 | `blog.html` | `/blog.html?slug=jungle-dev` | `slug` |
+| 블로그 관리 | `manage.html` | `/manage.html` | 로그인 세션 |
+| 글 작성 | `write.html` | `/write.html` | 없음 |
+| 글 수정 | `write.html` | `/write.html?id={postId}` | `id` |
+| 통합 피드 | `feed.html` | `/feed.html?q=여행&sort=latest&page=1` | `q`, `sort`, `page` |
+| 글 상세 | `post.html` | `/post.html?id={postId}` | `id` |
+| 공지 | `notice.html` | `/notice.html` | 없음 |
+| 스킨 소개 | `skin.html` | `/skin.html` | 없음 |
+| AI | `ai.html` | `/ai.html` | 없음 |
+
+모든 내부 링크는 실제 HTML 문서를 가리키는 `<a href>`를 우선한다. JavaScript가 필요한 폼 제출,
+필터, 모달 등의 동작만 이벤트 리스너로 보강한다. 각 페이지는 직접 URL로 접근하거나 새로고침해도
+같은 화면과 데이터를 복원할 수 있어야 한다.
+
+## 13. 프론트엔드 구현 계획
+
+현재 저장소에는 페이지별 HTML, 공통 CSS, 정적 빌드 스크립트와 로컬 서버가 준비되어 있다.
+다만 `index.html`과 `app.js`에는 이전 SPA 렌더링 및 History API 라우팅 코드가 남아 있으므로,
+아래 순서로 다중 페이지 구조를 완성한다.
+
+1. **페이지 진입점 확정**
+   - 각 HTML의 `data-od-id`를 화면 식별자로 사용하고 공통 `<script src="./app.js" defer>`를 연결한다.
+   - `app.js`의 `innerHTML` 기반 전체 화면 템플릿과 `history.pushState` 라우터를 제거한다.
+   - 공통 헤더·푸터는 `partials/`에서 한 번만 관리하고 로컬 서버와 빌드 단계에서 각 문서에 합성한다.
+2. **문서 이동 연결**
+   - 버튼으로 구현된 화면 이동을 실제 `<a href="*.html">` 링크로 바꾼다.
+   - 동적 식별자는 path parameter 대신 `URLSearchParams`로 읽는 query string을 사용한다.
+   - 인증이 필요한 페이지는 미인증 시 `login.html?redirect=...`로 이동한다.
+3. **화면별 JavaScript 분리**
+   - 공통 API 요청, CSRF, 세션 확인, 오류 처리는 재사용 함수로 둔다.
+   - 초기화 시 현재 문서의 `data-od-id`에 맞는 컨트롤러만 실행한다.
+   - 로그인·회원가입 → 블로그 생성 → 글 작성 → 피드 → 상세 순으로 실제 API와 연결한다.
+4. **정적 빌드와 배포 정리**
+   - 새 페이지와 에셋은 `build.js`가 빠짐없이 `dist`로 복사하도록 검증한다.
+   - Vercel의 SPA용 전체 경로 `index.html` fallback은 제거하고 실제 HTML 파일을 제공한다.
+   - `/api/*` rewrite만 유지해 로컬과 운영에서 동일한 브라우저 요청 경로를 사용한다.
+5. **페이지 단위 검증**
+   - 모든 HTML의 직접 접근, 새로고침, 뒤로가기, 페이지 간 링크를 확인한다.
+   - 인증 유무, query string 누락·오류, 빈 데이터, API 오류 상태를 페이지마다 확인한다.
+   - `npm run build` 후 `dist`의 모든 페이지·CSS·JavaScript·에셋을 확인하고 모바일/데스크톱 회귀 테스트를 수행한다.
 
 ## 14. 비기능 요구사항
 

@@ -3,7 +3,7 @@
 
 ## 실행 구조
 
-- 프론트엔드: React + Vite → Vercel
+- 프론트엔드: 페이지별 HTML + Vanilla JavaScript + CSS → Vercel
 - 백엔드: Supabase Edge Function `api`
 - 데이터베이스·세션: Supabase PostgreSQL
 
@@ -22,12 +22,6 @@ API 코드는 역할별로 나눕니다.
 2. Supabase CLI를 설치합니다.
 3. `npm run supabase:start`로 로컬 데이터베이스·인증 서비스를 실행합니다.
 4. `supabase/functions/api/.env.local`을 만들고 `.env.example` 값을 채웁니다.
-5. `client/.env.local`을 만듭니다.
-
-```env
-VITE_API_URL=http://127.0.0.1:54321/functions/v1
-```
-
 터미널을 두 개 열고 실행합니다.
 
 ```bash
@@ -36,6 +30,8 @@ npm run dev:client
 ```
 
 프론트엔드는 [http://localhost:5173](http://localhost:5173)에서 확인합니다.
+`client/server.js`가 정적 HTML을 제공하고 `/api/*` 요청을 로컬 Supabase Edge Function으로 전달하므로 프론트엔드용 환경 변수는 필요하지 않습니다.
+공통 헤더와 푸터는 `client/partials`에서 관리하며, 로컬 서버와 production 빌드가 각 HTML에 합성합니다.
 작업을 마치면 `npm run supabase:stop`으로 로컬 Supabase 컨테이너를 종료합니다.
 
 Docker는 개발 컴퓨터에서 Supabase와 동일한 환경을 재현할 때만 사용합니다. 운영 백엔드는

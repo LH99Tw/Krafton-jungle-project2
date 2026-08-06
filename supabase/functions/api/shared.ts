@@ -13,7 +13,7 @@ export const corsHeaders = {
   'Access-Control-Allow-Origin': frontendOrigin,
   'Access-Control-Allow-Credentials': 'true',
   'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info, x-csrf-token',
-  'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
   Vary: 'Origin',
 }
 
@@ -49,6 +49,11 @@ export const readCookie = (request: Request, name: string) => {
     if (key === name) return decodeURIComponent(parts.join('='))
   }
   return null
+}
+
+export const getSessionHash = async (request: Request) => {
+  const sessionId = readCookie(request, 'session_id')
+  return sessionId ? sha256(sessionId) : null
 }
 
 export const sessionCookie = (sessionId: string) => {

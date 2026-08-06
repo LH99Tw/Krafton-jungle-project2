@@ -12,16 +12,18 @@ export const createUser = (input: {
   nickname: string
   sessionHash: string
   csrfToken: string
+  interests: string[]
 }) => supabase.rpc('signup_user', {
   p_email: input.email,
   p_password_hash: input.passwordHash,
   p_nickname: input.nickname,
   p_session_hash: input.sessionHash,
   p_csrf_token: input.csrfToken,
+  p_interests: input.interests,
 })
 
 export const findUserByEmail = (email: string) =>
-  supabase.from('users').select('id, email, nickname, password_hash').eq('email', email).maybeSingle()
+  supabase.from('users').select('id, email, nickname, password_hash, third_party_consent_decided_at').eq('email', email).maybeSingle()
 
 export const rotateUserSession = (input: {
   userId: number
@@ -39,7 +41,17 @@ export const deleteSession = (sessionHash: string) =>
   supabase.from('sessions').delete().eq('session_hash', sessionHash)
 
 export const findCurrentUser = (userId: number) =>
-  supabase.from('users').select('id, email, nickname, created_at, updated_at').eq('id', userId).maybeSingle()
+  supabase.from('users').select('id, email, nickname, interests, created_at, updated_at, third_party_consent_decided_at').eq('id', userId).maybeSingle()
+
+export const saveThirdPartyConsent = (userId: number, accepted: boolean) =>
+  supabase.from('users').update({
+    third_party_consent: accepted,
+    third_party_consent_decided_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }).eq('id', userId).is('third_party_consent_decided_at', null).select('id').maybeSingle()
+
+export const saveUserInterests = (userId: number, interests: string[]) =>
+  supabase.from('users').update({ interests, updated_at: new Date().toISOString() }).eq('id', userId).select('interests').single()
 
 export const findCurrentBlog = (userId: number) =>
   supabase.from('blogs').select('id, name, slug').eq('owner_id', userId).maybeSingle()
