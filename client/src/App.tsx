@@ -296,7 +296,6 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
   const connectedCategoryPosts = (home?.categoryPosts ?? []).filter((post) => category === '전체' || post.category?.name === category)
   const categoryPosts = fillPostSlots(connectedCategoryPosts, categoryTemplates(category), 7)
   const categoryPagePosts = categoryPosts.map((_, index) => categoryPosts[(index + categoryPage - 1) % categoryPosts.length])
-  const categoryContinuationPosts = fillPostSlots(home?.popularPosts?.slice(2), fallbackPopular.slice(2), 5)
   const latestPosts = fillPostSlots(home?.latestPosts, fallbackLatest, 5)
   const popularMarketItems = fillMarketSlots(home?.marketItems, 5)
   const shownTips = tipPage === 1 ? sidebarTips : [...sidebarTips].reverse()
@@ -339,14 +338,6 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
           </section>
 
           <HomeMarketEditorial items={popularMarketItems} go={go} />
-          <section className="category-continuation-section" aria-label="별도 추천 이야기">
-            <div className="category-grid category-continuation">
-              {categoryContinuationPosts.map((post, index) => <article key={`continuation-${post.id}`}>
-                <div>{tags(post)}<h3><button onClick={() => openPost(post)}>{post.title}</button></h3><p>{post.excerpt ?? '팬들이 함께 나누는 새로운 이야기입니다.'}</p><small>조회 {post.viewCount}　♡ {post.likeCount}　댓글 {post.commentCount}</small></div>
-                <div className="post-thumb" style={{ backgroundColor: solidColor(index, 3) }} />
-              </article>)}
-            </div>
-          </section>
           <HomeEditorial title="최애 이야기를 나눠요" description="구매 후기부터 전시와 보관까지 팬들의 기록을 만나보세요." posts={latestPosts} go={go} />
         </div>
 

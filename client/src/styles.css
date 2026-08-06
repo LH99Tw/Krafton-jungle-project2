@@ -776,15 +776,6 @@ body:has(.home-main) .category-grid article:nth-child(n+3) h3{margin:8px 0 10px;
 body:has(.home-main) .category-grid article:nth-child(n+3) p{font-size:13px;line-height:20px}
 body:has(.home-main) .category-grid article:nth-child(n+3) small{margin-top:12px;font-size:11px;line-height:14px}
 body:has(.home-main) .category-grid article:nth-child(n+3) .post-thumb{top:50%;transform:translateY(-50%)}
-.category-continuation-section{padding-top:34px}
-body:has(.home-main) .category-grid.category-continuation{display:block;padding-top:0;border-top:1px solid var(--fg)}
-body:has(.home-main) .category-grid.category-continuation article{display:flex;min-height:193.5px;padding:0 180px 0 0;align-items:center;grid-column:auto;text-align:left}
-body:has(.home-main) .category-grid.category-continuation article>div:not(.post-thumb){width:100%;text-align:left}
-body:has(.home-main) .category-grid.category-continuation article h3{margin:8px 0 10px;font-size:18px;line-height:25px;font-weight:600;letter-spacing:-.45px}
-body:has(.home-main) .category-grid.category-continuation article p{font-size:13px;line-height:20px}
-body:has(.home-main) .category-grid.category-continuation article small{margin-top:12px;font-size:11px;line-height:14px}
-body:has(.home-main) .category-grid.category-continuation article .post-thumb{top:50%;right:0;left:auto;width:160px;height:106px;transform:translateY(-50%)}
-@media(max-width:700px){body:has(.home-main) .category-grid.category-continuation article{min-height:150px;padding-right:92px}body:has(.home-main) .category-grid.category-continuation article .post-thumb{width:78px;height:78px}.category-continuation-section{padding-top:24px}}
 
 /* Logged-out Kakao CTA is slightly narrower and taller. */
 body:has(.home-main) .my-tistory{height:110px}
