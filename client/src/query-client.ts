@@ -24,6 +24,19 @@ let channel: RealtimeChannel | null = null
 let invalidateTimer: number | null = null
 const pendingKeys = new Set<string>()
 
+const queueSurfaceInvalidation = (surface: string) => {
+  for (const key of surfaceKeys[surface] ?? ['home']) pendingKeys.add(key)
+  if (invalidateTimer !== null) window.clearTimeout(invalidateTimer)
+  invalidateTimer = window.setTimeout(() => {
+    const keys = new Set(pendingKeys)
+    pendingKeys.clear()
+    invalidateTimer = null
+    void queryClient.invalidateQueries({
+      predicate: (query) => keys.has(String(query.queryKey[0])),
+    })
+  }, 250)
+}
+
 export const startContentInvalidation = () => {
   const url = import.meta.env.VITE_SUPABASE_URL
   const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
@@ -34,16 +47,15 @@ export const startContentInvalidation = () => {
   })
   channel = realtime.channel('content-cache', { config: { private: false } })
     .on('broadcast', { event: 'invalidate' }, ({ payload }) => {
-      for (const key of surfaceKeys[String(payload?.surface)] ?? ['home']) pendingKeys.add(key)
-      if (invalidateTimer !== null) window.clearTimeout(invalidateTimer)
-      invalidateTimer = window.setTimeout(() => {
-        const keys = new Set(pendingKeys)
-        pendingKeys.clear()
-        invalidateTimer = null
-        void queryClient.invalidateQueries({
-          predicate: (query) => keys.has(String(query.queryKey[0])),
-        })
-      }, 250)
+      queueSurfaceInvalidation(String(payload?.surface ?? ''))
+    })
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'content_versions',
+    }, ({ new: payload }) => {
+      const surface = String((payload as Record<string, unknown>).surface ?? '')
+      queueSurfaceInvalidation(surface)
     })
     .subscribe((status) => {
       if (status === 'SUBSCRIBED') return

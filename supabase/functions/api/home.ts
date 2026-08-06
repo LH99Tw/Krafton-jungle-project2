@@ -1,28 +1,11 @@
 import { apiError, corsHeaders, getSession, getSessionHash, json, requireCsrfSession, supabase, supabaseUrl } from './shared.ts'
 
-const postDto = (post: Record<string, any>) => ({
-  id: post.id, url: `/post/${post.id}`, title: post.title,
-  excerpt: post.content.length > 160 ? `${post.content.slice(0, 160)}…` : post.content,
-  status: post.status,
-  category: post.category_id ? { id: post.category_id, name: post.category_name } : null,
-  viewCount: post.view_count,
-  author: { id: post.owner_id, nickname: post.author_nickname },
-  blog: { id: post.blog_id, name: post.blog_name, slug: post.blog_slug },
-  publishedAt: post.published_at, createdAt: post.created_at, updatedAt: post.updated_at,
-})
-
 const bannerDto = (banner: Record<string, any>) => ({
   id: banner.id, eyebrow: banner.eyebrow, title: banner.title, description: banner.description,
   imageUrl: banner.image_url, ctaLabel: banner.cta_label, ctaUrl: banner.cta_url,
   startsAt: banner.starts_at, endsAt: banner.ends_at, position: banner.position,
   isActive: banner.is_active, createdAt: banner.created_at, updatedAt: banner.updated_at,
 })
-
-const activeBanners = async () => {
-  const now = new Date().toISOString()
-  const { data, error } = await supabase.from('home_banners').select('*').eq('is_active', true).lte('starts_at', now).or(`ends_at.is.null,ends_at.gt.${now}`).order('position').order('id').limit(4)
-  return { data: (data ?? []).map(bannerDto), error }
-}
 
 export const getHome = async (request: Request) => {
   const sessionHash = await getSessionHash(request)

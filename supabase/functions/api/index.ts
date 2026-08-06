@@ -1,12 +1,10 @@
-import { apiError, corsHeaders, getSession, json, requireCsrfSession, supabase, supabaseUrl } from './shared.ts'
+import { apiError, corsHeaders, getSession, getSessionHash, json, requireCsrfSession, supabase, supabaseUrl } from './shared.ts'
 import { handleAuthRoute } from './auth/auth.routes.ts'
 import { handleSystemRoute } from './system/system.routes.ts'
 import { handleMarketRoute } from './market/market.routes.ts'
 import { handleBlogManagementRoute } from './blog-management.ts'
 import { enrichPosts, handlePostFeatureRoute, parseClassificationIds, replacePostClassifications, validateClassificationOwnership } from './post-features.ts'
 import { handleHomeRoute } from './home.ts'
-import { marketDtos } from './market/market.service.ts'
-import { marketItemDetailFields } from './market/market.repository.ts'
 
 const reservedSlugs = new Set(['api', 'login', 'signup', 'feed', 'post', 'blog', 'me', 'new', 'manage', 'ai'])
 const slugPattern = /^(?!.*--)[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$/
@@ -139,76 +137,20 @@ const getPublicBlog = async (request: Request, slugValue: string, url: URL) => {
   const size = positiveInteger(url.searchParams.get('size'), 10, 50)
   if (!page || !size) return apiError(400, 'VALIDATION_ERROR', '페이지 값을 확인해 주세요.')
 
-  const { data: blog, error } = await supabase.from('blogs').select('*').eq('slug', slug).maybeSingle()
-  if (error || !blog) return apiError(404, 'NOT_FOUND', '블로그를 찾을 수 없습니다.')
-  const { data: owner } = await supabase.from('users').select('id, nickname').eq('id', blog.owner_id).single()
-  const session = await getSession(request)
-  const { data: subscription } = session?.user_id
-    ? await supabase.from('subscriptions').select('blog_id').eq('user_id', session.user_id).eq('blog_id', blog.id).maybeSingle()
-    : { data: null }
-  const { count: subscriberCount, error: subscriberError } = await supabase
-    .from('subscriptions')
-    .select('blog_id', { count: 'exact', head: true })
-    .eq('blog_id', blog.id)
-  if (subscriberError && subscriberError.code !== '42P01') {
-    console.error('Failed to count blog subscribers', subscriberError)
+  const { data, error } = await supabase.rpc('get_public_blog_payload', {
+    p_session_hash: await getSessionHash(request),
+    p_slug: slug,
+    p_page: page,
+    p_size: size,
+    p_storage_origin: supabaseUrl,
+  })
+  if (error) {
+    console.error('Failed to read public blog payload', error)
     return apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
   }
-  const from = (page - 1) * size
-  const to = from + size - 1
-  const { data: posts, count, error: postsError } = await supabase
-    .from('posts')
-    .select('*', { count: 'exact' })
-    .eq('blog_id', blog.id)
-    .eq('status', 'PUBLISHED')
-    .is('deleted_at', null)
-    .order('published_at', { ascending: false })
-    .order('id', { ascending: false })
-    .range(from, to)
-  if (postsError && postsError.code !== '42P01') {
-    console.error('Failed to read blog posts', postsError)
-    return apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
-  }
-  const items = await enrichPosts(request, (posts ?? []).map((post: Record<string, any>) => ({
-    id: post.id,
-    url: `/post/${post.id}`,
-    title: post.title,
-    excerpt: post.content.length > 160 ? `${post.content.slice(0, 160)}…` : post.content,
-    status: post.status,
-    viewCount: post.view_count,
-    author: owner,
-    blog: { id: blog.id, name: blog.name, slug: blog.slug },
-    publishedAt: post.published_at,
-    createdAt: post.created_at,
-    updatedAt: post.updated_at,
-  })))
-  const { data: marketItems, count: marketCount, error: marketError } = await supabase
-    .from('market_item_details')
-    .select(marketItemDetailFields, { count: 'exact' })
-    .eq('seller_id', blog.owner_id)
-    .is('deleted_at', null)
-    .order('created_at', { ascending: false })
-    .order('id', { ascending: false })
-    .range(0, 7)
-  if (marketError && marketError.code !== '42P01') {
-    console.error('Failed to read blog market items', marketError)
-    return apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
-  }
-  let market: Record<string, any>[]
-  try { market = await marketDtos(request, marketItems ?? []) }
-  catch (error) { console.error('Failed to enrich blog market items', error); return apiError(500, 'INTERNAL_SERVER_ERROR', '마켓 상품을 불러오지 못했습니다.') }
-  const totalItems = count ?? 0
-  return json({ data: {
-    blog: { ...blogJson(blog, owner ?? undefined), isSubscribed: Boolean(subscription), subscriberCount: subscriberCount ?? 0 },
-    posts: {
-      items,
-      pagination: { page, size, totalItems, totalPages: totalItems ? Math.ceil(totalItems / size) : 0 },
-    },
-    market: {
-      items: market,
-      pagination: { page: 1, size: 8, totalItems: marketCount ?? 0, totalPages: marketCount ? Math.ceil(marketCount / 8) : 0 },
-    },
-  } })
+  const payload = data as { found?: boolean; data?: Record<string, unknown> } | null
+  if (!payload?.found) return apiError(404, 'NOT_FOUND', '블로그를 찾을 수 없습니다.')
+  return json({ data: payload.data })
 }
 
 const postJson = (post: Record<string, any>, includeContent = false) => ({
@@ -276,66 +218,31 @@ const listPosts = async (request: Request, url: URL) => {
     return apiError(400, 'VALIDATION_ERROR', '공개 피드에는 status를 지정할 수 없습니다.')
   }
 
-  let ownerId: number | null = null
-  let status = 'PUBLISHED'
-  let followedBlogIds: number[] = []
-  if (scope === 'mine' || scope === 'following' || scope === 'bookmarked') {
-    const session = await getSession(request)
-    if (!session?.user_id) return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
-    ownerId = session.user_id
-    if (scope === 'mine') {
-      status = requestedStatus ?? 'ALL'
-      if (!['ALL', 'DRAFT', 'PUBLISHED'].includes(status)) {
-        return apiError(400, 'VALIDATION_ERROR', '글 상태를 확인해 주세요.')
-      }
-    } else if (scope === 'following') {
-      const { data, error } = await supabase.from('subscriptions').select('blog_id').eq('user_id', session.user_id)
-      if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '구독 피드를 불러오지 못했습니다.')
-      followedBlogIds = (data ?? []).map((item: { blog_id: number }) => item.blog_id)
-      if (!followedBlogIds.length) {
-        return json({ data: [], pagination: { page, size, totalItems: 0, totalPages: 0 } })
-      }
-    }
+  const status = scope === 'mine' ? requestedStatus ?? 'ALL' : 'PUBLISHED'
+  if (scope === 'mine' && !['ALL', 'DRAFT', 'PUBLISHED'].includes(status)) {
+    return apiError(400, 'VALIDATION_ERROR', '글 상태를 확인해 주세요.')
   }
-
-  let bookmarkedPostIds: number[] = []
-  if (scope === 'bookmarked') {
-    const { data, error } = await supabase.from('post_bookmarks').select('post_id').eq('user_id', ownerId!)
-    if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '북마크를 불러오지 못했습니다.')
-    bookmarkedPostIds = (data ?? []).map((item: Record<string, any>) => item.post_id)
-    if (!bookmarkedPostIds.length) return json({ data: [], pagination: { page, size, totalItems: 0, totalPages: 0 } })
+  if (categoryId && categoryId !== 'uncategorized' && (!/^\d+$/.test(categoryId) || Number(categoryId) < 1)) {
+    return apiError(400, 'VALIDATION_ERROR', '카테고리를 확인해 주세요.')
   }
-
-  let query = supabase.from('post_details').select('*', { count: 'exact' })
-  query = deleted === 'only' ? query.not('deleted_at', 'is', null) : query.is('deleted_at', null)
-  if (scope === 'public') query = query.eq('status', 'PUBLISHED')
-  else if (scope === 'following') query = query.eq('status', 'PUBLISHED').in('blog_id', followedBlogIds)
-  else if (scope === 'bookmarked') query = query.eq('status', 'PUBLISHED').in('id', bookmarkedPostIds)
-  else query = query.eq('owner_id', ownerId!)
-  if (scope === 'mine' && status !== 'ALL') query = query.eq('status', status)
-  if (scope === 'mine' && categoryId) query = categoryId === 'uncategorized' ? query.is('category_id', null) : query.eq('category_id', Number(categoryId))
-  if (q) {
-    const safe = q.replaceAll(',', ' ')
-    query = query.or(`title.ilike.%${safe}%,content.ilike.%${safe}%,author_nickname.ilike.%${safe}%,blog_name.ilike.%${safe}%`)
-  }
-  if (sort === 'popular') {
-    query = query.order('view_count', { ascending: false })
-    if (scope !== 'mine') query = query.order('published_at', { ascending: false })
-  } else {
-    query = query.order(scope === 'mine' ? 'updated_at' : 'published_at', { ascending: false })
-  }
-  query = query.order('id', { ascending: false })
-  const from = (page - 1) * size
-  const { data, count, error } = await query.range(from, from + size - 1)
+  const { data, error } = await supabase.rpc('get_posts_payload', {
+    p_session_hash: await getSessionHash(request),
+    p_scope: scope,
+    p_sort: sort,
+    p_page: page,
+    p_size: size,
+    p_query: q,
+    p_status: status,
+    p_deleted: deleted,
+    p_category_id: categoryId,
+  })
   if (error) {
     console.error('Failed to list posts', error)
     return apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
   }
-  const totalItems = count ?? 0
-  return json({
-    data: await enrichPosts(request, (data ?? []).map((post: Record<string, any>) => postJson(post))),
-    pagination: { page, size, totalItems, totalPages: totalItems ? Math.ceil(totalItems / size) : 0 },
-  })
+  const payload = data as { authenticated?: boolean; data?: unknown[]; pagination?: Record<string, unknown> } | null
+  if (scope !== 'public' && !payload?.authenticated) return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
+  return json({ data: payload?.data ?? [], pagination: payload?.pagination })
 }
 
 const changeSubscription = async (request: Request, slugValue: string, subscribe: boolean) => {

@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 
 const apiProxyUrl = new URL(
   process.env.VITE_API_PROXY_TARGET
-    ?? 'https://tirnfqlznctbvwzfolmq.supabase.co/functions/v1',
+    ?? 'https://npuyxiqjowqeewesmctq.supabase.co/functions/v1',
 )
 
 export default defineConfig({

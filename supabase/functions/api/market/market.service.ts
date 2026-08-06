@@ -1,4 +1,4 @@
-import { apiError, corsHeaders, getSession, json, requireCsrfSession, supabase, supabaseUrl } from '../shared.ts'
+import { apiError, corsHeaders, getSession, getSessionHash, json, requireCsrfSession, supabase, supabaseUrl } from '../shared.ts'
 import { findMarketItem, findSeller, marketItemDetailFields, marketItemFields } from './market.repository.ts'
 
 const conditions = ['NEW', 'LIKE_NEW', 'USED'] as const
@@ -145,56 +145,29 @@ export const listMarketItems = async (request: Request, url: URL) => {
     return apiError(400, 'VALIDATION_ERROR', '필터 값을 확인해 주세요.')
   }
 
-  let sellerId: number | null = null
-  let likedIds: number[] | null = null
-  if (scope === 'mine') {
-    const session = await getSession(request)
-    if (!session?.user_id) return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
-    sellerId = session.user_id
-  } else if (scope === 'liked') {
-    const session = await getSession(request)
-    if (!session?.user_id) return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
-    const { data: likes, error: likesError } = await supabase.from('market_item_likes').select('item_id').eq('user_id', session.user_id)
-    if (likesError) return apiError(500, 'INTERNAL_SERVER_ERROR', '찜한 상품을 불러오지 못했습니다.')
-    likedIds = (likes ?? []).map((like: Record<string, any>) => Number(like.item_id))
-    if (!likedIds.length) return json({ data: [], pagination: { page, size, totalItems: 0, totalPages: 0 } })
-  } else if (status !== 'SELLING') {
+  if (scope === 'public' && status !== 'SELLING') {
     return apiError(400, 'VALIDATION_ERROR', '공개 마켓은 판매 중인 상품만 조회할 수 있습니다.')
   }
-
-  let query = supabase.from('market_item_details').select(marketItemDetailFields, { count: 'exact' })
-  query = deleted === 'only' ? query.not('deleted_at', 'is', null) : query.is('deleted_at', null)
-  if (sellerId) query = query.eq('seller_id', sellerId)
-  if (likedIds) query = query.in('id', likedIds)
-  if (status !== 'ALL') query = query.eq('status', status)
-  if (category) query = query.eq('category', category)
-  if (condition) query = query.eq('condition', condition)
-  if (tag) {
-    query = query.contains('tags', [tag])
-  } else if (q) {
-    const safe = q.replaceAll(',', ' ')
-    query = query.or(`title.ilike.%${safe}%,description.ilike.%${safe}%,category.ilike.%${safe}%`)
-  }
-  if (sort === 'popular') query = query.order('like_count', { ascending: false }).order('created_at', { ascending: false })
-  else if (sort === 'price_asc') query = query.order('price_points', { ascending: true })
-  else if (sort === 'price_desc') query = query.order('price_points', { ascending: false })
-  else query = query.order('created_at', { ascending: false })
-  query = query.order('id', { ascending: false })
-
-  const from = (page - 1) * size
-  const { data, count, error } = await query.range(from, from + size - 1)
+  const { data, error } = await supabase.rpc('get_market_payload', {
+    p_session_hash: await getSessionHash(request),
+    p_storage_base: `${supabaseUrl}/storage/v1/object/public/market-item-images`,
+    p_scope: scope,
+    p_sort: sort,
+    p_page: page,
+    p_size: size,
+    p_query: tag ? `#${tag}` : q,
+    p_category: category,
+    p_condition: condition,
+    p_status: status,
+    p_deleted: deleted,
+  })
   if (error) {
     console.error('Failed to list market items', error)
     return apiError(500, 'INTERNAL_SERVER_ERROR', '마켓 상품을 불러오지 못했습니다.')
   }
-  const totalItems = count ?? 0
-  let items: Record<string, any>[]
-  try { items = await marketDtos(request, data ?? []) }
-  catch (error) { console.error('Failed to enrich market items', error); return apiError(500, 'INTERNAL_SERVER_ERROR', '마켓 상품을 불러오지 못했습니다.') }
-  return json({
-    data: items,
-    pagination: { page, size, totalItems, totalPages: totalItems ? Math.ceil(totalItems / size) : 0 },
-  })
+  const payload = data as { authenticated?: boolean; data?: unknown[]; pagination?: Record<string, unknown> } | null
+  if (scope !== 'public' && !payload?.authenticated) return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
+  return json({ data: payload?.data ?? [], pagination: payload?.pagination })
 }
 
 export const createMarketItem = async (request: Request) => {
