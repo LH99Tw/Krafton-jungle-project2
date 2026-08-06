@@ -131,13 +131,27 @@ if (typeof document !== 'undefined') {
 }
 
 let csrfToken = ''
+async function refreshCsrfToken() {
+  const response = await fetch(`${API}/api/auth/csrf`, { credentials: 'include' })
+  const body = await response.json().catch(() => ({}))
+  if (!response.ok || !body.data?.csrfToken) throw new Error(body.error?.message ?? '보안 토큰을 발급하지 못했습니다.')
+  csrfToken = body.data.csrfToken
+}
 async function request<T>(path: string, options: RequestInit = {}) {
   const method = (options.method ?? 'GET').toUpperCase()
-  if (method !== 'GET' && method !== 'HEAD' && !csrfToken) { const csrf = await fetch(`${API}/api/auth/csrf`, { credentials: 'include' }).then((r) => r.json()).catch(() => null); csrfToken = csrf?.data?.csrfToken ?? '' }
+  const needsCsrf = method !== 'GET' && method !== 'HEAD'
+  if (needsCsrf && !csrfToken) await refreshCsrfToken()
   const multipart = options.body instanceof FormData
-  const response = await fetch(`${API}/api${path}`, { credentials: 'include', headers: { ...(!multipart ? { 'Content-Type': 'application/json' } : {}), ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}), ...(options.headers ?? {}) }, ...options })
+  const send = () => fetch(`${API}/api${path}`, { credentials: 'include', ...options, headers: { ...(!multipart ? { 'Content-Type': 'application/json' } : {}), ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}), ...(options.headers ?? {}) } })
+  let response = await send()
+  let body = response.status === 204 ? {} : await response.json().catch(() => ({}))
+  if (needsCsrf && response.status === 403 && body.error?.code === 'CSRF_TOKEN_INVALID') {
+    csrfToken = ''
+    await refreshCsrfToken()
+    response = await send()
+    body = response.status === 204 ? {} : await response.json().catch(() => ({}))
+  }
   if (response.status === 204) return undefined as T
-  const body = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(body.error?.message ?? '요청을 처리하지 못했습니다.')
   return body.data as T
 }
@@ -406,7 +420,7 @@ function BookmarkedPosts({ go, user, onLogin }: { go: (to: string) => void; user
 function PostRow({ post, go, mine = false }: { post: Post; go: (to: string) => void; mine?: boolean }) { return <article className="feed-row"><div><p className="post-blog">{post.blog.name}</p><h2><button onClick={() => go(`/post/${post.id}`)}>{post.title}</button></h2><p className="excerpt">{post.excerpt ?? post.content ?? '내용이 없습니다.'}</p><small>{post.author.nickname} · {post.status === 'DRAFT' ? '임시저장' : new Date(post.publishedAt ?? post.updatedAt ?? '').toLocaleDateString('ko-KR')} {mine && `· ${post.status}`}</small></div><div className="row-stats" aria-label={`조회 ${post.viewCount}, 좋아요 ${post.likeCount}, 댓글 ${post.commentCount}, 북마크 ${post.bookmarkCount}`}><span><Eye size={14} /> {post.viewCount}</span><span><Heart size={14} /> {post.likeCount}</span><span><MessageCircle size={14} /> {post.commentCount}</span><span><Bookmark size={14} /> {post.bookmarkCount}</span></div></article> }
 function Empty({ text, detail }: { text: string; detail?: string }) { return <div className="empty-state"><FileText size={24} /><strong>{text}</strong>{detail && <p>{detail}</p>}</div> }
 
-function Auth({ mode, go, onSuccess }: { mode: 'login' | 'signup'; go: (to: string) => void; onSuccess: (user: User) => void }) {
+function Auth({ mode, go, onSuccess }: { mode: 'login' | 'signup'; go: (to: string) => void; onSuccess: (user: User, requiresThirdPartyConsent: boolean) => void }) {
   const [form, setForm] = useState({ email: '', nickname: '', password: '', passwordConfirm: '', interests: [] as string[] })
   const [loginStep, setLoginStep] = useState<'intro' | 'credentials'>('intro')
   const [signupStep, setSignupStep] = useState<'account' | 'interests'>('account')
@@ -416,11 +430,12 @@ function Auth({ mode, go, onSuccess }: { mode: 'login' | 'signup'; go: (to: stri
   const signup = mode === 'signup'
   const submit = async (e: FormEvent) => {
     e.preventDefault()
+    if (busy) return
     setBusy(true)
     setError('')
     try {
-      const data = await request<{ user: User; blog?: Blog | null }>(`/auth/${signup ? 'signup' : 'login'}`, { method: 'POST', body: JSON.stringify(form) })
-      onSuccess({ ...data.user, blog: data.blog ?? null })
+      const data = await request<{ user: User; blog?: Blog | null; requiresThirdPartyConsent?: boolean }>(`/auth/${signup ? 'signup' : 'login'}`, { method: 'POST', body: JSON.stringify(form) })
+      onSuccess({ ...data.user, blog: data.blog ?? null }, data.requiresThirdPartyConsent === true)
     } catch (err) { setError((err as Error).message) } finally { setBusy(false) }
   }
 
@@ -463,10 +478,21 @@ function Auth({ mode, go, onSuccess }: { mode: 'login' | 'signup'; go: (to: stri
   return <main id="main" className="auth-page"><div className="auth-panel"><button className="auth-brand" onClick={() => go('/')}>티스토리</button><p className="eyebrow">CREATE YOUR SPACE · STEP 01</p><h1>나만의 이야기를<br />시작해보세요.</h1><form onSubmit={advanceSignup}><label>닉네임<input required minLength={2} value={form.nickname} onChange={(e) => setForm({ ...form, nickname: e.target.value })} placeholder="닉네임을 입력하세요" /></label><label>이메일<input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="email@example.com" /></label><label>비밀번호<input required minLength={8} type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="8자 이상 입력하세요" /></label><label>비밀번호 확인<input required type="password" value={form.passwordConfirm} onChange={(e) => setForm({ ...form, passwordConfirm: e.target.value })} placeholder="비밀번호를 한 번 더 입력하세요" /></label>{error && <p className="form-error" role="alert">{error}</p>}<button className="primary-button">관심분야 선택 <ArrowRight size={16} /></button></form><p className="auth-switch">이미 계정이 있나요? <button onClick={() => go('/login')}>로그인</button></p></div></main>
 }
 
-function Agreement({ go }: { go: (to: string) => void }) {
-  const decide = (accepted: boolean) => {
-    sessionStorage.setItem('tistory-third-party-consent', accepted ? 'accepted' : 'declined')
-    go('/')
+function Agreement({ go, onDecided }: { go: (to: string) => void; onDecided: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const decide = async (accepted: boolean) => {
+    if (busy) return
+    setBusy(true)
+    setError('')
+    try {
+      await request('/me/third-party-consent', { method: 'POST', body: JSON.stringify({ accepted }) })
+      onDecided()
+      go('/')
+    } catch (err) {
+      setError((err as Error).message)
+      setBusy(false)
+    }
   }
   return <main id="main" className="agreement-page">
     <section className="agreement-panel">
@@ -478,7 +504,8 @@ function Agreement({ go }: { go: (to: string) => void }) {
         <tr><th>보유 및 이용 기간</th><td><strong>동의 철회 또는 회원 탈퇴 시 지체없이 파기</strong></td></tr>
       </tbody></table>
       <p>개인정보 제공에 대한 동의를 거부할 권리가 있으며, 동의를 거부하더라도 티스토리 서비스를 이용할 수 있습니다.<br />자세한 내용은 <button>개인정보처리방침</button>을 확인해주세요.</p>
-      <div className="agreement-actions"><button onClick={() => decide(false)}>동의안함</button><button onClick={() => decide(true)}>동의</button></div>
+      {error && <p className="form-error" role="alert">{error}</p>}
+      <div className="agreement-actions"><button disabled={busy} onClick={() => decide(false)}>동의안함</button><button disabled={busy} onClick={() => decide(true)}>{busy ? '처리 중…' : '동의'}</button></div>
     </section>
   </main>
 }
@@ -872,15 +899,18 @@ function InterestMockup({ go }: { go: (to: string) => void }) {
 function App() {
   const { path, go } = useRoute()
   const [user, setUser] = useState<User | null>(null)
+  const [authReady, setAuthReady] = useState(false)
+  const [requiresConsent, setRequiresConsent] = useState(false)
   const [loginOpen, setLoginOpen] = useState(false)
   const aiMission = useAiMission(user?.id ?? null)
-  useEffect(() => { request<{ user: User; blog: Blog | null }>('/me').then((data) => setUser({ ...data.user, blog: data.blog })).catch(() => {}) }, [])
+  useEffect(() => { request<{ user: User; blog: Blog | null; requiresThirdPartyConsent: boolean }>('/me').then((data) => { setUser({ ...data.user, blog: data.blog }); setRequiresConsent(data.requiresThirdPartyConsent) }).catch(() => {}).finally(() => setAuthReady(true)) }, [])
   const onLogin = () => setLoginOpen(true)
   let content: React.ReactNode
-  if (path === '/interests/mockup') content = <InterestMockup go={go} />
-  else if (path === '/login') content = <Auth mode="login" go={go} onSuccess={(nextUser) => { setUser(nextUser); go('/agreement/third-party-consent') }} />
+  if (!authReady) content = null
+  else if (path === '/interests/mockup') content = <InterestMockup go={go} />
+  else if (path === '/login') content = <Auth mode="login" go={go} onSuccess={(nextUser, needsConsent) => { setUser(nextUser); setRequiresConsent(needsConsent); go(needsConsent ? '/agreement/third-party-consent' : '/') }} />
   else if (path === '/signup') content = <Auth mode="signup" go={go} onSuccess={(nextUser) => { setUser(nextUser); go('/blog/new') }} />
-  else if (path === '/agreement/third-party-consent') content = user ? <Agreement go={go} /> : <Auth mode="login" go={go} onSuccess={(nextUser) => { setUser(nextUser); go('/agreement/third-party-consent') }} />
+  else if (path === '/agreement/third-party-consent') content = user && requiresConsent ? <Agreement go={go} onDecided={() => setRequiresConsent(false)} /> : user ? <Home go={go} user={user} onLogin={onLogin} /> : <Auth mode="login" go={go} onSuccess={(nextUser, needsConsent) => { setUser(nextUser); setRequiresConsent(needsConsent); go(needsConsent ? '/agreement/third-party-consent' : '/') }} />
   else if (path === '/notice/2702') content = <NoticeArticle go={go} />
   else if (path === '/blog/new') content = <BlogSetup go={go} onDone={(blog) => { setUser((current) => current ? { ...current, blog } : current); go(blog.url ?? '/blog/' + blog.slug) }} />
   else if (path === '/feed') content = <Feed go={go} user={user} onLogin={onLogin} />
