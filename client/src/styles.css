@@ -3,6 +3,14 @@
  */
 @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Jua&family=Noto+Sans+KR:wght@400;500;600;700&display=swap');
 
+/* 눈누 온글잎 데이지 (OwnglyphDaisy) */
+@font-face {
+    font-family: 'OwnglyphDaisy';
+    src: url('https://fastly.jsdelivr.net/gh/projectnoonnu/2508-2@1.0/Ownglyph_daisy-Rg.woff2') format('woff2');
+    font-weight: normal;
+    font-style: normal;
+}
+
 /* 눈누 Rix이누아리두리네 */
 @font-face {
     font-family: 'RixInuaridurine';
@@ -1054,7 +1062,24 @@ body:has(.home-main) .story-creator{position:relative}body:has(.home-main) .crea
    Custom Font Assignments & Complete Harmonized Design System
    ========================================================================== */
 
-/* 1. Group 1: Jua Font (포스트 제목, 상품명, 카드 타이틀, 탭 버튼) */
+/* 0. Group 0: 온글잎 데이지 Font (OwnglyphDaisy)
+   - 최애를 기록하고 취향을 나누는 새로운 공간
+   - 새로운 이야기를 발견해보세요.
+   - 좋아하는 작품의 굿즈를 팬들과 안전하게 거래해보세요.
+   - 최근 본 상품 / 마음에 담아둔 상품 / 다시 보고 싶은 이야기
+*/
+.today-card h1,
+.hero-inner h1,
+.page-intro h1,
+.market-hero h1,
+.market-intro h1,
+.saved-intro h1,
+.blog-cover h1,
+.font-daisy {
+  font-family: 'OwnglyphDaisy', sans-serif !important;
+}
+
+/* 1. Group 1: Jua Font (포스트 제목, 상품명, 카드 타이틀, 탭 버튼, 툴바 카운트) */
 h3,
 h3 button,
 h4,
@@ -1076,43 +1101,44 @@ h4 button,
 .market-card-title,
 .market-item-title,
 .category-tabs button,
+.feed-toolbar strong,
 .feed-toolbar button,
+.market-toolbar strong,
 .manage-tabs button,
 .font-jua {
   font-family: 'Jua', sans-serif !important;
 }
 
-/* 2. Group 2: Rix이누아리두리네 Font (메인 타이틀, 헤딩, 상단 메뉴, 섹션 헤더) */
+/* 2. Group 2: Rix이누아리두리네 Font (메인 헤딩, 상단 메뉴, 섹션 헤더, 소제목) */
 .brand,
 .auth-brand,
 .main-nav button,
 .site-header button,
 .header-actions button,
-.hero-inner h1,
-.today-card h1,
 .today-card p,
 .sidebar-heading h2,
 .editorial-heading p,
 .editorial-heading h2,
-.page-intro h1,
-.market-hero h1,
-.market-intro h1,
 .creator-section-head h2,
 .manage-console-head h1,
 .manage-head h1,
 .auth-panel h1,
 .setup-panel h1,
-.blog-cover h1,
 .detail-inner h1,
 .eyebrow,
 .font-rix {
   font-family: 'RixInuaridurine', sans-serif !important;
 }
 
-/* 3. Group 3: 어그로체 Font (본문 설명, 서브라벨, 버튼, 가격, 피드 설명글) */
+/* 3. Group 3: 어그로체 Font (본문 설명글, 검색창 Input, Placeholder, 버튼, 가격) */
 p,
 span:not(.home-post-tags):not(.tag):not(.post-tag):not(.market-tag):not(.hashtag):not(.tag-pill),
 small,
+input,
+textarea,
+select,
+input::placeholder,
+textarea::placeholder,
 button:not(.main-nav button):not(.category-tabs button):not(.feed-toolbar button),
 .today-card span,
 .today-card button,
@@ -1128,6 +1154,9 @@ button:not(.main-nav button):not(.category-tabs button):not(.feed-toolbar button
 .market-card p,
 .market-card-desc,
 .market-item-desc,
+.feed-search input,
+.market-search input,
+.header-search input,
 .excerpt,
 .hero-copy,
 .feature-copy p,
@@ -1152,5 +1181,12 @@ button:not(.main-nav button):not(.category-tabs button):not(.feed-toolbar button
 .font-dalseo {
   font-family: 'DalseoHealing', sans-serif !important;
 }
+
+/* 5. 블로그 작성 Tip 8칸 문장 두께 얇게 조정 (thin / light style) */
+.tip-grid button span {
+  font-weight: 300 !important;
+  letter-spacing: -0.2px;
+}
+
 
 
