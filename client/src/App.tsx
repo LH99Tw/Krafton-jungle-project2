@@ -3851,20 +3851,7 @@ function MarketSavedList({ kind, go, user, onLogin }: { kind: "recent" | "wishli
         <div className="section-inner">
           <div className="page-intro saved-intro">
             <p className="eyebrow">{recent ? "RECENTLY VIEWED" : "MY WISHLIST"}</p>
-            <h1>
-              {recent ? (
-                <>
-                  최근 본<br />
-                  상품
-                </>
-              ) : (
-                <>
-                  마음에 담아둔
-                  <br />
-                  상품
-                </>
-              )}
-            </h1>
+            <h1>{recent ? "최근 본 상품" : "마음에 담아둔 상품"}</h1>
             <p>{recent ? "최근 확인한 상품을 최신순으로 최대 20개까지 보관합니다." : "좋아요를 누른 상품을 한곳에서 다시 확인하세요."}</p>
           </div>
           {error ? (
