@@ -1,9 +1,10 @@
-import { FormEvent, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, FormEvent, PointerEvent as ReactPointerEvent, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bell, BookOpen, Bookmark, Check, ChevronDown, ChevronRight, Clipboard, Clock3, Compass, Eye, FileText, Heart, Image, Layers3, LayoutDashboard, LineChart, Menu, MessageCircle, Package, Palette, Pencil, PenLine, RotateCcw, Search, Settings, ShoppingCart, Sparkles, Tags, TicketPercent, Trash2, Upload, Volume2, X } from 'lucide-react'
 import { AiCompanionDock, AiMissionPage, emitAiActivity, useAiMission } from './AiMission'
 import { assetUrl } from './assets'
 import { ProgressiveImage } from './ProgressiveImage'
+import { clearUserQueryState } from './query-client'
 type User = { id: number; email: string; nickname: string; interests?: string[]; blog?: { id: number; name: string; slug: string } | null }
 type Blog = { id: number; name: string; slug: string; url?: string; description: string; shopName?: string; shopDescription?: string; profileImageUrl?: string | null; owner?: { id: number; nickname: string }; isSubscribed?: boolean; subscriberCount?: number }
 type BlogCategory = { id: number; name: string; position: number; activePostCount: number; trashPostCount: number }
@@ -22,6 +23,23 @@ type HomeBanner = { id: number; eyebrow: string; title: string; description: str
 type HomeCreator = { blog: Blog; subscriberCount: number; isSubscribed: boolean; posts: Post[] }
 type HomeData = { banners: HomeBanner[]; popularPosts: Post[]; categoryPosts: Post[]; trendingPosts: Post[]; latestPosts: Post[]; creators: HomeCreator[]; marketItems: MarketItem[] }
 type Comment = { id: number; postId: number; parentId?: number | null; body: string; author: { id: number; nickname: string }; deleted: boolean; createdAt: string; updatedAt: string }
+
+const AUTH_SNAPSHOT_KEY = 'tistory.auth-display.v1'
+const AuthBootstrapContext = createContext<{ pending: boolean; cachedUser: User | null }>({ pending: false, cachedUser: null })
+const readAuthSnapshot = (): User | null => {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(AUTH_SNAPSHOT_KEY) ?? 'null') as Partial<User> | null
+    return value && typeof value.id === 'number' && typeof value.nickname === 'string' ? value as User : null
+  } catch { return null }
+}
+const writeAuthSnapshot = (user: User) => {
+  sessionStorage.setItem(AUTH_SNAPSHOT_KEY, JSON.stringify({ id: user.id, email: '', nickname: user.nickname, blog: user.blog ?? null }))
+}
+const clearClientAuthState = () => {
+  sessionStorage.removeItem(AUTH_SNAPSHOT_KEY)
+  clearUserQueryState()
+  csrfToken = ''
+}
 
 // Production authentication relies on the same-origin /api rewrite so the
 // HttpOnly SameSite cookie is never treated as a third-party cookie.
@@ -190,6 +208,8 @@ function useRoute() {
 }
 
 function Header({ go, user, onLogin }: { go: (to: string) => void; user: User | null; onLogin: () => void }) {
+  const { pending: authPending, cachedUser } = useContext(AuthBootstrapContext)
+  const displayUser = user ?? (authPending ? cachedUser : null)
   const [mobile, setMobile] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [fixed, setFixed] = useState(false)
@@ -212,9 +232,9 @@ function Header({ go, user, onLogin }: { go: (to: string) => void; user: User | 
     setProfileOpen(false)
   }
   const logout = async () => {
-    try { await request('/auth/logout', { method: 'POST' }) } finally { window.location.href = '/' }
+    try { await request('/auth/logout', { method: 'POST' }) } finally { clearClientAuthState(); window.location.href = '/' }
   }
-  const publicBlogPath = user?.blog ? `/blog/${user.blog.slug}` : '/blog/new'
+  const publicBlogPath = displayUser?.blog ? `/blog/${displayUser.blog.slug}` : '/blog/new'
   return <div className="site-header-slot"><header className={fixed ? 'site-header is-fixed' : 'site-header'} data-od-id="site-header">
     <div className="header-inner">
       <button className="brand" data-od-id="brand" onClick={() => navigate('/')}>티스토리</button>
@@ -229,22 +249,24 @@ function Header({ go, user, onLogin }: { go: (to: string) => void; user: User | 
       </form>
       <div className="header-actions">
         <button className="header-notice" onClick={() => navigate('/notice/2702')}><Volume2 size={16} /><span>불법촬영물 유통 방지 조치 대상 확대 안내</span></button>
-        {user
+        {displayUser
           ? <div className="signed-header-actions">
               <button className="header-icon-button" aria-label="알림"><Bell size={20} /></button>
-              <button className="profile-trigger" aria-label="프로필 메뉴" aria-expanded={profileOpen} onClick={() => setProfileOpen(!profileOpen)}>{user.nickname.slice(0, 1).toUpperCase()}</button>
+              <button className="profile-trigger" aria-label="프로필 메뉴" aria-expanded={profileOpen} onClick={() => setProfileOpen(!profileOpen)}>{displayUser.nickname.slice(0, 1).toUpperCase()}</button>
               {profileOpen && <>
                 <button className="profile-menu-scrim" aria-label="프로필 메뉴 닫기" onClick={() => setProfileOpen(false)} />
                 <div className="profile-popover" role="menu">
-                  <div className="profile-summary"><span className="profile-avatar">{user.nickname.slice(0, 1).toUpperCase()}</span><div><strong>{user.nickname}</strong><span>{user.email}</span><button onClick={() => navigate('/blog/me/manage')}>계정관리</button></div></div>
-                  <div className="profile-blog"><p>운영중인 블로그</p><div><button onClick={() => navigate(publicBlogPath)}>{user.blog?.name ?? user.nickname}</button><span><button aria-label="글쓰기" onClick={() => navigate(user.blog ? '/write' : '/blog/new')}><Pencil size={16} /></button><button aria-label="블로그 관리" onClick={() => navigate(user.blog ? '/blog/me/manage' : '/blog/new')}><Settings size={16} /></button></span></div></div>
-                  <button className="profile-bookmarks" role="menuitem" onClick={() => navigate('/bookmarks')}><Bookmark size={15} /> 저장한 글</button>
-                  <button className="profile-wallet" role="menuitem" onClick={() => navigate('/market/wallet')}><ShoppingCart size={15} /> 포인트 지갑 · 거래내역</button>
+                  <div className="profile-summary"><span className="profile-avatar">{displayUser.nickname.slice(0, 1).toUpperCase()}</span><div><strong>{displayUser.nickname}</strong><span>{displayUser.email}</span><button disabled={authPending} onClick={() => navigate('/blog/me/manage')}>계정관리</button></div></div>
+                  <div className="profile-blog"><p>운영중인 블로그</p><div><button onClick={() => navigate(publicBlogPath)}>{displayUser.blog?.name ?? displayUser.nickname}</button><span><button disabled={authPending} aria-label="글쓰기" onClick={() => navigate(displayUser.blog ? '/write' : '/blog/new')}><Pencil size={16} /></button><button disabled={authPending} aria-label="블로그 관리" onClick={() => navigate(displayUser.blog ? '/blog/me/manage' : '/blog/new')}><Settings size={16} /></button></span></div></div>
+                  <button className="profile-bookmarks" role="menuitem" disabled={authPending} onClick={() => navigate('/bookmarks')}><Bookmark size={15} /> 저장한 글</button>
+                  <button className="profile-wallet" role="menuitem" disabled={authPending} onClick={() => navigate('/market/wallet')}><ShoppingCart size={15} /> 포인트 지갑 · 거래내역</button>
                   <button className="profile-logout" role="menuitem" onClick={logout}>로그아웃</button>
                 </div>
               </>}
             </div>
-          : <button className="outline-button" onClick={onLogin}>시작하기</button>}
+          : authPending
+            ? <span className="header-auth-skeleton" aria-label="로그인 상태 확인 중" />
+            : <button className="outline-button" onClick={onLogin}>시작하기</button>}
         <button className="mobile-trigger" onClick={() => setMobile(!mobile)} aria-expanded={mobile} aria-label={mobile ? '메뉴 닫기' : '메뉴 열기'}><Menu size={21} /></button>
       </div>
     </div>
@@ -323,7 +345,7 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
   const [categoryPage, setCategoryPage] = useState(1)
   const [tipPage, setTipPage] = useState(1)
   const { data: home = null } = useQuery({
-    queryKey: ['home', user?.id ?? 'anonymous'],
+    queryKey: ['home'],
     queryFn: () => request<HomeData>('/home'),
     refetchInterval: 30_000,
   })
@@ -429,10 +451,10 @@ function HomeMarketEditorial({ items, go }: { items: MarketItem[]; go: (to: stri
 function Feed({ go, user, onLogin }: { go: (to: string) => void; user: User | null; onLogin: () => void }) {
   const [query, setQuery] = useState(new URLSearchParams(window.location.search).get('q') ?? ''); const [sort, setSort] = useState<'latest' | 'popular'>('latest')
   const scope = user ? 'following' : 'public'
-  const feedQuery = useQuery({ queryKey: ['posts', scope, query, sort], queryFn: () => request<Post[]>(`/posts?scope=${scope}&q=${encodeURIComponent(query)}&sort=${sort}&page=1&size=10`), refetchInterval: 30_000 })
+  const feedQuery = useQuery({ queryKey: ['posts', scope, query, sort], queryFn: () => request<Post[]>(`/posts?scope=${scope}&q=${encodeURIComponent(query)}&sort=${sort}&page=1&size=10`), placeholderData: (previous) => previous, refetchInterval: 30_000 })
   const posts = feedQuery.data ?? []
   const error = feedQuery.error instanceof Error ? feedQuery.error.message : ''
-  return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="page-main"><div className="section-inner"><div className="page-intro"><p className="eyebrow">TISTORY FEED</p><h1>{user ? <>구독한 블로그의<br />새로운 이야기.</> : <>새로운 이야기를<br />발견해보세요.</>}</h1><div className="feed-search"><Search size={18} /><input value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setQuery(query.trim())} placeholder="제목, 본문, 블로그 검색" /></div></div><div className="feed-toolbar"><strong>{user ? '구독 피드' : '전체 글'} <em>{posts.length}</em></strong><div><button className={sort === 'latest' ? 'active' : ''} onClick={() => setSort('latest')}>최신순</button><button className={sort === 'popular' ? 'active' : ''} onClick={() => setSort('popular')}>인기순</button></div></div>{error ? <Empty text="피드를 불러오지 못했습니다." detail={error} /> : posts.length ? <div className="feed-list">{posts.map((post) => <PostRow key={post.id} post={post} go={go} />)}</div> : <Empty text={query ? `‘${query}’에 대한 글이 없습니다.` : user ? '구독 피드가 비어 있습니다.' : '아직 발행된 글이 없습니다.'} detail={user && !query ? '관심 있는 블로그를 구독하면 새 글이 여기에 표시됩니다.' : undefined} />}</div></main></Shell>
+  return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="page-main"><div className="section-inner"><div className="page-intro"><p className="eyebrow">TISTORY FEED</p><h1>{user ? <>구독한 블로그의<br />새로운 이야기.</> : <>새로운 이야기를<br />발견해보세요.</>}</h1><div className="feed-search"><Search size={18} /><input value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setQuery(query.trim())} placeholder="제목, 본문, 블로그 검색" /></div></div><div className="feed-toolbar"><strong>{user ? '구독 피드' : '전체 글'} <em>{posts.length}</em></strong><div><button className={sort === 'latest' ? 'active' : ''} onClick={() => setSort('latest')}>최신순</button><button className={sort === 'popular' ? 'active' : ''} onClick={() => setSort('popular')}>인기순</button></div></div>{error ? <Empty text="피드를 불러오지 못했습니다." detail={error} /> : feedQuery.isPending ? <ContentSkeleton rows={5} /> : posts.length ? <div className="feed-list">{posts.map((post) => <PostRow key={post.id} post={post} go={go} />)}</div> : <Empty text={query ? `‘${query}’에 대한 글이 없습니다.` : user ? '구독 피드가 비어 있습니다.' : '아직 발행된 글이 없습니다.'} detail={user && !query ? '관심 있는 블로그를 구독하면 새 글이 여기에 표시됩니다.' : undefined} />}</div></main></Shell>
 }
 
 function BookmarkedPosts({ go, user, onLogin }: { go: (to: string) => void; user: User | null; onLogin: () => void }) {
@@ -444,6 +466,7 @@ function BookmarkedPosts({ go, user, onLogin }: { go: (to: string) => void; user
 
 function PostRow({ post, go, mine = false }: { post: Post; go: (to: string) => void; mine?: boolean }) { return <article className="feed-row"><div><p className="post-blog">{post.blog.name}</p><h2><button onClick={() => go(`/post/${post.id}`)}>{post.title}</button></h2><p className="excerpt">{post.excerpt ?? post.content ?? '내용이 없습니다.'}</p><small>{post.author.nickname} · {post.status === 'DRAFT' ? '임시저장' : new Date(post.publishedAt ?? post.updatedAt ?? '').toLocaleDateString('ko-KR')} {mine && `· ${post.status}`}</small></div><div className="row-stats" aria-label={`조회 ${post.viewCount}, 좋아요 ${post.likeCount}, 댓글 ${post.commentCount}, 북마크 ${post.bookmarkCount}`}><span><Eye size={14} /> {post.viewCount}</span><span><Heart size={14} /> {post.likeCount}</span><span><MessageCircle size={14} /> {post.commentCount}</span><span><Bookmark size={14} /> {post.bookmarkCount}</span></div></article> }
 function Empty({ text, detail }: { text: string; detail?: string }) { return <div className="empty-state"><FileText size={24} /><strong>{text}</strong>{detail && <p>{detail}</p>}</div> }
+function ContentSkeleton({ rows = 3 }: { rows?: number }) { return <div className="content-skeleton" aria-label="콘텐츠를 불러오는 중">{Array.from({ length: rows }, (_, index) => <div className="content-skeleton-row" key={index}><span><i /><i /><i /></span><b /></div>)}</div> }
 
 function Auth({ mode, go, onSuccess }: { mode: 'login' | 'signup'; go: (to: string) => void; onSuccess: (user: User, requiresThirdPartyConsent: boolean) => void }) {
   const [form, setForm] = useState({ email: '', nickname: '', password: '', passwordConfirm: '', interests: [] as string[] })
@@ -607,7 +630,7 @@ function BlogSetup({ go, onDone }: { go: (to: string) => void; onDone: (blog: Bl
 function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) => void; user: User | null; onLogin: () => void }) {
   type BlogData = { blog: Blog; posts: { items: Post[]; pagination: Page }; market: { items: MarketItem[]; pagination: Page } }
   const queryClient = useQueryClient()
-  const queryKey = ['blog', slug, user?.id ?? 'anonymous'] as const
+  const queryKey = ['blog', slug] as const
   const blogQuery = useQuery({ queryKey, queryFn: () => request<BlogData>(`/blogs/${slug}?page=1&size=9`), refetchInterval: 30_000 })
   const data = blogQuery.data ?? null
   const [mutationError, setMutationError] = useState('')
@@ -641,7 +664,7 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
       </aside>
       <section className="creator-editorial">
         <header className="creator-section-head"><div><p className="creator-kicker">LATEST STORIES</p><h2>요즘의 기록</h2></div>{mine && <button onClick={() => go('/write')}>새 글 쓰기 ↗</button>}</header>
-        {posts.length ? <div className="creator-editorial-grid"><div className="creator-story-list">{posts.slice(0, 3).map((post, index) => <button className="creator-story" key={post.id} onClick={() => go(`/post/${post.id}`)}><small>{index === 0 ? 'LATEST' : 'STORY 0' + (index + 1)}</small><h3>{post.title}</h3><time><span>{new Date(post.publishedAt ?? post.updatedAt ?? '').toLocaleDateString('ko-KR')}</span><span>조회 {post.viewCount}</span></time></button>)}</div><div className="creator-gallery" aria-label="최근 글 갤러리">{posts.slice(0, 9).map((post, index) => <button className={`creator-gallery-tile creator-tone-${index % 9}`} key={post.id} onClick={() => go(`/post/${post.id}`)}><i /><span>{post.title}</span></button>)}</div></div> : <Empty text="아직 발행된 글이 없습니다." detail={mine ? '첫 글을 작성해 블로그를 채워보세요.' : undefined} />}
+        {blogQuery.isPending ? <ContentSkeleton rows={3} /> : posts.length ? <div className="creator-editorial-grid"><div className="creator-story-list">{posts.slice(0, 3).map((post, index) => <button className="creator-story" key={post.id} onClick={() => go(`/post/${post.id}`)}><small>{index === 0 ? 'LATEST' : 'STORY 0' + (index + 1)}</small><h3>{post.title}</h3><time><span>{new Date(post.publishedAt ?? post.updatedAt ?? '').toLocaleDateString('ko-KR')}</span><span>조회 {post.viewCount}</span></time></button>)}</div><div className="creator-gallery" aria-label="최근 글 갤러리">{posts.slice(0, 9).map((post, index) => <button className={`creator-gallery-tile creator-tone-${index % 9}`} key={post.id} onClick={() => go(`/post/${post.id}`)}><i /><span>{post.title}</span></button>)}</div></div> : <Empty text="아직 발행된 글이 없습니다." detail={mine ? '첫 글을 작성해 블로그를 채워보세요.' : undefined} />}
       </section>
     </div>
     <section className="creator-shop"><header className="creator-section-head"><div><p className="creator-kicker">CURATOR'S SHOP</p><h2>{data?.blog.shopName ?? '취향을 나누는 상점'}</h2><span>{data?.blog.shopDescription ?? '직접 모으고 아껴온 물건을 다음 주인에게 건넵니다.'}</span></div>{mine ? <button onClick={() => go('/blog/me/manage/market')}>내 상품 관리 ↗</button> : <button onClick={() => go('/market')}>마켓 둘러보기 ↗</button>}</header>
@@ -667,10 +690,15 @@ function Editor({ id, go, user }: { id?: string; go: (to: string) => void; user:
 }
 
 function PostDetail({ id, go, user, onLogin }: { id: string; go: (to: string) => void; user: User | null; onLogin: () => void }) {
-  const [post, setPost] = useState<Post | null>(null); const [comments, setComments] = useState<Comment[]>([]); const [comment, setComment] = useState(''); const [replyTo, setReplyTo] = useState<number | null>(null); const [error, setError] = useState('')
+  const queryClient = useQueryClient()
+  const postQueryKey = ['post', id] as const
+  const postQuery = useQuery({ queryKey: postQueryKey, queryFn: () => request<Post>(`/posts/${id}`), refetchInterval: 30_000 })
+  const post = postQuery.data ?? null
+  const setPost = (updater: (current: Post | null) => Post | null) => queryClient.setQueryData<Post | null>(postQueryKey, (current) => updater(current ?? null))
+  const [comments, setComments] = useState<Comment[]>([]); const [comment, setComment] = useState(''); const [replyTo, setReplyTo] = useState<number | null>(null); const [error, setError] = useState('')
   const [reactionBusy, setReactionBusy] = useState<'like' | 'bookmark' | null>(null); const [commentBusy, setCommentBusy] = useState(false); const [editingCommentId, setEditingCommentId] = useState<number | null>(null); const [editingBody, setEditingBody] = useState('')
   const loadComments = () => requestList<Comment>(`/posts/${id}/comments?page=1&size=100`).then((result) => setComments(result.data)).catch((error) => setError(error.message))
-  useEffect(() => { request<Post>(`/posts/${id}`).then(setPost).catch((error) => setError(error.message)); loadComments() }, [id])
+  useEffect(() => { loadComments() }, [id])
   const mine = post && user?.id === post.author.id
   const remove = async () => { if (!post || !confirm('이 글을 삭제할까요?')) return; try { await request(`/posts/${post.id}`, { method: 'DELETE' }); go(`/blog/${post.blog.slug}`) } catch (error) { setError((error as Error).message) } }
   const toggle = async (kind: 'like' | 'bookmark') => { if (!user) return onLogin(); if (!post || reactionBusy) return; const active = kind === 'like' ? post.isLiked : post.isBookmarked; setReactionBusy(kind); setError(''); try { await request(`/posts/${post.id}/${kind}`, { method: active ? 'DELETE' : 'POST' }); setPost((current) => current ? { ...current, ...(kind === 'like' ? { isLiked: !active, likeCount: Math.max(0, current.likeCount + (active ? -1 : 1)) } : { isBookmarked: !active, bookmarkCount: Math.max(0, current.bookmarkCount + (active ? -1 : 1)) }) } : current) } catch (error) { setError((error as Error).message) } finally { setReactionBusy(null) } }
@@ -678,7 +706,7 @@ function PostDetail({ id, go, user, onLogin }: { id: string; go: (to: string) =>
   const saveComment = async (item: Comment) => { const body = editingBody.trim(); if (!body || commentBusy) return; setCommentBusy(true); setError(''); try { const updated = await request<Comment>(`/comments/${item.id}`, { method: 'PATCH', body: JSON.stringify({ body }) }); setComments((current) => current.map((value) => value.id === item.id ? updated : value)); setEditingCommentId(null); setEditingBody('') } catch (error) { setError((error as Error).message) } finally { setCommentBusy(false) } }
   const removeComment = async (item: Comment) => { if (commentBusy || !confirm('댓글을 삭제할까요?')) return; setCommentBusy(true); setError(''); try { await request(`/comments/${item.id}`, { method: 'DELETE' }); setPost((current) => current && !item.deleted ? { ...current, commentCount: Math.max(0, current.commentCount - 1) } : current); await loadComments() } catch (error) { setError((error as Error).message) } finally { setCommentBusy(false) } }
   const renderComment = (item: Comment) => <article className={`post-comment${item.parentId ? ' reply' : ''}`} key={item.id}><div><strong>{item.author.nickname}</strong><time>{new Date(item.createdAt).toLocaleDateString('ko-KR')}</time></div>{editingCommentId === item.id ? <form className="comment-edit" onSubmit={(event) => { event.preventDefault(); saveComment(item) }}><textarea autoFocus maxLength={1000} value={editingBody} onChange={(event) => setEditingBody(event.target.value)} /><div><button type="button" onClick={() => { setEditingCommentId(null); setEditingBody('') }}>취소</button><button disabled={commentBusy || !editingBody.trim()}>저장</button></div></form> : <p>{item.body}</p>}{!item.deleted && editingCommentId !== item.id && <footer>{!item.parentId && <button onClick={() => { if (!user) return onLogin(); setReplyTo(item.id); setComment('') }}>답글</button>}{user?.id === item.author.id && <><button onClick={() => { setEditingCommentId(item.id); setEditingBody(item.body) }}>수정</button><button disabled={commentBusy} onClick={() => removeComment(item)}>삭제</button></>}</footer>}</article>
-  return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="detail-page"><div className="detail-inner">{error && <p className="form-error" role="alert">{error}</p>}{post && <>{mine && <div className="post-owner-actions" aria-label="게시글 관리"><button onClick={() => go(`/post/${post.id}/edit`)}><Pencil size={12} /> 수정</button><button onClick={remove}><Trash2 size={12} /> 삭제</button></div>}<div className="detail-tags">{post.classifications.map((item) => <span key={item.id}>#{item.name}</span>)}</div><p className="eyebrow">{post.blog.name}</p><h1>{post.title}</h1><div className="detail-info"><span>{post.author.nickname}</span><span>{new Date(post.publishedAt ?? post.updatedAt ?? '').toLocaleDateString('ko-KR')}</span><span><Eye size={14} /> {post.viewCount}</span></div><div className="detail-content">{post.content}</div><div className="post-engagement"><button aria-pressed={post.isLiked} aria-label={`좋아요 ${post.likeCount}개`} disabled={Boolean(reactionBusy)} className={post.isLiked ? 'active' : ''} onClick={() => toggle('like')}><Heart size={16} fill={post.isLiked ? 'currentColor' : 'none'} /> 좋아요 {post.likeCount}</button><button aria-pressed={post.isBookmarked} aria-label={`북마크 ${post.bookmarkCount}개`} disabled={Boolean(reactionBusy)} className={post.isBookmarked ? 'active' : ''} onClick={() => toggle('bookmark')}><Bookmark size={16} fill={post.isBookmarked ? 'currentColor' : 'none'} /> 북마크 {post.bookmarkCount}</button><span><MessageCircle size={16} /> 댓글 {post.commentCount}</span></div><section className="post-comments"><header><h2>댓글과 답글</h2><span>{post.commentCount}</span></header><form onSubmit={submitComment}>{replyTo && <p><b>{comments.find((item) => item.id === replyTo)?.author.nickname}님에게 답글 작성 중</b><button type="button" onClick={() => setReplyTo(null)}>취소</button></p>}<textarea maxLength={1000} value={comment} onChange={(event) => setComment(event.target.value)} placeholder={user ? '팬들과 이야기를 나눠보세요.' : '로그인 후 댓글을 작성할 수 있습니다.'} /><button disabled={commentBusy || (Boolean(user) && !comment.trim())}>{commentBusy ? '처리 중…' : user ? '등록' : '로그인'}</button></form><div>{comments.filter((item) => !item.parentId).map((parent) => <div key={parent.id}>{renderComment(parent)}{comments.filter((item) => item.parentId === parent.id).map(renderComment)}</div>)}</div></section></>}</div></main></Shell>
+  return <Shell go={go} user={user} onLogin={onLogin}><main id="main" className="detail-page"><div className="detail-inner">{(error || postQuery.error) && <p className="form-error" role="alert">{error || (postQuery.error as Error).message}</p>}{postQuery.isPending ? <ContentSkeleton rows={4} /> : post && <>{mine && <div className="post-owner-actions" aria-label="게시글 관리"><button onClick={() => go(`/post/${post.id}/edit`)}><Pencil size={12} /> 수정</button><button onClick={remove}><Trash2 size={12} /> 삭제</button></div>}<div className="detail-tags">{post.classifications.map((item) => <span key={item.id}>#{item.name}</span>)}</div><p className="eyebrow">{post.blog.name}</p><h1>{post.title}</h1><div className="detail-info"><span>{post.author.nickname}</span><span>{new Date(post.publishedAt ?? post.updatedAt ?? '').toLocaleDateString('ko-KR')}</span><span><Eye size={14} /> {post.viewCount}</span></div><div className="detail-content">{post.content}</div><div className="post-engagement"><button aria-pressed={post.isLiked} aria-label={`좋아요 ${post.likeCount}개`} disabled={Boolean(reactionBusy)} className={post.isLiked ? 'active' : ''} onClick={() => toggle('like')}><Heart size={16} fill={post.isLiked ? 'currentColor' : 'none'} /> 좋아요 {post.likeCount}</button><button aria-pressed={post.isBookmarked} aria-label={`북마크 ${post.bookmarkCount}개`} disabled={Boolean(reactionBusy)} className={post.isBookmarked ? 'active' : ''} onClick={() => toggle('bookmark')}><Bookmark size={16} fill={post.isBookmarked ? 'currentColor' : 'none'} /> 북마크 {post.bookmarkCount}</button><span><MessageCircle size={16} /> 댓글 {post.commentCount}</span></div><section className="post-comments"><header><h2>댓글과 답글</h2><span>{post.commentCount}</span></header><form onSubmit={submitComment}>{replyTo && <p><b>{comments.find((item) => item.id === replyTo)?.author.nickname}님에게 답글 작성 중</b><button type="button" onClick={() => setReplyTo(null)}>취소</button></p>}<textarea maxLength={1000} value={comment} onChange={(event) => setComment(event.target.value)} placeholder={user ? '팬들과 이야기를 나눠보세요.' : '로그인 후 댓글을 작성할 수 있습니다.'} /><button disabled={commentBusy || (Boolean(user) && !comment.trim())}>{commentBusy ? '처리 중…' : user ? '등록' : '로그인'}</button></form><div>{comments.filter((item) => !item.parentId).map((parent) => <div key={parent.id}>{renderComment(parent)}{comments.filter((item) => item.parentId === parent.id).map(renderComment)}</div>)}</div></section></>}</div></main></Shell>
 }
 
 type Dashboard = { blog: Blog; counts: { posts: { total: number; published: number; draft: number; trash: number }; market: { total: number; selling: number; reserved: number; sold: number; trash: number }; subscribers: number }; recentPosts: Post[]; recentMarketItems: MarketItem[] }
@@ -937,6 +965,7 @@ function InterestMockup({ go }: { go: (to: string) => void }) {
 
 function App() {
   const { path, go } = useRoute()
+  const [cachedUser, setCachedUser] = useState<User | null>(() => readAuthSnapshot())
   const [user, setUser] = useState<User | null>(null)
   const [authState, setAuthState] = useState<'loading' | 'authenticated' | 'anonymous' | 'degraded'>('loading')
   const [requiresConsent, setRequiresConsent] = useState(false)
@@ -956,7 +985,13 @@ function App() {
         } catch (error) {
           if (cancelled) return
           if (error instanceof ApiRequestError && error.status === 401) {
+            if (cachedUser && attempt < 2) {
+              await new Promise((resolve) => window.setTimeout(resolve, [250, 750][attempt]))
+              continue
+            }
             setUser(null)
+            setCachedUser(null)
+            clearClientAuthState()
             setAuthState('anonymous')
             return
           }
@@ -968,8 +1003,16 @@ function App() {
     void load()
     return () => { cancelled = true }
   }, [])
-  useEffect(() => { if (user) setAuthState('authenticated') }, [user])
+  useEffect(() => {
+    if (!user) return
+    if (cachedUser && cachedUser.id !== user.id) clearUserQueryState()
+    writeAuthSnapshot(user)
+    setCachedUser(user)
+    setAuthState('authenticated')
+  }, [user])
   const onLogin = () => setLoginOpen(true)
+  const authPending = authState === 'loading' || authState === 'degraded'
+  const visibleUser = user ?? (authPending ? cachedUser : null)
   const publicWhileAuthLoads = path === '/' || path === '/login' || path === '/signup' || path === '/interests/mockup'
     || path === '/notice/2702' || path === '/feed' || path === '/search' || path === '/skin'
     || path === '/market' || path === '/market/recent' || path === '/market/cart'
@@ -977,36 +1020,36 @@ function App() {
     || (/^\/market\/\d+$/.test(path)) || (/^\/post\/\d+$/.test(path))
     || (/^\/blog\/[^/]+$/.test(path) && path !== '/blog/new')
   let content: React.ReactNode
-  if (authState === 'loading' && !publicWhileAuthLoads) content = null
+  if ((authState === 'loading' || authState === 'degraded') && !publicWhileAuthLoads) content = <Shell go={go} user={null} onLogin={onLogin}><main id="main" className="page-main"><div className="section-inner auth-route-loading"><ContentSkeleton rows={5} /></div></main></Shell>
   else if (path === '/interests/mockup') content = <InterestMockup go={go} />
   else if (path === '/login') content = <Auth mode="login" go={go} onSuccess={(nextUser, needsConsent) => { setUser(nextUser); setRequiresConsent(needsConsent); go(needsConsent ? '/agreement/third-party-consent' : '/') }} />
   else if (path === '/signup') content = <Auth mode="signup" go={go} onSuccess={(nextUser) => { setUser(nextUser); go('/blog/new') }} />
   else if (path === '/agreement/third-party-consent') content = user && requiresConsent ? <Agreement go={go} onDecided={() => setRequiresConsent(false)} /> : user ? <Home go={go} user={user} onLogin={onLogin} /> : <Auth mode="login" go={go} onSuccess={(nextUser, needsConsent) => { setUser(nextUser); setRequiresConsent(needsConsent); go(needsConsent ? '/agreement/third-party-consent' : '/') }} />
   else if (path === '/notice/2702') content = <NoticeArticle go={go} />
   else if (path === '/blog/new') content = <BlogSetup go={go} onDone={(blog) => { setUser((current) => current ? { ...current, blog } : current); go(blog.url ?? '/blog/' + blog.slug) }} />
-  else if (path === '/feed') content = <Feed go={go} user={user} onLogin={onLogin} />
+  else if (path === '/feed') content = <Feed go={go} user={visibleUser} onLogin={onLogin} />
   else if (path === '/bookmarks') content = <BookmarkedPosts go={go} user={user} onLogin={onLogin} />
-  else if (path === '/search') content = <SearchPage go={go} user={user} onLogin={onLogin} />
+  else if (path === '/search') content = <SearchPage go={go} user={visibleUser} onLogin={onLogin} />
   else if (path === '/market/new') content = user ? <MarketEditor go={go} /> : <Auth mode="login" go={go} onSuccess={(nextUser) => { setUser(nextUser); go('/market/new') }} />
   else if (/^\/market\/\d+\/edit$/.test(path)) content = user ? <MarketEditor id={path.split('/')[2]} go={go} /> : <Auth mode="login" go={go} onSuccess={(nextUser) => { setUser(nextUser); go(path) }} />
-  else if (path === '/market/recent') content = <MarketSavedList kind="recent" go={go} user={user} onLogin={onLogin} />
+  else if (path === '/market/recent') content = <MarketSavedList kind="recent" go={go} user={visibleUser} onLogin={onLogin} />
   else if (path === '/market/wishlist') content = <MarketSavedList kind="wishlist" go={go} user={user} onLogin={onLogin} />
   else if (path === '/market/wallet') content = user ? <MarketWallet go={go} user={user} onLogin={onLogin} /> : <Auth mode="login" go={go} onSuccess={(nextUser) => { setUser(nextUser); go('/market/wallet') }} />
-  else if (path === '/market/cart') content = <MarketPrepared kind="cart" go={go} user={user} onLogin={onLogin} />
-  else if (path === '/market/price-guide') content = <MarketPrepared kind="price-guide" go={go} user={user} onLogin={onLogin} />
-  else if (path === '/market/coupons') content = <MarketPrepared kind="coupons" go={go} user={user} onLogin={onLogin} />
-  else if (path === '/market') content = <Market go={go} user={user} onLogin={onLogin} />
-  else if (path.startsWith('/market/')) content = <MarketDetail id={path.split('/')[2]} go={go} user={user} onLogin={onLogin} />
-  else if (path === '/skin') content = <Market go={go} user={user} onLogin={onLogin} />
+  else if (path === '/market/cart') content = <MarketPrepared kind="cart" go={go} user={visibleUser} onLogin={onLogin} />
+  else if (path === '/market/price-guide') content = <MarketPrepared kind="price-guide" go={go} user={visibleUser} onLogin={onLogin} />
+  else if (path === '/market/coupons') content = <MarketPrepared kind="coupons" go={go} user={visibleUser} onLogin={onLogin} />
+  else if (path === '/market') content = <Market go={go} user={visibleUser} onLogin={onLogin} />
+  else if (path.startsWith('/market/')) content = <MarketDetail id={path.split('/')[2]} go={go} user={visibleUser} onLogin={onLogin} />
+  else if (path === '/skin') content = <Market go={go} user={visibleUser} onLogin={onLogin} />
   else if (path === '/ai') content = user ? <Shell go={go} user={user} onLogin={onLogin}><AiMissionPage controller={aiMission} nickname={user.nickname} go={go} /></Shell> : <Auth mode="login" go={go} onSuccess={(nextUser) => { setUser(nextUser); go('/ai') }} />
   else if (path === '/write') content = user ? <Editor go={go} user={user} /> : <Auth mode="login" go={go} onSuccess={(nextUser) => { setUser(nextUser); go('/write') }} />
   else if (path === '/blog/me/manage' || path.startsWith('/blog/me/manage/')) content = <Manage path={path} go={go} user={user} onLogin={onLogin} />
   else if (path.startsWith('/post/') && path.endsWith('/edit')) content = user ? <Editor id={path.split('/')[2]} go={go} user={user} /> : <Auth mode="login" go={go} onSuccess={(nextUser) => { setUser(nextUser); go(path) }} />
-  else if (path.startsWith('/post/')) content = <PostDetail id={path.split('/')[2]} go={go} user={user} onLogin={onLogin} />
-  else if (path.startsWith('/blog/')) content = <BlogPage slug={path.split('/')[2]} go={go} user={user} onLogin={onLogin} />
-  else content = <Home go={go} user={user} onLogin={onLogin} />
+  else if (path.startsWith('/post/')) content = <PostDetail id={path.split('/')[2]} go={go} user={visibleUser} onLogin={onLogin} />
+  else if (path.startsWith('/blog/')) content = <BlogPage slug={path.split('/')[2]} go={go} user={visibleUser} onLogin={onLogin} />
+  else content = <Home go={go} user={visibleUser} onLogin={onLogin} />
 
-  return <>{content}<AiCompanionDock controller={aiMission} path={path} go={go} />{loginOpen && <div className="modal-backdrop tistory-login-backdrop" role="dialog" aria-modal="true" aria-label="티스토리 로그인" onMouseDown={() => setLoginOpen(false)}>
+  return <AuthBootstrapContext.Provider value={{ pending: authPending, cachedUser }}><div className={authPending ? 'auth-verifying' : undefined} aria-busy={authPending}>{content}<AiCompanionDock controller={aiMission} path={path} go={go} /></div>{loginOpen && <div className="modal-backdrop tistory-login-backdrop" role="dialog" aria-modal="true" aria-label="티스토리 로그인" onMouseDown={() => setLoginOpen(false)}>
     <div className="login-modal tistory-login-modal" onMouseDown={(event) => event.stopPropagation()}>
       <button className="modal-close" onClick={() => setLoginOpen(false)} aria-label="닫기"><X size={20} /></button>
       <strong className="login-wordmark">TISTORY</strong>
@@ -1015,6 +1058,6 @@ function App() {
       <button className="kakao-login-button" onClick={() => { setLoginOpen(false); go('/login') }}><span>✉</span> 이메일로 로그인</button>
       <button className="login-help" onClick={() => { setLoginOpen(false); go('/signup') }}>처음이라면 회원가입</button>
     </div>
-  </div>}</>
+  </div>}</AuthBootstrapContext.Provider>
 }
 export default App

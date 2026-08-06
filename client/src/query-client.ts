@@ -1,4 +1,5 @@
 import { QueryClient } from '@tanstack/react-query'
+import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister'
 import { createClient, RealtimeChannel } from '@supabase/supabase-js'
 
 export const queryClient = new QueryClient({
@@ -12,6 +13,27 @@ export const queryClient = new QueryClient({
     },
   },
 })
+
+export const PUBLIC_QUERY_CACHE_KEY = 'tistory.public-query-cache.v1'
+export const publicQueryPersister = createSyncStoragePersister({
+  storage: window.sessionStorage,
+  key: PUBLIC_QUERY_CACHE_KEY,
+})
+
+export const shouldPersistPublicQuery = (queryKey: readonly unknown[]) => {
+  const [surface, ...parts] = queryKey
+  if (surface === 'home') return true
+  if (surface === 'posts') return parts[0] === 'public'
+  if (surface === 'blog') return typeof parts[0] === 'string'
+  if (surface === 'post') return typeof parts[0] === 'string'
+  return false
+}
+
+export const clearUserQueryState = () => {
+  queryClient.removeQueries({
+    predicate: (query) => !shouldPersistPublicQuery(query.queryKey),
+  })
+}
 
 const surfaceKeys: Record<string, string[]> = {
   home: ['home'],

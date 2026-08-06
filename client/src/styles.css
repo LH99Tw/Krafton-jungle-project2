@@ -1,14 +1,13 @@
 /* Hallmark · macrostructure: editorial discovery feed · tone: editorial · anchor hue: tistory orange · studied-DNA: tistory.com
  * pre-emit critique: P5 H5 E4 S5 R5 V5
  */
-@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Jua&family=Noto+Sans+KR:wght@400;500;600;700&display=swap');
-
 /* 눈누 Rix이누아리두리네 */
 @font-face {
     font-family: 'RixInuaridurine';
     src: url('https://fastly.jsdelivr.net/gh/projectnoonnu/2410-1@1.0/RixInuaridurineM.woff2') format('woff2');
     font-weight: normal;
     font-style: normal;
+    font-display: swap;
 }
 
 /* 눈누 어그로체 (SB Aggro) */
@@ -17,12 +16,14 @@
     src: url('https://fastly.jsdelivr.net/gh/projectnoonnu/noonfonts_2108@1.1/SBAggroM.woff') format('woff');
     font-weight: normal;
     font-style: normal;
+    font-display: swap;
 }
 @font-face {
     font-family: 'SBAggro';
     src: url('https://fastly.jsdelivr.net/gh/projectnoonnu/noonfonts_2108@1.1/SBAggroB.woff') format('woff');
     font-weight: 700;
     font-style: normal;
+    font-display: swap;
 }
 
 /* 눈누 달서힐링체 (Dalseo Healing) */
@@ -31,15 +32,19 @@
     src: url('https://fastly.jsdelivr.net/gh/projectnoonnu/noonfonts_2212@1.0/DalseoHealingMedium.woff2') format('woff2');
     font-weight: normal;
     font-style: normal;
+    font-display: swap;
 }
 @font-face {
     font-family: 'DalseoHealing';
     src: url('https://fastly.jsdelivr.net/gh/projectnoonnu/noonfonts_2212@1.0/DalseoHealingBold.woff2') format('woff2');
     font-weight: 700;
     font-style: normal;
+    font-display: swap;
 }
 
 @keyframes image-placeholder-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+:root{font-family:'Noto Sans KR Variable','Apple SD Gothic Neo','Malgun Gothic',sans-serif;font-size-adjust:from-font}
+html{scrollbar-gutter:stable}
 .progressive-image{background-color:#ecefeb;background-image:linear-gradient(110deg,transparent 28%,rgba(255,255,255,.72) 45%,transparent 62%);background-size:240% 100%;animation:image-placeholder-shimmer 1.35s linear infinite}
 .progressive-image.is-loaded{background-color:transparent;background-image:none;animation:none}
 .progressive-image.is-error{opacity:0;animation:none}
@@ -479,6 +484,14 @@ body:has(.home-main) .footer-list button{font-size:9px;white-space:nowrap}
 }
 
 /* DevTools parity pass: header, independent feeds, grouped creators, paging and login layer. */
+.header-auth-skeleton{display:block;width:82px;height:34px;border-radius:4px;background:linear-gradient(90deg,#eee 25%,#f7f7f7 50%,#eee 75%);background-size:200% 100%;animation:content-shimmer 1.2s infinite}
+.auth-verifying{min-height:100vh;pointer-events:none;cursor:progress}
+.content-skeleton{display:grid;border-top:1px solid #eee}
+.content-skeleton-row{display:grid;grid-template-columns:minmax(0,1fr) 96px;gap:24px;min-height:112px;align-items:center;border-bottom:1px solid #eee}
+.content-skeleton-row>span{display:grid;gap:10px}.content-skeleton-row i,.content-skeleton-row b{display:block;border-radius:3px;background:linear-gradient(90deg,#eee 25%,#f8f8f8 50%,#eee 75%);background-size:200% 100%;animation:content-shimmer 1.2s infinite}
+.content-skeleton-row i:nth-child(1){width:22%;height:8px}.content-skeleton-row i:nth-child(2){width:72%;height:17px}.content-skeleton-row i:nth-child(3){width:48%;height:9px}.content-skeleton-row b{width:96px;height:66px}.auth-route-loading{padding-top:72px;padding-bottom:100px}
+@keyframes content-shimmer{to{background-position:-200% 0}}
+@media(prefers-reduced-motion:reduce){.header-auth-skeleton,.content-skeleton-row i,.content-skeleton-row b{animation:none}}
 body:has(.home-main) .brand{display:block;width:80px;height:26px;font-size:26px;line-height:26px;font-weight:700;letter-spacing:-2px;white-space:nowrap;transform:none}
 body:has(.home-main) .brand:after{content:none}
 body:has(.home-main) .main-nav{width:193px}
@@ -1170,4 +1183,3 @@ body:has(.home-main) .story-creator{position:relative}body:has(.home-main) .crea
 .font-dalseo {
   font-family: 'DalseoHealing', sans-serif !important;
 }
-
