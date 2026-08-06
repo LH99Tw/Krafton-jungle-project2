@@ -286,6 +286,11 @@ const createPost = async (request: Request) => {
   if (Object.keys(fields).length) return apiError(400, 'VALIDATION_ERROR', '입력값을 확인해 주세요.', fields)
   const { data: blog } = await supabase.from('blogs').select('id, name, slug').eq('owner_id', session.user_id).maybeSingle()
   if (!blog) return apiError(409, 'BLOG_REQUIRED', '먼저 블로그를 만들어 주세요.')
+  if (!values.category_id) {
+    const { data: defaultCategory, error: defaultCategoryError } = await supabase.from('blog_categories').select('id').eq('blog_id', blog.id).eq('is_default', true).maybeSingle()
+    if (defaultCategoryError || !defaultCategory) return apiError(500, 'DEFAULT_CATEGORY_MISSING', '기본 카테고리를 불러오지 못했습니다.')
+    values.category_id = defaultCategory.id
+  }
   const publishedAt = values.status === 'PUBLISHED' ? new Date().toISOString() : null
   if (values.category_id) {
     const { data: category } = await supabase.from('blog_categories').select('id').eq('id', values.category_id).eq('blog_id', blog.id).maybeSingle()
@@ -362,6 +367,11 @@ const updatePost = async (request: Request, id: number) => {
   if (classificationInput.error) fields.classificationIds = classificationInput.error
   if (Object.keys(fields).length) return apiError(400, 'VALIDATION_ERROR', '입력값을 확인해 주세요.', fields)
   const previous = ownership.data!
+  if (Object.prototype.hasOwnProperty.call(values, 'category_id') && !values.category_id) {
+    const { data: defaultCategory, error: defaultCategoryError } = await supabase.from('blog_categories').select('id').eq('blog_id', previous.blog_id).eq('is_default', true).maybeSingle()
+    if (defaultCategoryError || !defaultCategory) return apiError(500, 'DEFAULT_CATEGORY_MISSING', '기본 카테고리를 불러오지 못했습니다.')
+    values.category_id = defaultCategory.id
+  }
   if (values.category_id) {
     const { data: category } = await supabase.from('blog_categories').select('id').eq('id', values.category_id).eq('blog_id', previous.blog_id).maybeSingle()
     if (!category) return apiError(400, 'VALIDATION_ERROR', '현재 블로그의 카테고리를 선택해 주세요.', { categoryId: '유효하지 않은 카테고리입니다.' })
