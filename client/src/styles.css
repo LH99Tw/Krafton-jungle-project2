@@ -767,6 +767,10 @@ body:has(.home-main) .my-tistory button{width:375px;height:52px;margin:14px auto
 .setup-panel select{display:block;width:100%;height:48px;margin-top:8px;padding:0 13px;border:1px solid #ddd;background:#fff;font:inherit;font-size:13px}
 .market-tags{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
 .market-tags button{padding:4px 8px;border-radius:999px;background:#f3f3f3;color:#777;font-size:10px}
+.market-row{grid-template-columns:118px minmax(0,1fr) auto!important;align-items:center;gap:22px}
+.market-row-image{width:118px;height:118px;overflow:hidden;border-radius:4px;background:#f2f2f2;color:#999;font-size:9px}
+.market-row-image img{width:100%;height:100%;object-fit:cover}
+.profile-wallet{width:100%;padding:14px 20px;border-top:1px solid #eee;text-align:left;font-size:12px}
 .manage-tabs em{color:#e66c61;font-style:normal}
 .market-detail-page{min-height:760px;padding:56px 0 100px;background:#fff}
 .market-detail-page .back-button{margin-bottom:30px}
@@ -775,6 +779,11 @@ body:has(.home-main) .my-tistory button{width:375px;height:52px;margin:14px auto
 .market-image-placeholder{aspect-ratio:1/1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(145deg,#202526,#697b76 55%,#a9bcb5);color:#fff;border-radius:4px}
 .market-image-placeholder span{font-size:11px;letter-spacing:.2em}
 .market-image-placeholder strong{margin-top:12px;font-size:28px}
+.market-product-image{width:100%;aspect-ratio:1/1;border-radius:4px;background:#f4f4f4;object-fit:contain}
+.market-image-thumbnails{display:flex;gap:8px;margin-top:12px;overflow:auto}
+.market-image-thumbnails button{width:62px;height:62px;flex:0 0 auto;overflow:hidden;border:2px solid transparent;border-radius:3px;background:#f3f3f3}
+.market-image-thumbnails button.active{border-color:#222}
+.market-image-thumbnails img{width:100%;height:100%;object-fit:cover}
 .market-image-dots{display:flex;justify-content:center;gap:7px;margin-top:17px}
 .market-image-dots i,.market-image-dots b{width:7px;height:7px;border-radius:50%;background:#ddd}
 .market-image-dots b{background:#222}
@@ -790,6 +799,7 @@ body:has(.home-main) .my-tistory button{width:375px;height:52px;margin:14px auto
 .market-actions button{height:50px;border:1px solid #222;font-weight:700;font-size:13px}
 .market-chat-button{background:#222;color:#fff}
 .market-buy-button:disabled{border-color:#ddd;background:#f5f5f5;color:#aaa}
+.market-buy-button:not(:disabled){background:#ff5a54;color:#fff;border-color:#ff5a54}
 .market-safety{color:#999;font-size:10px;line-height:1.6}
 .market-chat-panel{position:fixed;z-index:30;right:28px;bottom:24px;width:min(390px,calc(100vw - 32px));height:570px;display:flex;flex-direction:column;border:1px solid #ddd;border-radius:12px;background:#fff;box-shadow:0 18px 55px rgba(0,0,0,.18);overflow:hidden}
 .market-chat-head{height:70px;padding:0 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #eee}
@@ -805,4 +815,12 @@ body:has(.home-main) .my-tistory button{width:375px;height:52px;margin:14px auto
 .market-chat-form{display:flex;gap:8px;padding:12px;border-top:1px solid #eee}
 .market-chat-form input{min-width:0;flex:1;height:42px;padding:0 12px;border:1px solid #ddd;outline:none}
 .market-chat-form button{width:58px;background:#222;color:#fff;font-size:12px}
-@media(max-width:800px){.market-product{grid-template-columns:1fr;gap:35px}.market-product-info h1{font-size:27px}.market-chat-panel{right:16px;bottom:16px;height:min(570px,calc(100vh - 32px))}}
+.wallet-page{min-height:760px;padding:56px 0 100px;background:#fafafa}
+.wallet-hero{display:flex;margin:28px 0 42px;padding:38px 42px;align-items:end;justify-content:space-between;border-radius:8px;background:#171717;color:#fff}
+.wallet-hero h1{margin:8px 0;font-size:34px}.wallet-hero p{margin:0;color:#aaa;font-size:12px}.wallet-hero>strong{font-size:38px}.wallet-hero>strong small{font-size:15px}
+.wallet-charge{display:flex;gap:6px;margin-top:18px}.wallet-charge button{padding:8px 10px;border:1px solid #555;border-radius:3px;color:#fff;font-size:10px}.wallet-charge button:hover{background:#fff;color:#111}
+.wallet-section{margin-top:24px;padding:30px;background:#fff;border:1px solid #eee}.wallet-section h2{margin:0 0 20px;font-size:18px}
+.wallet-history article{display:flex;padding:16px 0;align-items:center;justify-content:space-between;border-top:1px solid #eee}.wallet-history article:first-child{border-top:0}.wallet-history article div{display:flex;flex-direction:column;gap:4px}.wallet-history time{color:#999;font-size:10px}.wallet-history article>span{font-weight:700}.wallet-history .positive{color:#e45d54}
+.wallet-order-head{display:flex;align-items:center;justify-content:space-between}.wallet-order-head>div{display:flex;gap:6px}.wallet-order-head button{padding:8px 12px;background:#f3f3f3;font-size:11px}.wallet-order-head button.active{background:#222;color:#fff}
+.order-list article{display:grid;padding:16px 0;align-items:center;border-top:1px solid #eee;grid-template-columns:74px minmax(0,1fr) auto;gap:16px}.order-list img,.order-no-image{display:grid;width:74px;height:74px;place-items:center;background:#f3f3f3;object-fit:cover;color:#aaa;font-size:8px}.order-list article>div{display:flex;flex-direction:column;gap:5px}.order-list small,.order-list p{margin:0;color:#999;font-size:10px}.order-list strong{font-size:14px}.order-complete{display:flex;padding:10px 14px;align-items:center;gap:5px;background:#222;color:#fff;font-size:11px}
+@media(max-width:800px){.market-row{grid-template-columns:84px minmax(0,1fr)!important}.market-row-image{width:84px;height:84px}.market-row .row-stat{grid-column:2}.market-product{grid-template-columns:1fr;gap:35px}.market-product-info h1{font-size:27px}.market-chat-panel{right:16px;bottom:16px;height:min(570px,calc(100vh - 32px))}.wallet-hero{padding:28px;align-items:flex-start;flex-direction:column;gap:24px}.order-list article{grid-template-columns:60px minmax(0,1fr)}.order-list img,.order-no-image{width:60px;height:60px}.order-complete{grid-column:2;justify-self:start}}

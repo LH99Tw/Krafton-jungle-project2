@@ -22,9 +22,43 @@ const itemJson = (item: Record<string, any>, seller?: Record<string, any>) => ({
   condition: item.condition,
   pricePoints: item.price_points,
   status: item.status,
+  imageUrls: item.image_urls ?? [],
   createdAt: item.created_at,
   updatedAt: item.updated_at,
 })
+
+export const uploadMarketImages = async (request: Request, id: number) => {
+  const session = await requireCsrfSession(request)
+  if (!session) return apiError(403, 'CSRF_TOKEN_INVALID', 'CSRF 토큰이 유효하지 않습니다.')
+  if (!session.user_id) return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
+  const ownership = await ownedItem(session.user_id, id)
+  if (ownership.error) return ownership.error
+  if (ownership.data!.status === 'SOLD') return apiError(409, 'SOLD_ITEM_IMMUTABLE', '판매 완료된 상품에는 사진을 추가할 수 없습니다.')
+  const form = await request.formData().catch(() => null)
+  if (!form) return apiError(400, 'VALIDATION_ERROR', '사진 파일을 확인해 주세요.')
+  const files = form.getAll('images').filter((value): value is File => value instanceof File && value.size > 0)
+  const current = ownership.data!.image_urls ?? []
+  if (!files.length || current.length + files.length > 5) return apiError(400, 'VALIDATION_ERROR', '상품 사진은 1~5장까지 등록할 수 있습니다.')
+  const allowed = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
+  if (files.some((file) => !allowed.has(file.type) || file.size > 5 * 1024 * 1024)) return apiError(400, 'VALIDATION_ERROR', 'JPG, PNG, WEBP, GIF 사진을 장당 5MB 이하로 올려 주세요.')
+  const uploaded: string[] = []
+  for (const file of files) {
+    const extension = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || file.type.split('/')[1] || 'jpg'
+    const path = `${session.user_id}/${id}/${crypto.randomUUID()}.${extension}`
+    const { error } = await supabase.storage.from('market-images').upload(path, file, { contentType: file.type, upsert: false })
+    if (error) {
+      console.error('Failed to upload market image', error)
+      for (const uploadedPath of uploaded) await supabase.storage.from('market-images').remove([uploadedPath])
+      return apiError(500, 'INTERNAL_SERVER_ERROR', '상품 사진을 업로드하지 못했습니다.')
+    }
+    uploaded.push(path)
+  }
+  const urls = [...current, ...uploaded.map((path) => supabase.storage.from('market-images').getPublicUrl(path).data.publicUrl)]
+  const { data, error } = await supabase.from('market_items').update({ image_urls: urls, updated_at: new Date().toISOString() }).eq('id', id).select(marketItemFields).single()
+  if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '상품 사진 정보를 저장하지 못했습니다.')
+  const { data: seller } = await findSeller(session.user_id)
+  return json({ data: itemJson(data, seller ?? undefined) })
+}
 
 const marketInput = (body: Record<string, unknown>, partial = false) => {
   const fields: Record<string, string> = {}
