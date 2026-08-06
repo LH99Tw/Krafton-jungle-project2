@@ -742,9 +742,9 @@ function AccountPanel({ user, go }: { user: User; go: (to: string) => void }) {
           {user.blog?.profileImageUrl ? "" : user.nickname.slice(0, 1).toUpperCase()}
         </span>
         <div>
-          <strong>{user.nickname}</strong>
-          <span>
-            구독자 <b>{user.blog?.subscriberCount ?? 0}명</b>
+          <strong className="font-jua">{user.nickname}</strong>
+          <span className="font-jua">
+            구독자 <b className="font-jua">{user.blog?.subscriberCount ?? 0}명</b>
           </span>
         </div>
         <button className="account-dashboard-toggle" aria-label="계정 정보 펼치기">
@@ -752,30 +752,30 @@ function AccountPanel({ user, go }: { user: User; go: (to: string) => void }) {
         </button>
       </div>
       <div className="account-dashboard-actions">
-        <button onClick={() => go(user.blog ? "/write" : "/blog/new")}>글쓰기</button>
-        <button onClick={() => go(publicBlogPath)}>내 블로그</button>
-        <button onClick={() => go(user.blog ? "/blog/me/manage" : "/blog/new")}>관리</button>
+        <button className="font-jua" onClick={() => go(user.blog ? "/write" : "/blog/new")}>글쓰기</button>
+        <button className="font-jua" onClick={() => go(publicBlogPath)}>내 블로그</button>
+        <button className="font-jua" onClick={() => go(user.blog ? "/blog/me/manage" : "/blog/new")}>관리</button>
       </div>
       <dl>
         <div>
-          <dt>조회수</dt>
+          <dt className="font-jua">조회수</dt>
           <dd>
-            <b>1회</b>
+            <b className="font-jua">1회</b>
             <ChevronRight size={18} />
           </dd>
         </div>
         <div>
-          <dt>방문자</dt>
+          <dt className="font-jua">방문자</dt>
           <dd>
-            <b>1명</b>
+            <b className="font-jua">1명</b>
             <ChevronRight size={18} />
           </dd>
         </div>
         <div>
-          <dt>수익</dt>
+          <dt className="font-jua">수익</dt>
           <dd>
-            <button onClick={() => go("/blog/me/manage")}>
-              <i>₩</i> 내 수익 <b>예측해보기</b>
+            <button className="font-jua" onClick={() => go("/blog/me/manage")}>
+              <i>₩</i> 내 수익 <b className="font-jua">예측해보기</b>
             </button>
             <ChevronRight size={18} />
           </dd>
@@ -2013,29 +2013,29 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
             <aside className="creator-profile-panel">
               <div className={`creator-profile-image${data?.blog.profileImageUrl ? " has-photo" : ""}`} style={data?.blog.profileImageUrl ? { backgroundImage: `url(${data.blog.profileImageUrl})` } : undefined} aria-label={`${ownerName} 프로필 이미지`} />
               <p className="creator-kicker">CREATOR JOURNAL</p>
-              <h1>{data?.blog.name ?? slug}</h1>
+              <h1 className="font-jua">{data?.blog.name ?? slug}</h1>
               <span className="creator-handle">@{data?.blog.slug ?? slug}</span>
               <p className="creator-description">{data?.blog.description || blankPlaceholder}</p>
               <dl className="creator-stats">
                 <div>
-                  <dt>{data?.posts.pagination.totalItems ?? posts.length}</dt>
-                  <dd>글</dd>
+                  <dt className="font-jua">{data?.posts.pagination.totalItems ?? posts.length}</dt>
+                  <dd className="font-jua">글</dd>
                 </div>
                 <div>
-                  <dt>{data?.blog.subscriberCount ?? 0}</dt>
-                  <dd>구독자</dd>
+                  <dt className="font-jua">{data?.blog.subscriberCount ?? 0}</dt>
+                  <dd className="font-jua">구독자</dd>
                 </div>
                 <div>
-                  <dt>{data?.market.pagination.totalItems ?? market.length}</dt>
-                  <dd>상품</dd>
+                  <dt className="font-jua">{data?.market.pagination.totalItems ?? market.length}</dt>
+                  <dd className="font-jua">상품</dd>
                 </div>
               </dl>
               {mine ? (
-                <button className="creator-subscribe" onClick={() => go("/blog/me/manage")}>
+                <button className="creator-subscribe font-jua" onClick={() => go("/blog/me/manage")}>
                   블로그 관리
                 </button>
               ) : (
-                <button className={`creator-subscribe${data?.blog.isSubscribed ? " active" : ""}`} disabled={busy || !data} onClick={toggleSubscription}>
+                <button className={`creator-subscribe font-jua${data?.blog.isSubscribed ? " active" : ""}`} disabled={busy || !data} onClick={toggleSubscription}>
                   {busy ? "처리 중…" : data?.blog.isSubscribed ? "구독 중 ✓" : "+ 구독하기"}
                 </button>
               )}
@@ -2044,12 +2044,12 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
               <header className="creator-section-head">
                 <div>
                   <p className="creator-kicker">LATEST STORIES</p>
-                  <h2>요즘의 기록</h2>
+                  <h2 className="font-jua">요즘의 기록</h2>
                 </div>
                 {mine && (
                   <div className="creator-section-actions">
-                    <button onClick={() => go("/market/new")}>새 상품 등록 ↗</button>
-                    <button onClick={() => go("/write")}>새 글 쓰기 ↗</button>
+                    <button className="font-jua" onClick={() => go("/market/new")}>새 상품 등록 ↗</button>
+                    <button className="font-jua" onClick={() => go("/write")}>새 글 쓰기 ↗</button>
                   </div>
                 )}
               </header>
@@ -2061,7 +2061,7 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
                     {posts.slice(0, 3).map((post, index) => (
                       <button className="creator-story" key={post.id} onClick={() => go(`/post/${post.id}`)}>
                         <small>{index === 0 ? "LATEST" : "STORY 0" + (index + 1)}</small>
-                        <h3>{post.title}</h3>
+                        <h3 className="font-jua">{post.title}</h3>
                         <time>
                           <span>{new Date(post.publishedAt ?? post.updatedAt ?? "").toLocaleDateString("ko-KR")}</span>
                           <span>조회 {post.viewCount}</span>
@@ -2073,7 +2073,7 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
                     {posts.slice(0, 9).map((post, index) => (
                       <button className={`creator-gallery-tile creator-tone-${index % 9}`} key={post.id} onClick={() => go(`/post/${post.id}`)}>
                         <i />
-                        <span>{post.title}</span>
+                        <span className="font-jua">{post.title}</span>
                       </button>
                     ))}
                   </div>
@@ -2087,7 +2087,7 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
             <header className="creator-section-head">
               <div>
                 <p className="creator-kicker">CURATOR'S SHOP</p>
-                <h2>{data?.blog.shopName || blankPlaceholder}</h2>
+                <h2 className="font-jua">{data?.blog.shopName || "취향을 나누는 상점"}</h2>
                 <span>{data?.blog.shopDescription || blankPlaceholder}</span>
               </div>
               {mine ? <button onClick={() => go("/blog/me/manage/market")}>내 상품 관리 ↗</button> : <button onClick={() => go("/market")}>마켓 둘러보기 ↗</button>}
@@ -2965,7 +2965,7 @@ function Manage({ path, go, user, onLogin, onUserChange }: { path: string; go: (
           <p>MANAGEMENT</p>
           <nav>
             {nav.map(([key, label, Icon]) => (
-              <button className={section === key ? "active" : ""} key={key} onClick={() => go(key === "overview" ? "/blog/me/manage" : `/blog/me/manage/${key}`)}>
+              <button className={`font-jua ${section === key ? "active" : ""}`} key={key} onClick={() => go(key === "overview" ? "/blog/me/manage" : `/blog/me/manage/${key}`)}>
                 <Icon size={17} />
                 {label}
               </button>
@@ -2976,7 +2976,7 @@ function Manage({ path, go, user, onLogin, onUserChange }: { path: string; go: (
           <header className="manage-console-head">
             <div>
               <p className="eyebrow">MY TISTORY</p>
-              <h1>{nav.find(([key]) => key === section)?.[1] ?? "블로그 관리"}</h1>
+              <h1 className="font-jua">{nav.find(([key]) => key === section)?.[1] ?? "블로그 관리"}</h1>
               <span>{blog?.name ?? "블로그 정보를 불러오는 중입니다."}</span>
             </div>
             <div>
@@ -3031,15 +3031,15 @@ function ManageOverview({ go }: { go: (to: string) => void }) {
       <div className="manage-stat-grid">
         {stats.map(([label, value]) => (
           <div key={label}>
-            <span>{label}</span>
-            <strong>{value}</strong>
+            <span className="font-jua">{label}</span>
+            <strong className="font-jua">{value}</strong>
           </div>
         ))}
       </div>
       <div className="manage-overview-grid">
         <section>
           <header>
-            <h2>최근 수정 글</h2>
+            <h2 className="font-jua">최근 수정 글</h2>
             <button onClick={() => go("/blog/me/manage/posts")}>전체 보기</button>
           </header>
           {data.recentPosts.length ? (
@@ -3197,7 +3197,7 @@ function ManageSettings({ blog, setBlog, user, onUserChange }: { blog: Blog; set
     <div className="manage-settings">
       <section className="manage-form-section">
         <header>
-          <h2>프로필 이미지</h2>
+          <h2 className="font-jua">프로필 이미지</h2>
           <p>공개 블로그 좌측 프로필에 표시됩니다.</p>
         </header>
         <div className="profile-upload">
@@ -3205,35 +3205,35 @@ function ManageSettings({ blog, setBlog, user, onUserChange }: { blog: Blog; set
             <Image size={26} />
           </div>
           <div>
-            <label className="manage-secondary">
+            <label className="manage-secondary font-jua">
               <Upload size={15} /> 이미지 선택
               <input hidden type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => choose(e.target.files?.[0])} />
             </label>
-            {preview && <button onClick={remove}>기본 이미지로 되돌리기</button>}
+            {preview && <button className="font-jua" onClick={remove}>기본 이미지로 되돌리기</button>}
             <small>10MB 이하 JPG, PNG, WebP · 저장 시 512×512 WebP 변환</small>
           </div>
         </div>
       </section>
       <section className="manage-form-section">
         <header>
-          <h2>기본 정보</h2>
+          <h2 className="font-jua">기본 정보</h2>
           <p>블로그 이름과 소개를 수정합니다.</p>
         </header>
-        <label>
+        <label className="font-jua">
           블로그 주소
           <div className="manage-readonly">
             <span>/blog/{blog.slug}</span>
-            <button onClick={() => navigator.clipboard.writeText(`${location.origin}/blog/${blog.slug}`)}>
+            <button className="font-jua" onClick={() => navigator.clipboard.writeText(`${location.origin}/blog/${blog.slug}`)}>
               <Clipboard size={14} /> 복사
             </button>
           </div>
         </label>
-        <label>
+        <label className="font-jua">
           블로그 이름
           <input minLength={2} maxLength={30} value={name} onChange={(e) => setName(e.target.value)} />
           <small>{name.length}/30</small>
         </label>
-        <label>
+        <label className="font-jua">
           블로그 설명
           <textarea maxLength={160} value={description} onChange={(e) => setDescription(e.target.value)} />
           <small>{description.length}/160</small>
@@ -3241,7 +3241,7 @@ function ManageSettings({ blog, setBlog, user, onUserChange }: { blog: Blog; set
       </section>
       <section className="manage-form-section manage-interest-section">
         <header>
-          <h2>관심분야</h2>
+          <h2 className="font-jua">관심분야</h2>
           <p>
             글 분류와 콘텐츠 추천에 사용합니다.
             <br />
@@ -3259,29 +3259,29 @@ function ManageSettings({ blog, setBlog, user, onUserChange }: { blog: Blog; set
             {interestCatalog.map((interest) => {
               const active = interests.includes(interest);
               return (
-                <button type="button" aria-pressed={active} className={active ? "active" : ""} onClick={() => toggleInterest(interest)} key={interest}>
+                <button type="button" aria-pressed={active} className={active ? "active font-jua" : "font-jua"} onClick={() => toggleInterest(interest)} key={interest}>
                   {active && <Check size={12} />}
                   {interest}
                 </button>
               );
             })}
           </div>
-          <button className="manage-primary" disabled={!interestDirty || !interests.length || interestBusy} onClick={saveInterests}>
+          <button className="manage-primary font-jua" disabled={!interestDirty || !interests.length || interestBusy} onClick={saveInterests}>
             {interestBusy ? "저장 중…" : "관심분야 저장"}
           </button>
         </div>
       </section>
       <section className="manage-form-section">
         <header>
-          <h2>상점 정보</h2>
+          <h2 className="font-jua">상점 정보</h2>
           <p>공개 블로그의 상점 제목과 설명을 수정합니다.</p>
         </header>
-        <label>
+        <label className="font-jua">
           상점 이름
           <input maxLength={40} value={shopName} onChange={(e) => setShopName(e.target.value)} />
           <small>{shopName.length}/40</small>
         </label>
-        <label>
+        <label className="font-jua">
           상점 설명
           <textarea maxLength={120} value={shopDescription} onChange={(e) => setShopDescription(e.target.value)} />
           <small>{shopDescription.length}/120</small>
@@ -3456,21 +3456,21 @@ function ManageCategories({ go }: { go: (to: string) => void }) {
     <div className="manage-list-section">
       <div className="manage-list-intro">
         <div>
-          <h2>글 카테고리</h2>
+          <h2 className="font-jua">글 카테고리</h2>
           <p>공개 블로그와 글 작성 화면에 같은 순서로 반영됩니다.</p>
         </div>
         <span>{items.length}/30</span>
       </div>
       <form className="category-add" onSubmit={add}>
         <input maxLength={30} value={name} onChange={(e) => setName(e.target.value)} placeholder="새 카테고리 이름" />
-        <button className="manage-primary">추가</button>
+        <button className="manage-primary font-jua">추가</button>
       </form>
       {error && <p className="manage-error">{error}</p>}
       <div className="category-manage-list">
         {items.map((item, index) => (
           <div key={item.id} draggable onDragStart={() => setDrag(item.id)} onDragOver={(e) => e.preventDefault()} onDrop={() => drop(item.id)}>
             <span className="drag-handle">⋮⋮</span>
-            <b>{item.name}</b>
+            <b className="font-jua">{item.name}</b>
             <small>
               글 {item.activePostCount + item.trashPostCount}개{item.trashPostCount ? ` · 휴지통 ${item.trashPostCount}` : ""}
             </small>
