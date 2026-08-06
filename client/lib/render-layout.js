@@ -1,6 +1,8 @@
-const fs = require('node:fs')
-const path = require('node:path')
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const clientRoot = path.resolve(__dirname, '..')
 const partialRoot = path.join(clientRoot, 'partials')
 
@@ -29,4 +31,4 @@ function renderHtml(source) {
   )
 }
 
-module.exports = { renderHtml }
+export { renderHtml }

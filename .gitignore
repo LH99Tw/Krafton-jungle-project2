@@ -4,6 +4,7 @@ dist/
 .env
 .env.*
 !.env.example
+!.env.supabase.example
 client/.env.local
 supabase/functions/api/.env.local
 .DS_Store

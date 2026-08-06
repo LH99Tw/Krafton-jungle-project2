@@ -7,6 +7,10 @@
     "supabase:start": "npx supabase start",
     "supabase:stop": "npx supabase stop",
     "supabase:status": "npx supabase status",
+    "supabase:prod:link": "sh -c 'test -f .env.supabase || { echo \"Create .env.supabase from .env.supabase.example\" >&2; exit 1; }; set -a; . ./.env.supabase; set +a; : \"${SUPABASE_ACCESS_TOKEN:?Missing SUPABASE_ACCESS_TOKEN in .env.supabase}\"; : \"${SUPABASE_PROJECT_REF:?Missing SUPABASE_PROJECT_REF in .env.supabase}\"; npx supabase link --project-ref \"$SUPABASE_PROJECT_REF\"'",
+    "supabase:prod:check": "sh -c 'test -f .env.supabase || { echo \"Create .env.supabase from .env.supabase.example\" >&2; exit 1; }; set -a; . ./.env.supabase; set +a; : \"${SUPABASE_ACCESS_TOKEN:?Missing SUPABASE_ACCESS_TOKEN in .env.supabase}\"; npx supabase migration list --linked && npx supabase db push --linked --dry-run'",
+    "supabase:prod:push": "sh -c 'test -f .env.supabase || { echo \"Create .env.supabase from .env.supabase.example\" >&2; exit 1; }; set -a; . ./.env.supabase; set +a; : \"${SUPABASE_ACCESS_TOKEN:?Missing SUPABASE_ACCESS_TOKEN in .env.supabase}\"; npx supabase db push --linked'",
+    "supabase:prod:deploy-api": "sh -c 'test -f .env.supabase || { echo \"Create .env.supabase from .env.supabase.example\" >&2; exit 1; }; set -a; . ./.env.supabase; set +a; : \"${SUPABASE_ACCESS_TOKEN:?Missing SUPABASE_ACCESS_TOKEN in .env.supabase}\"; : \"${SUPABASE_PROJECT_REF:?Missing SUPABASE_PROJECT_REF in .env.supabase}\"; npx supabase functions deploy api --project-ref \"$SUPABASE_PROJECT_REF\" --no-verify-jwt'",
     "dev:api": "npx supabase functions serve api --env-file supabase/functions/api/.env.local",
     "build": "npm --prefix client run build",
     "deploy:api": "npx supabase functions deploy api --no-verify-jwt"
