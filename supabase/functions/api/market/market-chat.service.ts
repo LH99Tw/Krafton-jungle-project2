@@ -1,4 +1,4 @@
-import { apiError, getSession, json, requireCsrfSession, supabase } from '../shared.ts'
+import { apiError, getSession, json, requireCsrfSession, supabase, supabaseUrl } from '../shared.ts'
 import { findMarketItem } from './market.repository.ts'
 
 const conversationJson = (item: Record<string, any>) => ({
@@ -9,23 +9,6 @@ const conversationJson = (item: Record<string, any>) => ({
   createdAt: item.created_at,
   updatedAt: item.updated_at,
 })
-
-const conversationSummary = async (item: Record<string, any>, userId: number) => {
-  const peerId = item.buyer_id === userId ? item.seller_id : item.buyer_id
-  const [{ data: marketItem }, { data: peer }, { data: lastMessage }, { count: unreadCount }] = await Promise.all([
-    supabase.from('market_items').select('id, title').eq('id', item.item_id).maybeSingle(),
-    supabase.from('users').select('id, nickname').eq('id', peerId).maybeSingle(),
-    supabase.from('market_messages').select('id, body, sender_id, created_at').eq('conversation_id', item.id).order('id', { ascending: false }).limit(1).maybeSingle(),
-    supabase.from('market_messages').select('id', { count: 'exact', head: true }).eq('conversation_id', item.id).neq('sender_id', userId).is('read_at', null),
-  ])
-  return {
-    ...conversationJson(item),
-    item: marketItem ? { id: marketItem.id, title: marketItem.title } : null,
-    peer: peer ? { id: peer.id, nickname: peer.nickname } : null,
-    lastMessage: lastMessage ? { id: lastMessage.id, body: lastMessage.body, senderId: lastMessage.sender_id, createdAt: lastMessage.created_at } : null,
-    unreadCount: unreadCount ?? 0,
-  }
-}
 
 const requireParticipant = async (request: Request, id: number, csrf = false) => {
   const session = csrf ? await requireCsrfSession(request) : await getSession(request)
@@ -59,11 +42,26 @@ export const startConversation = async (request: Request, itemId: number) => {
 export const listConversations = async (request: Request) => {
   const session = await getSession(request)
   if (!session?.user_id) return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
-  const { data, error } = await supabase.from('market_conversations').select('*')
-    .or(`buyer_id.eq.${session.user_id},seller_id.eq.${session.user_id}`)
-    .order('updated_at', { ascending: false })
+  const { data, error } = await supabase.rpc('get_market_chat_conversations', { p_user_id: session.user_id })
   if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '채팅 목록을 불러오지 못했습니다.')
-  return json({ data: await Promise.all((data ?? []).map((item: Record<string, any>) => conversationSummary(item, session.user_id))) })
+  return json({ data: (data ?? []).map((item: Record<string, any>) => ({
+    ...conversationJson(item),
+    item: item.item_id ? { id: item.item_id, title: item.item_title } : null,
+    peer: item.peer_id ? {
+      id: item.peer_id,
+      nickname: item.peer_nickname,
+      profileImageUrl: item.peer_profile_image_path
+        ? `${supabaseUrl}/storage/v1/object/public/blog-profile-images/${item.peer_profile_image_path}`
+        : null,
+    } : null,
+    lastMessage: item.last_message_id ? {
+      id: item.last_message_id,
+      body: item.last_message_body,
+      senderId: item.last_message_sender_id,
+      createdAt: item.last_message_created_at,
+    } : null,
+    unreadCount: Number(item.unread_count ?? 0),
+  })) })
 }
 
 export const markConversationRead = async (request: Request, conversationId: number) => {
@@ -78,8 +76,11 @@ export const markConversationRead = async (request: Request, conversationId: num
 export const listMessages = async (request: Request, conversationId: number) => {
   const access = await requireParticipant(request, conversationId)
   if (access.error) return access.error
-  const { data, error } = await supabase.from('market_messages').select('id, conversation_id, sender_id, body, read_at, created_at')
-    .eq('conversation_id', conversationId).order('id', { ascending: true }).limit(200)
+  const { data, error } = await supabase.rpc('get_market_chat_messages', {
+    p_user_id: access.session!.user_id,
+    p_conversation_id: conversationId,
+    p_limit: 200,
+  })
   if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '메시지를 불러오지 못했습니다.')
   return json({ data: (data ?? []).map((message: Record<string, any>) => ({
     id: message.id,
