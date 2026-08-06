@@ -107,9 +107,11 @@ export const openApiDocument = {
       post: {
         summary: 'Create a draft or published post',
         requestBody: { required: true, content: { 'application/json': { schema: {
-          type: 'object', required: ['title', 'content', 'status'],
+          type: 'object', required: ['title', 'contentText', 'contentDocument', 'status'],
           properties: {
-            title: { type: 'string', minLength: 1, maxLength: 120 }, content: { type: 'string', minLength: 1 },
+            title: { type: 'string', minLength: 1, maxLength: 100 }, content: { type: 'string', minLength: 1, deprecated: true },
+            contentText: { type: 'string', minLength: 1, maxLength: 20000 }, contentDocument: { type: 'object', description: 'Validated TipTap JSON document' },
+            draftKey: { type: 'string', format: 'uuid', description: 'Connects temporary image uploads to this post' },
             status: { type: 'string', enum: ['DRAFT', 'PUBLISHED'] }, categoryId: { type: 'integer', nullable: true },
             classificationIds: { type: 'array', maxItems: 5, uniqueItems: true, items: { type: 'integer' } },
           },
@@ -122,6 +124,10 @@ export const openApiDocument = {
       patch: { summary: 'Update an owned post', responses: { '200': { description: 'Post updated' } } },
       delete: { summary: 'Move an owned post to 30-day trash', responses: { '204': { description: 'Post moved to trash' } } },
     },
+    '/posts/images': {
+      post: { summary: 'Upload an optimized post image', description: 'Accepts multipart WebP images up to 2MB. A draft may own at most five images.', responses: { '201': { description: 'Image asset created' }, '400': { description: 'Invalid image' }, '409': { description: 'Image limit reached' } } },
+    },
+    '/posts/images/{id}': { delete: { summary: 'Delete an unused temporary post image', responses: { '204': { description: 'Image deleted' } } } },
     '/posts/{id}/restore': { post: { summary: 'Restore a trashed post', responses: { '200': { description: 'Post restored' } } } },
     '/posts/{id}/permanent': { delete: { summary: 'Permanently delete a trashed post', responses: { '204': { description: 'Post deleted' } } } },
     '/posts/{id}/like': {

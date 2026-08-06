@@ -6,6 +6,7 @@ import { handleBlogManagementRoute } from './blog-management.ts'
 import { enrichPosts, handlePostFeatureRoute, parseClassificationIds, replacePostClassifications, validateClassificationOwnership } from './post-features.ts'
 import { handleHomeRoute } from './home.ts'
 import { handleNotificationRoute } from './notifications.ts'
+import { claimPostImages, handlePostImageRoute, purgePostImages, validateRichDocument } from './post-images.ts'
 
 const reservedSlugs = new Set(['api', 'login', 'signup', 'feed', 'post', 'blog', 'me', 'new', 'manage', 'ai'])
 const slugPattern = /^(?!.*--)[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$/
@@ -159,7 +160,7 @@ const postJson = (post: Record<string, any>, includeContent = false) => ({
   id: post.id,
   url: `/post/${post.id}`,
   title: post.title,
-  ...(includeContent ? { content: post.content } : {
+  ...(includeContent ? { content: post.content, contentDocument: post.content_document ?? null } : {
     excerpt: post.content.length > 160 ? `${post.content.slice(0, 160)}…` : post.content,
   }),
   status: post.status,
@@ -179,6 +180,8 @@ const postInput = (body: Record<string, unknown>, partial = false) => {
   const result: Record<string, string | number | null> = {}
   const hasTitle = Object.prototype.hasOwnProperty.call(body, 'title')
   const hasContent = Object.prototype.hasOwnProperty.call(body, 'content')
+  const hasContentText = Object.prototype.hasOwnProperty.call(body, 'contentText')
+  const hasContentDocument = Object.prototype.hasOwnProperty.call(body, 'contentDocument')
   const hasStatus = Object.prototype.hasOwnProperty.call(body, 'status')
   const hasCategory = Object.prototype.hasOwnProperty.call(body, 'categoryId')
   if (!partial || hasTitle) {
@@ -186,10 +189,15 @@ const postInput = (body: Record<string, unknown>, partial = false) => {
     if (!title || title.length > 100) fields.title = '제목은 1~100자로 입력해 주세요.'
     else result.title = title
   }
-  if (!partial || hasContent) {
-    const content = typeof body.content === 'string' ? body.content.trim() : ''
+  if (!partial || hasContent || hasContentText || hasContentDocument) {
+    const content = typeof body.contentText === 'string' ? body.contentText.trim() : typeof body.content === 'string' ? body.content.trim() : ''
     if (!content || content.length > 20000) fields.content = '본문은 1~20,000자로 입력해 주세요.'
     else result.content = content
+    if (hasContentDocument) {
+      const document = validateRichDocument(body.contentDocument)
+      if (!document.valid) fields.contentDocument = '지원하지 않는 본문 형식이 포함되어 있습니다.'
+      else (result as Record<string, unknown>).content_document = body.contentDocument
+    }
   }
   if (!partial || hasStatus) {
     const status = body.status === undefined && !partial ? 'DRAFT' : body.status
@@ -200,7 +208,7 @@ const postInput = (body: Record<string, unknown>, partial = false) => {
     if (body.categoryId !== null && (!Number.isSafeInteger(body.categoryId) || Number(body.categoryId) < 1)) fields.categoryId = '카테고리를 확인해 주세요.'
     else result.category_id = body.categoryId as number | null
   }
-  if (partial && !hasTitle && !hasContent && !hasStatus && !hasCategory) fields.request = '수정할 값을 입력해 주세요.'
+  if (partial && !hasTitle && !hasContent && !hasContentText && !hasContentDocument && !hasStatus && !hasCategory) fields.request = '수정할 값을 입력해 주세요.'
   return { fields, values: result }
 }
 
@@ -282,6 +290,9 @@ const createPost = async (request: Request) => {
     return apiError(400, 'VALIDATION_ERROR', '입력값을 확인해 주세요.')
   }
   const { fields, values } = postInput(body as Record<string, unknown>)
+  const richDocument = Object.prototype.hasOwnProperty.call(body, 'contentDocument') ? validateRichDocument((body as Record<string, unknown>).contentDocument) : { valid: true, imageIds: [] as string[] }
+  const draftKey = typeof (body as Record<string, unknown>).draftKey === 'string' ? String((body as Record<string, unknown>).draftKey) : ''
+  if (richDocument.imageIds.length && !/^[0-9a-f-]{36}$/i.test(draftKey)) fields.draftKey = '이미지 초안 정보를 확인해 주세요.'
   const classificationInput = parseClassificationIds(body as Record<string, unknown>)
   if (classificationInput.error) fields.classificationIds = classificationInput.error
   if (Object.keys(fields).length) return apiError(400, 'VALIDATION_ERROR', '입력값을 확인해 주세요.', fields)
@@ -317,6 +328,11 @@ const createPost = async (request: Request) => {
   if (classificationResult.error) {
     await supabase.from('posts').delete().eq('id', data.id)
     return apiError(400, 'VALIDATION_ERROR', classificationResult.error, { classificationIds: classificationResult.error })
+  }
+  const imageResult = await claimPostImages(session.user_id, data.id, draftKey, richDocument.imageIds)
+  if (imageResult.error) {
+    await supabase.from('posts').delete().eq('id', data.id)
+    return apiError(400, 'VALIDATION_ERROR', imageResult.error, { contentDocument: imageResult.error })
   }
   const { data: user } = await supabase.from('users').select('nickname').eq('id', session.user_id).single()
   const [created] = await enrichPosts(request, [postJson({
@@ -363,6 +379,10 @@ const updatePost = async (request: Request, id: number) => {
   const body = await request.json().catch(() => null)
   if (!body || typeof body !== 'object' || Array.isArray(body)) return apiError(400, 'VALIDATION_ERROR', '입력값을 확인해 주세요.')
   const { fields, values } = postInput(body as Record<string, unknown>, true)
+  const hasDocument = Object.prototype.hasOwnProperty.call(body, 'contentDocument')
+  const richDocument = hasDocument ? validateRichDocument((body as Record<string, unknown>).contentDocument) : { valid: true, imageIds: [] as string[] }
+  const draftKey = typeof (body as Record<string, unknown>).draftKey === 'string' ? String((body as Record<string, unknown>).draftKey) : ''
+  if (hasDocument && richDocument.imageIds.length && !/^[0-9a-f-]{36}$/i.test(draftKey)) fields.draftKey = '이미지 초안 정보를 확인해 주세요.'
   const classificationInput = parseClassificationIds(body as Record<string, unknown>)
   if (classificationInput.present) delete fields.request
   if (classificationInput.error) fields.classificationIds = classificationInput.error
@@ -382,6 +402,10 @@ const updatePost = async (request: Request, id: number) => {
     if (classificationValidation.error) {
       return apiError(400, 'VALIDATION_ERROR', classificationValidation.error, { classificationIds: classificationValidation.error })
     }
+  }
+  if (hasDocument) {
+    const imageResult = await claimPostImages(session.user_id, id, draftKey, richDocument.imageIds)
+    if (imageResult.error) return apiError(400, 'VALIDATION_ERROR', imageResult.error, { contentDocument: imageResult.error })
   }
   let publishedAt = previous.published_at
   if (values.status === 'PUBLISHED' && previous.status === 'DRAFT') publishedAt = new Date().toISOString()
@@ -429,6 +453,7 @@ const permanentlyDeletePost = async (request: Request, id: number) => {
   const ownership = await ownedPost(session.user_id, id)
   if (ownership.error) return ownership.error
   if (!ownership.data!.deleted_at) return apiError(409, 'NOT_IN_TRASH', '휴지통에 있는 글만 영구 삭제할 수 있습니다.')
+  await purgePostImages(id)
   const { error } = await supabase.from('posts').delete().eq('id', id)
   if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '글을 영구 삭제하지 못했습니다.')
   return new Response(null, { status: 204, headers: corsHeaders })
@@ -465,6 +490,9 @@ Deno.serve(async (request) => {
 
   const homeResponse = handleHomeRoute(request, path)
   if (homeResponse) return homeResponse
+
+  const postImageResponse = handlePostImageRoute(request, path)
+  if (postImageResponse) return postImageResponse
 
   const featureResponse = handlePostFeatureRoute(request, path, url)
   if (featureResponse) return featureResponse
