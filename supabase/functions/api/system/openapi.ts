@@ -38,7 +38,15 @@ export const openApiDocument = {
     '/me': { get: { summary: 'Get the current user and blog', responses: { '200': { description: 'Current user' }, '401': { description: 'Unauthenticated' } } } },
     '/ai/state': { get: { summary: 'Get companion, conversation, mission and daily AI quota state', responses: { '200': { description: 'AI companion state' }, '401': { description: 'Login required' } } } },
     '/ai/companion': { patch: { summary: 'Select an AI character and record AI processing consent', responses: { '200': { description: 'Updated AI state' }, '400': { description: 'Character or consent missing' } } } },
-    '/ai/messages': { post: { summary: 'Send one character conversation turn', description: 'Limited to 20 successful model turns per user and 200 globally per KST day.', responses: { '201': { description: 'Character reply and remaining quota' }, '429': { description: 'Per-minute, user daily, or global daily limit reached' } } } },
+    '/ai/messages': { post: {
+      summary: 'Send one personality-preserving character conversation turn',
+      description: 'Selects up to three verified service knowledge entries from the message and optional current pathname. Limited to 20 successful model turns per user and 200 globally per KST day.',
+      requestBody: { required: true, content: { 'application/json': { schema: {
+        type: 'object', required: ['body', 'idempotencyKey'],
+        properties: { body: { type: 'string', minLength: 1, maxLength: 300 }, idempotencyKey: { type: 'string' }, context: { type: 'object', properties: { pathname: { type: 'string', description: 'Current internal application pathname; unknown paths are ignored.' } } } },
+      } } } },
+      responses: { '201': { description: 'Character reply, verified optional suggestedAction, and remaining quota' }, '429': { description: 'Per-minute, user daily, or global daily limit reached' } },
+    } },
     '/ai/history': { delete: { summary: 'Delete completed AI messages and the saved memory summary', responses: { '200': { description: 'History deleted' } } } },
     '/ai/missions/{id}/start': { post: { summary: 'Start or resume one of the three server-verified companion missions', responses: { '200': { description: 'Mission mode state' }, '409': { description: 'Companion missing or mission already completed' } } } },
     '/ai/missions/{id}/pause': { post: { summary: 'Pause a mission and return to general conversation', responses: { '200': { description: 'General conversation state' } } } },
