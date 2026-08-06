@@ -1154,6 +1154,8 @@ body:has(.home-main) .story-creator{position:relative}body:has(.home-main) .crea
 .shopping-shortcuts h2,
 .tip-module h2,
 .character-module h2,
+h1:not(.today-card h1):not(.hero-inner h1):not(.page-intro h1):not(.market-hero h1):not(.market-intro h1):not(.saved-intro h1):not(.ai-casting-inner header h1),
+h2,
 h3,
 h3 button,
 h4,
