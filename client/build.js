@@ -10,7 +10,7 @@ const pages = [
   'blog-new.html',
   'blog.html',
   'feed.html',
-  'forum.html',
+  'ai.html',
   'login.html',
   'manage.html',
   'notice.html',
