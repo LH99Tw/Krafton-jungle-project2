@@ -4970,6 +4970,10 @@ function App() {
   const [requiresConsent, setRequiresConsent] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const aiMission = useAiMission(user?.id ?? null, request);
+  const [aiVisitedUserId, setAiVisitedUserId] = useState<number | null>(null);
+  useEffect(() => {
+    if (path === "/ai" && user?.id) setAiVisitedUserId(user.id);
+  }, [path, user?.id]);
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -5217,7 +5221,7 @@ function App() {
     <AuthBootstrapContext.Provider value={{ pending: authPending, cachedUser }}>
       <div className={authPending ? "auth-verifying" : undefined} aria-busy={authPending}>
         {content}
-        <AiCompanionDock controller={aiMission} path={path} go={go} />
+        <AiCompanionDock controller={aiMission} path={path} go={go} enabled={Boolean(user?.id && aiVisitedUserId === user.id)} />
         <MarketChatDock user={visibleUser} onLogin={onLogin} />
       </div>
       {loginOpen && (
