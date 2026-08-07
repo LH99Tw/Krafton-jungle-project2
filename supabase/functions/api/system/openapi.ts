@@ -230,7 +230,7 @@ export const openApiDocument = {
     '/market/items/{id}/purchase': { post: { summary: 'Purchase a selling item with wallet points', responses: { '201': { description: 'Order created and buyer balance returned' }, '409': { description: 'Item unavailable or insufficient points' } } } },
     '/market/wallet': { get: { summary: 'Read my wallet balance and recent transactions', responses: { '200': { description: 'Wallet and up to 50 recent transactions' }, '401': { description: 'Unauthenticated' } } } },
     '/market/wallet/charge': { post: { summary: 'Charge my wallet with a supported point amount', responses: { '201': { description: 'Wallet charged' }, '400': { description: 'Unsupported charge amount' } } } },
-    '/market/orders': { get: { summary: 'List my buyer or seller orders', parameters: [{ name: 'role', in: 'query', schema: { type: 'string', enum: ['buyer', 'seller'], default: 'buyer' } }], responses: { '200': { description: 'Order list' } } },
+    '/market/orders': { get: { summary: 'List my buyer or seller orders', parameters: [{ name: 'role', in: 'query', schema: { type: 'string', enum: ['buyer', 'seller'], default: 'buyer' } }], responses: { '200': { description: 'Order list' } } } },
     '/market/orders/{id}/complete': { post: { summary: 'Complete a paid order as its buyer', responses: { '200': { description: 'Order completed' }, '403': { description: 'Buyer permission required' }, '409': { description: 'Order cannot be completed' } } } },
     '/market/conversations': { get: { summary: 'List my market conversations through the participant-scoped chat RPC', responses: { '200': { description: 'Conversation list' } } } },
     '/market/conversations/{id}/messages': {
