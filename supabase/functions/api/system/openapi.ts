@@ -25,6 +25,7 @@ export const openApiDocument = {
     } },
     '/auth/login': { post: { summary: 'Sign in with email and password', responses: { '200': { description: 'Signed in' }, '400': { description: 'Validation error' }, '401': { description: 'Invalid credentials' }, '403': { description: 'Invalid CSRF token' } } } },
     '/auth/logout': { post: { summary: 'Destroy the current session', responses: { '204': { description: 'Signed out' } } } },
+    '/auth/change-password': { post: { summary: 'Replace a temporary or current user password', responses: { '200': { description: 'Password changed' }, '401': { description: 'Current password invalid' } } } },
     '/auth/csrf': { get: {
       summary: 'Issue a CSRF token',
       responses: { '200': {
@@ -170,6 +171,20 @@ export const openApiDocument = {
       patch: { summary: 'Update a scheduled home banner', responses: { '200': { description: 'Banner updated' } } },
       delete: { summary: 'Delete a home banner', responses: { '204': { description: 'Banner deleted' } } },
     },
+    '/admin/auth/login': { post: { summary: 'Sign in to the isolated administrator console with login ID', responses: { '200': { description: 'Administrator session created' }, '401': { description: 'Invalid administrator credentials' } } } },
+    '/admin/me': { get: { summary: 'Read the active administrator session', responses: { '200': { description: 'Administrator identity' }, '403': { description: 'Administrator role required' } } } },
+    '/admin/dashboard': { get: { summary: 'Read 30 KST days of selected administrator metric series', responses: { '200': { description: 'Zero-filled metric series' } } } },
+    '/admin/dashboard/details': { get: { summary: 'Search the detail rows for one administrator metric', responses: { '200': { description: 'Paginated detail rows' } } } },
+    '/admin/posts': { get: { summary: 'Search every post as an administrator', responses: { '200': { description: 'Paginated posts' } } } },
+    '/admin/posts/{id}/images': { post: { summary: 'Upload and attach a WebP image while editing any post as an administrator', responses: { '201': { description: 'Attached post image' } } } },
+    '/admin/notices': { get: { summary: 'List official notice posts', responses: { '200': { description: 'Notice posts' } } }, post: { summary: 'Create an official notice post', responses: { '201': { description: 'Notice created' } } } },
+    '/admin/market-items': { get: { summary: 'Search every market listing as an administrator', responses: { '200': { description: 'Paginated market listings' } } } },
+    '/admin/users': { get: { summary: 'Search non-administrator accounts and wallet balances', responses: { '200': { description: 'Paginated users' } } } },
+    '/admin/users/{id}': { patch: { summary: 'Update user email, nickname or active/blocked state', responses: { '200': { description: 'User updated' } } } },
+    '/admin/users/{id}/password-reset': { post: { summary: 'Issue a one-time visible temporary password', responses: { '200': { description: 'Temporary password' } } } },
+    '/admin/users/{id}/wallet': { put: { summary: 'Set a target wallet balance with an audited reason', responses: { '200': { description: 'Balance and adjustment' } } } },
+    '/admin/users/{id}/withdraw': { post: { summary: 'Reauthenticate the administrator and irreversibly anonymize a user', responses: { '204': { description: 'User anonymized' } } } },
+    '/admin/audit-logs': { get: { summary: 'Read the append-only administrator audit API', responses: { '200': { description: 'Paginated audit entries' } } } },
     '/market/items': {
       get: { summary: 'List and search market items', description: 'Each item includes likeCount and current-user isLiked.', parameters: [{ name: 'sort', in: 'query', schema: { type: 'string', enum: ['latest', 'popular', 'price_asc', 'price_desc'], default: 'latest' }, description: 'popular orders by likeCount DESC, createdAt DESC, id DESC.' }], responses: { '200': { description: 'Market item list' } } },
       post: { summary: 'Create a market item', responses: { '201': { description: 'Market item created' } } },

@@ -6,10 +6,13 @@ import { assetUrl } from "./assets";
 import { ProgressiveImage } from "./ProgressiveImage";
 import { clearUserQueryState, subscribeMarketChatChanges } from "./query-client";
 import { RichContent, RichTextEditor, type RichDocument, type UploadedPostImage } from "./RichTextEditor";
+import AdminPage from "./AdminPage";
 type User = {
   id: number;
   email: string;
   nickname: string;
+  accountStatus?: "ACTIVE" | "BLOCKED" | "WITHDRAWN";
+  passwordChangeRequired?: boolean;
   interests?: string[];
   blog?: {
     id: number;
@@ -31,6 +34,7 @@ type Blog = {
   owner?: { id: number; nickname: string };
   isSubscribed?: boolean;
   subscriberCount?: number;
+  isOfficial?: boolean;
 };
 type BlogCategory = {
   id: number;
@@ -1798,6 +1802,13 @@ function Agreement({ go, onDecided }: { go: (to: string) => void; onDecided: () 
   );
 }
 
+function PasswordChange({ go, onDone }: { go: (to: string) => void; onDone: () => void }) {
+  const [form, setForm] = useState({ currentPassword: "", password: "", passwordConfirm: "" });
+  const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
+  const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); setError(""); try { await request("/auth/change-password", { method: "POST", body: JSON.stringify(form) }); onDone(); go("/"); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } };
+  return <main className="tistory-auth-page"><section className="tistory-auth-card credentials"><strong className="login-wordmark">TISTORY</strong><p className="credential-title">새 비밀번호 설정</p><p className="login-description">관리자가 발급한 임시 비밀번호를 변경해야 서비스를 계속 이용할 수 있습니다.</p><form className="credential-form" onSubmit={submit}><label><span>임시 비밀번호</span><input autoFocus required type="password" value={form.currentPassword} onChange={(e)=>setForm({...form,currentPassword:e.target.value})}/></label><label><span>새 비밀번호</span><input required minLength={8} type="password" value={form.password} onChange={(e)=>setForm({...form,password:e.target.value})}/></label><label><span>새 비밀번호 확인</span><input required minLength={8} type="password" value={form.passwordConfirm} onChange={(e)=>setForm({...form,passwordConfirm:e.target.value})}/></label>{error&&<p className="form-error">{error}</p>}<button className="credential-submit" disabled={busy}>{busy?"변경 중…":"비밀번호 변경"}</button></form></section></main>;
+}
+
 function NoticeArticle({ go }: { go: (to: string) => void }) {
   return (
     <div className="notice-blog-page">
@@ -2029,6 +2040,7 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
   };
   const posts = data?.posts.items ?? [];
   const market = data?.market.items ?? [];
+  const official = slug === "admin" || data?.blog.isOfficial === true;
   const ownerName = data?.blog.owner?.nickname ?? slug;
   const statusLabel: Record<MarketItem["status"], string> = {
     SELLING: "판매 중",
@@ -2047,7 +2059,7 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
               <h1 className="font-jua">{data?.blog.name ?? slug}</h1>
               <span className="creator-handle">@{data?.blog.slug ?? slug}</span>
               <p className="creator-description">{data?.blog.description || blankPlaceholder}</p>
-              <dl className="creator-stats">
+              {!official && <dl className="creator-stats">
                 <div>
                   <dt className="font-jua">{data?.posts.pagination.totalItems ?? posts.length}</dt>
                   <dd className="font-jua">글</dd>
@@ -2060,8 +2072,8 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
                   <dt className="font-jua">{data?.market.pagination.totalItems ?? market.length}</dt>
                   <dd className="font-jua">상품</dd>
                 </div>
-              </dl>
-              {mine ? (
+              </dl>}
+              {official ? <span className="creator-subscribe font-jua">공식 운영 블로그</span> : mine ? (
                 <button className="creator-subscribe font-jua" onClick={() => go("/blog/me/manage")}>
                   블로그 관리
                 </button>
@@ -2114,7 +2126,7 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
               )}
             </section>
           </div>
-          <section className="creator-shop">
+          {!official && <section className="creator-shop">
             <header className="creator-section-head">
               <div>
                 <p className="creator-kicker">CURATOR'S SHOP</p>
@@ -2139,7 +2151,7 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
             ) : (
               <Empty text="아직 등록된 상품이 없습니다." detail={mine ? "상품을 등록하면 내 블로그 상점에도 자동으로 표시됩니다." : undefined} />
             )}
-          </section>
+          </section>}
         </div>
       </main>
     </Shell>
@@ -5151,6 +5163,9 @@ function App() {
     setAuthState("authenticated");
   }, [user]);
   useEffect(() => {
+    if (user?.passwordChangeRequired && path !== "/change-password") go("/change-password");
+  }, [user?.passwordChangeRequired, path]);
+  useEffect(() => {
     const updateProfile = (event: Event) => {
       const profileImageUrl = (event as CustomEvent<string | null>).detail;
       setUser((current) => (current?.blog ? { ...current, blog: { ...current.blog, profileImageUrl } } : current));
@@ -5161,9 +5176,10 @@ function App() {
   const onLogin = () => setLoginOpen(true);
   const authPending = authState === "loading" || authState === "degraded";
   const visibleUser = user ?? (authPending ? cachedUser : null);
-  const publicWhileAuthLoads = path === "/" || path === "/login" || path === "/signup" || path === "/interests/mockup" || path === "/notice/2702" || path === "/feed" || path === "/search" || path === "/skin" || path === "/market" || path === "/market/recent" || path === "/market/cart" || path === "/market/price-guide" || path === "/market/coupons" || /^\/market\/\d+$/.test(path) || /^\/post\/\d+$/.test(path) || (/^\/blog\/[^/]+$/.test(path) && path !== "/blog/new");
+  const publicWhileAuthLoads = path.startsWith("/adminpage") || path === "/" || path === "/login" || path === "/signup" || path === "/interests/mockup" || path === "/notice/2702" || path === "/feed" || path === "/search" || path === "/skin" || path === "/market" || path === "/market/recent" || path === "/market/cart" || path === "/market/price-guide" || path === "/market/coupons" || /^\/market\/\d+$/.test(path) || /^\/post\/\d+$/.test(path) || (/^\/blog\/[^/]+$/.test(path) && path !== "/blog/new");
   let content: React.ReactNode;
-  if ((authState === "loading" || authState === "degraded") && !publicWhileAuthLoads)
+  if (path.startsWith("/adminpage")) content = <AdminPage />;
+  else if ((authState === "loading" || authState === "degraded") && !publicWhileAuthLoads)
     content = (
       <Shell go={go} user={null} onLogin={onLogin}>
         <main id="main" className="page-main">
@@ -5197,6 +5213,8 @@ function App() {
         }}
       />
     );
+  else if (path === "/change-password")
+    content = user?.passwordChangeRequired ? <PasswordChange go={go} onDone={() => setUser((current) => current ? { ...current, passwordChangeRequired: false } : current)} /> : <Home go={go} user={visibleUser} onLogin={onLogin} />;
   else if (path === "/agreement/third-party-consent")
     content =
       user && requiresConsent ? (
@@ -5338,7 +5356,7 @@ function App() {
     <AuthBootstrapContext.Provider value={{ pending: authPending, cachedUser }}>
       <div className={authPending ? "auth-verifying" : undefined} aria-busy={authPending}>
         {content}
-        <AiCompanionDock
+        {!path.startsWith("/adminpage") && <AiCompanionDock
           controller={aiMission}
           path={path}
           go={go}
@@ -5347,8 +5365,8 @@ function App() {
             if (user?.id) writeAiDockEnabled(user.id, false);
             setAiVisitedUserId(null);
           }}
-        />
-        <MarketChatDock user={visibleUser} onLogin={onLogin} />
+        />}
+        {!path.startsWith("/adminpage") && <MarketChatDock user={visibleUser} onLogin={onLogin} />}
       </div>
       {loginOpen && (
         <div className="modal-backdrop tistory-login-backdrop" role="dialog" aria-modal="true" aria-label="티스토리 로그인" onMouseDown={() => setLoginOpen(false)}>

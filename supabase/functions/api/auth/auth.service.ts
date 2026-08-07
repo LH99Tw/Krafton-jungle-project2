@@ -46,7 +46,7 @@ const validateSignup = (body: SignupBody) => {
 
 export const issueCsrfToken = async (request: Request) => {
   if (!supabaseUrl || !serviceRoleKey) return apiError(500, 'INTERNAL_SERVER_ERROR', '서버 설정을 확인해 주세요.')
-  const existing = await getSession(request)
+  const existing = await getSession(request, true)
   if (existing) {
     return json({ data: { csrfToken: existing.csrf_token } }, 200, { 'Set-Cookie': sessionCookie(existing.sessionId) })
   }
@@ -94,7 +94,8 @@ export const login = async (request: Request) => {
   const csrfSession = await requireCsrfSession(request)
   if (!csrfSession) return apiError(403, 'CSRF_TOKEN_INVALID', 'CSRF 토큰이 유효하지 않습니다.')
   const { data: user, error } = await findUserByEmail(email)
-  if (error || !user || !(await bcrypt.compare(password, user.password_hash))) return apiError(401, 'INVALID_CREDENTIALS', '이메일 또는 비밀번호가 올바르지 않습니다.')
+  if (error || !user || user.role === 'ADMIN' || user.account_status === 'WITHDRAWN' || !(await bcrypt.compare(password, user.password_hash))) return apiError(401, 'INVALID_CREDENTIALS', '이메일 또는 비밀번호가 올바르지 않습니다.')
+  if (user.account_status === 'BLOCKED') return apiError(403, 'ACCOUNT_BLOCKED', '차단된 계정입니다. 관리자에게 문의해 주세요.')
   const newSessionId = randomToken()
   const { error: sessionError } = await rotateUserSession({ userId: user.id, oldSessionHash: csrfSession.sessionHash, newSessionHash: await sha256(newSessionId), csrfToken: request.headers.get('x-csrf-token')! })
   if (sessionError) return sessionError.message?.includes('CSRF_TOKEN_INVALID')
@@ -102,7 +103,21 @@ export const login = async (request: Request) => {
     : apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
   const { data: currentUser } = await findCurrentUser(user.id)
   const { data: blog } = await findCurrentBlog(user.id)
-  return json({ data: { user: { id: user.id, email: user.email, nickname: user.nickname, interests: currentUser?.interests ?? [] }, blog: blog ?? null, requiresThirdPartyConsent: !user.third_party_consent_decided_at, message: '로그인되었습니다.' } }, 200, { 'Set-Cookie': sessionCookie(newSessionId) })
+  return json({ data: { user: { id: user.id, email: user.email, nickname: user.nickname, interests: currentUser?.interests ?? [], accountStatus: currentUser?.account_status ?? 'ACTIVE', passwordChangeRequired: currentUser?.password_change_required === true }, blog: blog ?? null, requiresThirdPartyConsent: !user.third_party_consent_decided_at, message: '로그인되었습니다.' } }, 200, { 'Set-Cookie': sessionCookie(newSessionId) })
+}
+
+export const changePassword = async (request: Request) => {
+  const session = await requireCsrfSession(request, true)
+  if (!session?.user_id) return apiError(session ? 401 : 403, session ? 'UNAUTHENTICATED' : 'CSRF_TOKEN_INVALID', session ? '로그인이 필요합니다.' : 'CSRF 토큰이 유효하지 않습니다.')
+  const body = await request.json().catch(() => null) as Record<string, unknown> | null
+  const currentPassword = typeof body?.currentPassword === 'string' ? body.currentPassword : ''
+  const password = typeof body?.password === 'string' ? body.password : ''
+  const passwordConfirm = typeof body?.passwordConfirm === 'string' ? body.passwordConfirm : ''
+  if (!currentPassword || password.length < 8 || password.length > 72 || password !== passwordConfirm) return apiError(400, 'VALIDATION_ERROR', '현재 비밀번호와 새 비밀번호를 확인해 주세요.')
+  const { data: user } = await supabase.from('users').select('password_hash,role,account_status').eq('id', session.user_id).maybeSingle()
+  if (!user || user.role === 'ADMIN' || user.account_status !== 'ACTIVE' || !(await bcrypt.compare(currentPassword, user.password_hash))) return apiError(401, 'INVALID_CREDENTIALS', '현재 비밀번호가 올바르지 않습니다.')
+  const { error } = await supabase.from('users').update({ password_hash: await bcrypt.hash(password, 12), password_change_required: false, updated_at: new Date().toISOString() }).eq('id', session.user_id)
+  return error ? apiError(500, 'INTERNAL_SERVER_ERROR', '비밀번호를 변경하지 못했습니다.') : json({ data: { passwordChangeRequired: false } })
 }
 
 export const decideThirdPartyConsent = async (request: Request) => {
@@ -118,7 +133,7 @@ export const decideThirdPartyConsent = async (request: Request) => {
 export const logout = async (request: Request) => {
   const sessionId = readCookie(request, 'session_id')
   if (!sessionId) return new Response(null, { status: 204, headers: { ...corsHeaders, 'Set-Cookie': expiredSessionCookie() } })
-  const session = await requireCsrfSession(request)
+  const session = await requireCsrfSession(request, true)
   if (!session) return apiError(403, 'CSRF_TOKEN_INVALID', 'CSRF 토큰이 유효하지 않습니다.')
   const { error } = await deleteSession(session.sessionHash)
   if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
@@ -134,7 +149,8 @@ export const me = async (request: Request) => {
     return apiError(500, 'INTERNAL_SERVER_ERROR', '요청을 처리하지 못했습니다.')
   }
   if (!data) return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
-  return json({ data })
+  const { data: account } = await supabase.from('users').select('account_status,password_change_required').eq('id', data.user?.id).maybeSingle()
+  return json({ data: { ...data, user: { ...data.user, accountStatus: account?.account_status ?? 'ACTIVE', passwordChangeRequired: account?.password_change_required === true } } })
 }
 
 export const updateInterests = async (request: Request) => {

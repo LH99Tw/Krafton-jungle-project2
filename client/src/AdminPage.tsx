@@ -1,0 +1,108 @@
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { Activity, FileText, LayoutDashboard, LogOut, Package, Pencil, Plus, RotateCcw, Search, Shield, Trash2, Users, X } from "lucide-react";
+import "./admin-page.css";
+
+const API = import.meta.env.DEV ? (import.meta.env.VITE_API_URL ?? "") : "";
+let adminCsrf = "";
+type PageInfo = { page: number; size: number; totalItems: number; totalPages: number };
+type ListResult<T> = { data: T[]; pagination: PageInfo };
+type Admin = { id: number; loginId: string; nickname: string };
+type Metric = "PUBLISHED_POSTS" | "MARKET_LISTINGS" | "COMPLETED_TRADES" | "NEW_USERS" | "WITHDRAWN_USERS";
+type AnyRow = Record<string, any>;
+
+async function refreshCsrf() {
+  const response = await fetch(`${API}/api/auth/csrf`, { credentials: "include" });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.error?.message ?? "보안 토큰을 발급하지 못했습니다.");
+  adminCsrf = body.data.csrfToken;
+}
+async function adminRequest<T>(path: string, options: RequestInit = {}) {
+  const method = (options.method ?? "GET").toUpperCase();
+  if (!["GET", "HEAD"].includes(method) && !adminCsrf) await refreshCsrf();
+  const send = () => fetch(`${API}/api${path}`, { credentials: "include", ...options, headers: { "Content-Type": "application/json", ...(adminCsrf ? { "X-CSRF-Token": adminCsrf } : {}), ...(options.headers ?? {}) } });
+  let response = await send(); let body: any = response.status === 204 ? {} : await response.json().catch(() => ({}));
+  if (response.status === 403 && body.error?.code === "CSRF_TOKEN_INVALID") { adminCsrf = ""; await refreshCsrf(); response = await send(); body = response.status === 204 ? {} : await response.json().catch(() => ({})); }
+  if (!response.ok) throw new Error(body.error?.message ?? "요청을 처리하지 못했습니다.");
+  return body.data as T;
+}
+async function adminList<T>(path: string): Promise<ListResult<T>> {
+  const response = await fetch(`${API}/api${path}`, { credentials: "include" }); const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error?.message ?? "목록을 불러오지 못했습니다.");
+  return { data: body.data ?? [], pagination: body.pagination ?? { page: 1, size: 20, totalItems: 0, totalPages: 0 } };
+}
+
+const metricMeta: Record<Metric, { label: string; color: string }> = {
+  PUBLISHED_POSTS: { label: "발행글", color: "#16a085" }, MARKET_LISTINGS: { label: "판매글 등록", color: "#e67e22" },
+  COMPLETED_TRADES: { label: "체결거래", color: "#4869d8" }, NEW_USERS: { label: "신규회원", color: "#9b59b6" }, WITHDRAWN_USERS: { label: "탈퇴회원", color: "#d35454" },
+};
+const allMetrics = Object.keys(metricMeta) as Metric[];
+const koDate = (value?: string) => value ? new Date(value).toLocaleDateString("ko-KR") : "-";
+const value = (row: AnyRow, camel: string, snake: string) => row[camel] ?? row[snake];
+
+function Login({ onLogin }: { onLogin: (admin: Admin) => void }) {
+  const [loginId, setLoginId] = useState("admin"); const [password, setPassword] = useState(""); const [busy, setBusy] = useState(false); const [error, setError] = useState("");
+  const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); setError(""); try { const data = await adminRequest<{ admin: Admin }>("/admin/auth/login", { method: "POST", body: JSON.stringify({ loginId, password }) }); onLogin(data.admin); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } };
+  return <main className="admin-login"><section><span className="admin-mark"><Shield size={22} /> TISTORY MANAGEMENT</span><p>AUTHORIZED ACCESS ONLY</p><h1>운영자 콘솔</h1><form onSubmit={submit}><label>관리자 아이디<input autoFocus value={loginId} onChange={(e) => setLoginId(e.target.value)} autoComplete="username" /></label><label>비밀번호<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" /></label>{error && <p className="admin-error">{error}</p>}<button disabled={busy}>{busy ? "확인 중…" : "관리자 로그인"}</button></form><small>회원가입은 제공하지 않습니다.</small></section><aside aria-hidden="true"><b>30</b><span>DAY<br />OPERATIONS</span><i /></aside></main>;
+}
+
+function LineChart({ series }: { series: { metric: Metric; points: { date: string; value: number }[] }[] }) {
+  const width = 960, height = 280, pad = 34; const max = Math.max(1, ...series.flatMap((item) => item.points.map((point) => point.value)));
+  const path = (points: { value: number }[]) => points.map((point, index) => `${index ? "L" : "M"}${pad + index * ((width - pad * 2) / Math.max(1, points.length - 1))},${height - pad - point.value * ((height - pad * 2) / max)}`).join(" ");
+  return <div className="admin-chart"><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="최근 30일 운영 지표 선 그래프">{[0, .25, .5, .75, 1].map((ratio) => <line key={ratio} x1={pad} x2={width-pad} y1={pad+(height-pad*2)*ratio} y2={pad+(height-pad*2)*ratio} />)}{series.map((item) => <g key={item.metric}><path d={path(item.points)} style={{ stroke: metricMeta[item.metric].color }} />{item.points.map((point, index) => { const x = pad + index * ((width-pad*2)/Math.max(1,item.points.length-1)); const y = height-pad-point.value*((height-pad*2)/max); return <circle key={point.date} cx={x} cy={y} r="3" style={{ fill: metricMeta[item.metric].color }}><title>{point.date} · {metricMeta[item.metric].label} {point.value}</title></circle> })}</g>)}</svg><div><span>{series[0]?.points[0]?.date}</span><span>{series[0]?.points[series[0].points.length-1]?.date}</span></div></div>;
+}
+
+function Pager({ page, total, onChange }: { page: number; total: number; onChange: (page: number) => void }) { return <div className="admin-pager"><button disabled={page <= 1} onClick={() => onChange(page-1)}>이전</button><span>{page} / {Math.max(1,total)}</span><button disabled={!total || page >= total} onClick={() => onChange(page+1)}>다음</button></div> }
+function SearchBar({ value: query, onChange, placeholder = "검색" }: { value: string; onChange: (value: string) => void; placeholder?: string }) { const [draft,setDraft]=useState(query); useEffect(()=>setDraft(query),[query]); return <form className="admin-search" onSubmit={(e)=>{e.preventDefault();onChange(draft)}}><Search size={16}/><input value={draft} onChange={(e)=>setDraft(e.target.value)} placeholder={placeholder}/><button>검색</button></form> }
+
+function Dashboard() {
+  const [selected,setSelected]=useState<Metric[]>(["PUBLISHED_POSTS"]); const [series,setSeries]=useState<any[]>([]); const [rows,setRows]=useState<AnyRow[]>([]); const [pagination,setPagination]=useState<PageInfo>({page:1,size:20,totalItems:0,totalPages:0}); const [q,setQ]=useState(""); const [error,setError]=useState("");
+  useEffect(()=>{adminRequest<any>(`/admin/dashboard?metrics=${selected.join(",")}`).then((data)=>setSeries(data.series)).catch((e)=>setError(e.message))},[selected]);
+  const load=(page=1,query=q)=>adminList<AnyRow>(`/admin/dashboard/details?metric=${selected[0]}&q=${encodeURIComponent(query)}&page=${page}&size=20`).then((result)=>{setRows(result.data);setPagination(result.pagination)}).catch((e)=>setError(e.message));
+  useEffect(()=>{void load(1)},[selected[0]]);
+  const toggle=(metric:Metric)=>setSelected((current)=>current.includes(metric)?current.length===1?current:current.filter((item)=>item!==metric):[...current,metric]);
+  return <section className="admin-work"><header><div><p>최근 30일 · KST</p><h1>페이지 요약</h1></div><Activity size={22}/></header><div className="metric-selector">{allMetrics.map((metric)=><button key={metric} className={selected.includes(metric)?"active":""} style={{"--metric":metricMeta[metric].color} as any} onClick={()=>toggle(metric)}><i/>{metricMeta[metric].label}<b>{selected.indexOf(metric)>=0?selected.indexOf(metric)+1:"+"}</b></button>)}</div>{error&&<p className="admin-error">{error}</p>}<LineChart series={series}/><div className="admin-detail-head"><div><span style={{background:metricMeta[selected[0]].color}}/><h2>{metricMeta[selected[0]].label} 상세</h2><small>{pagination.totalItems.toLocaleString()}건</small></div><SearchBar value={q} onChange={(next)=>{setQ(next);void load(1,next)}} placeholder={`${metricMeta[selected[0]].label} 검색`}/></div><DataTable rows={rows} kind={selected[0]}/><Pager page={pagination.page} total={pagination.totalPages} onChange={(page)=>void load(page)}/></section>;
+}
+
+function DataTable({ rows, kind, actions }: { rows: AnyRow[]; kind: string; actions?: (row: AnyRow) => React.ReactNode }) {
+  const cells=(row:AnyRow)=> kind.includes("MARKET") ? [row.id,row.title,row.category,row.status,`${Number(value(row,"pricePoints","price_points")??0).toLocaleString()} P`,koDate(value(row,"createdAt","created_at"))] : kind.includes("TRADE") ? [row.id,`상품 #${value(row,"itemId","item_id")}`,`구매 #${value(row,"buyerId","buyer_id")}`,`${Number(value(row,"pricePoints","price_points")??0).toLocaleString()} P`,row.status,koDate(value(row,"paidAt","paid_at"))] : kind.includes("USER") ? [row.id,row.email,row.nickname,value(row,"accountStatus","account_status"),`${Number(row.balance??0).toLocaleString()} P`,koDate(value(row,"createdAt","created_at"))] : [row.id,row.title,value(row,"authorNickname","author_nickname")??value(row,"blogName","blog_name"),row.status,koDate(value(row,"publishedAt","published_at")??value(row,"updatedAt","updated_at"))];
+  return <div className="admin-table">{rows.length?<>{rows.map((row)=><div className="admin-table-row" key={row.id}>{cells(row).map((cell,index)=><span key={index} className={index===1?"primary":""}>{String(cell??"-")}</span>)}{actions&&<div className="admin-row-actions">{actions(row)}</div>}</div>)}</>:<div className="admin-empty">조건에 맞는 항목이 없습니다.</div>}</div>
+}
+
+function EditorModal({ title, initial, kind, onClose, onSave }: { title:string; initial?:AnyRow; kind:"post"|"market"|"user"; onClose:()=>void; onSave:(value:AnyRow)=>Promise<void> }) {
+  const [form,setForm]=useState<AnyRow>(kind==="user"?{email:initial?.email??"",nickname:initial?.nickname??"",accountStatus:initial?.accountStatus??initial?.account_status??"ACTIVE"}:kind==="market"?{title:initial?.title??"",description:initial?.description??"",category:initial?.category??"",pricePoints:initial?.pricePoints??initial?.price_points??0,status:initial?.status??"SELLING"}:{title:initial?.title??"",content:initial?.content??"",status:initial?.status??"DRAFT"}); const [error,setError]=useState(""); const [busy,setBusy]=useState(false);
+  const submit=async(e:FormEvent)=>{e.preventDefault();setBusy(true);setError("");try{await onSave(form);onClose()}catch(err){setError((err as Error).message)}finally{setBusy(false)}};
+  return <div className="admin-modal-backdrop" onMouseDown={onClose}><form className="admin-modal" onSubmit={submit} onMouseDown={(e)=>e.stopPropagation()}><header><div><p>MANAGEMENT EDITOR</p><h2>{title}</h2></div><button type="button" onClick={onClose}><X/></button></header><label>제목 또는 닉네임<input value={kind==="user"?form.nickname:form.title} onChange={(e)=>setForm({...form,[kind==="user"?"nickname":"title"]:e.target.value})}/></label>{kind==="user"&&<><label>이메일<input type="email" value={form.email} onChange={(e)=>setForm({...form,email:e.target.value})}/></label><label>계정 상태<select value={form.accountStatus} onChange={(e)=>setForm({...form,accountStatus:e.target.value})}><option value="ACTIVE">활성</option><option value="BLOCKED">차단</option></select></label></>}{kind==="post"&&<><label>본문<textarea rows={12} value={form.content} onChange={(e)=>setForm({...form,content:e.target.value})}/></label><label>발행 상태<select value={form.status} onChange={(e)=>setForm({...form,status:e.target.value})}><option value="DRAFT">초안</option><option value="PUBLISHED">발행</option></select></label></>}{kind==="market"&&<><label>설명<textarea rows={7} value={form.description} onChange={(e)=>setForm({...form,description:e.target.value})}/></label><div className="admin-form-grid"><label>카테고리<input value={form.category} onChange={(e)=>setForm({...form,category:e.target.value})}/></label><label>가격<input type="number" value={form.pricePoints} onChange={(e)=>setForm({...form,pricePoints:Number(e.target.value)})}/></label></div><label>상태<select value={form.status} onChange={(e)=>setForm({...form,status:e.target.value})}><option value="SELLING">판매 중</option><option value="RESERVED">예약/거래 중지</option></select></label></>}{error&&<p className="admin-error">{error}</p>}<footer><button type="button" onClick={onClose}>취소</button><button disabled={busy}>{busy?"저장 중…":"저장"}</button></footer></form></div>
+}
+
+function ContentList({ mode }: { mode:"posts"|"notices"|"market" }) {
+  const [rows,setRows]=useState<AnyRow[]>([]); const [page,setPage]=useState<PageInfo>({page:1,size:20,totalItems:0,totalPages:0}); const [q,setQ]=useState(""); const [editing,setEditing]=useState<AnyRow|null|"new">(null); const [error,setError]=useState("");
+  const endpoint=mode==="market"?"/admin/market-items":mode==="notices"?"/admin/notices":"/admin/posts"; const load=(p=1,query=q)=>adminList<AnyRow>(`${endpoint}?q=${encodeURIComponent(query)}&page=${p}&size=20`).then((r)=>{setRows(r.data);setPage(r.pagination)}).catch((e)=>setError(e.message)); useEffect(()=>{void load()},[mode]);
+  const save=async(form:AnyRow)=>{if(editing==="new")await adminRequest(endpoint,{method:"POST",body:JSON.stringify(form)});else await adminRequest(`${endpoint}/${(editing as AnyRow).id}`,{method:"PATCH",body:JSON.stringify(form)});await load(page.page)};
+  const remove=async(row:AnyRow)=>{if(!confirm(`‘${row.title}’을 휴지통으로 이동할까요?`))return;try{await adminRequest(`${endpoint}/${row.id}`,{method:"DELETE"});await load(page.page)}catch(e){setError((e as Error).message)}};
+  const label=mode==="posts"?"전체 글":mode==="market"?"전체 판매글":"관리자 블로그"; return <section className="admin-work"><header><div><p>{mode==="notices"?"OFFICIAL NOTICE":"GLOBAL CONTENT"}</p><h1>{label}</h1></div>{mode==="notices"&&<button className="admin-primary" onClick={()=>setEditing("new")}><Plus size={15}/>공지 작성</button>}</header><div className="admin-list-tools"><SearchBar value={q} onChange={(next)=>{setQ(next);void load(1,next)}} placeholder={`${label} 검색`}/><span>{page.totalItems.toLocaleString()}건</span></div>{error&&<p className="admin-error">{error}</p>}<DataTable rows={rows} kind={mode==="market"?"MARKET":"POST"} actions={(row)=><><button disabled={mode==="market"&&row.status==="SOLD"} onClick={()=>setEditing(row)}><Pencil size={14}/>수정</button><button onClick={()=>void remove(row)}><Trash2 size={14}/>삭제</button></>}/><Pager page={page.page} total={page.totalPages} onChange={(p)=>void load(p)}/>{editing&&<EditorModal title={editing==="new"?"새 공지 작성":`${label} 수정`} initial={editing==="new"?undefined:editing} kind={mode==="market"?"market":"post"} onClose={()=>setEditing(null)} onSave={save}/>}</section>
+}
+
+function UsersPage() {
+  const [rows,setRows]=useState<AnyRow[]>([]); const [page,setPage]=useState<PageInfo>({page:1,size:20,totalItems:0,totalPages:0}); const [q,setQ]=useState(""); const [editing,setEditing]=useState<AnyRow|null>(null); const [message,setMessage]=useState(""); const [error,setError]=useState(""); const load=(p=1,query=q)=>adminList<AnyRow>(`/admin/users?q=${encodeURIComponent(query)}&page=${p}&size=20`).then((r)=>{setRows(r.data);setPage(r.pagination)}).catch((e)=>setError(e.message)); useEffect(()=>{void load()},[]);
+  const reset=async(row:AnyRow)=>{if(!confirm(`${row.nickname} 회원의 비밀번호를 초기화할까요?`))return;try{const data=await adminRequest<{temporaryPassword:string}>(`/admin/users/${row.id}/password-reset`,{method:"POST"});setMessage(`임시 비밀번호: ${data.temporaryPassword}\n이 화면을 닫으면 다시 확인할 수 없습니다.`);await load(page.page)}catch(e){setError((e as Error).message)}};
+  const wallet=async(row:AnyRow)=>{const target=prompt("목표 포인트 잔액",String(row.balance));if(target===null)return;const reason=prompt("조정 사유를 입력하세요");if(!reason)return;try{await adminRequest(`/admin/users/${row.id}/wallet`,{method:"PUT",body:JSON.stringify({targetBalance:Number(target),reason})});await load(page.page)}catch(e){setError((e as Error).message)}};
+  const withdraw=async(row:AnyRow)=>{const adminPassword=prompt(`${row.email} 계정을 익명화 탈퇴 처리합니다. 관리자 비밀번호를 입력하세요.`);if(!adminPassword)return;try{await adminRequest(`/admin/users/${row.id}/withdraw`,{method:"POST",body:JSON.stringify({adminPassword})});await load(page.page)}catch(e){setError((e as Error).message)}};
+  return <section className="admin-work"><header><div><p>ACCOUNT OPERATIONS</p><h1>유저관리</h1></div><Users size={22}/></header><div className="admin-list-tools"><SearchBar value={q} onChange={(next)=>{setQ(next);void load(1,next)}} placeholder="이메일 또는 닉네임 검색"/><span>{page.totalItems.toLocaleString()}명</span></div>{error&&<p className="admin-error">{error}</p>}{message&&<div className="admin-secret"><pre>{message}</pre><button onClick={()=>setMessage("")}>확인</button></div>}<DataTable rows={rows} kind="USER" actions={(row)=><><button onClick={()=>setEditing(row)}>수정</button><button onClick={()=>void reset(row)}>비밀번호 초기화</button><button onClick={()=>void wallet(row)}>포인트</button><button className="danger" disabled={row.accountStatus==="WITHDRAWN"} onClick={()=>void withdraw(row)}>탈퇴</button></>}/><Pager page={page.page} total={page.totalPages} onChange={(p)=>void load(p)}/>{editing&&<EditorModal title="회원 정보 수정" initial={editing} kind="user" onClose={()=>setEditing(null)} onSave={async(form)=>{await adminRequest(`/admin/users/${editing.id}`,{method:"PATCH",body:JSON.stringify(form)});await load(page.page)}}/>}</section>
+}
+
+function TrashPage() {
+  const [type,setType]=useState<"all"|"post"|"market">("all"); const [posts,setPosts]=useState<AnyRow[]>([]); const [market,setMarket]=useState<AnyRow[]>([]); const [error,setError]=useState(""); const load=()=>Promise.all([adminList<AnyRow>("/admin/posts?deleted=only&page=1&size=50"),adminList<AnyRow>("/admin/market-items?deleted=only&page=1&size=50")]).then(([a,b])=>{setPosts(a.data);setMarket(b.data)}).catch((e)=>setError(e.message)); useEffect(()=>{void load()},[]);
+  const rows: AnyRow[]=[...(type!=="market"?posts.map((row):AnyRow=>({...row,_kind:"post"})):[]),...(type!=="post"?market.map((row):AnyRow=>({...row,_kind:"market"})):[])].sort((a,b)=>String(value(b,"deletedAt","deleted_at")).localeCompare(String(value(a,"deletedAt","deleted_at"))));
+  const restore=async(row:AnyRow)=>{try{await adminRequest(`/admin/${row._kind==="post"?"posts":"market-items"}/${row.id}/restore`,{method:"POST"});await load()}catch(e){setError((e as Error).message)}}; const purge=async(row:AnyRow)=>{const adminPassword=prompt(`‘${row.title}’을 영구 삭제합니다. 관리자 비밀번호를 입력하세요.`);if(!adminPassword)return;try{await adminRequest(`/admin/${row._kind==="post"?"posts":"market-items"}/${row.id}/permanent-delete`,{method:"POST",body:JSON.stringify({adminPassword})});await load()}catch(e){setError((e as Error).message)}};
+  return <section className="admin-work"><header><div><p>30 DAY RETENTION</p><h1>휴지통</h1></div><Trash2 size={22}/></header><div className="admin-list-tools"><div className="admin-segments">{(["all","post","market"] as const).map((item)=><button className={type===item?"active":""} key={item} onClick={()=>setType(item)}>{item==="all"?"전체":item==="post"?"글":"판매글"}</button>)}</div><span>{rows.length}건</span></div>{error&&<p className="admin-error">{error}</p>}<div className="admin-trash-list">{rows.map((row)=><article key={`${row._kind}-${row.id}`}><span>{row._kind==="post"?"글":"판매글"}</span><div><h3>{row.title}</h3><p>삭제 {koDate(value(row,"deletedAt","deleted_at"))} · 자동 정리 {koDate(value(row,"purgeAfter","purge_after"))}</p></div><button onClick={()=>void restore(row)}><RotateCcw size={14}/>복원</button><button className="danger" onClick={()=>void purge(row)}>영구삭제</button></article>)}</div>{!rows.length&&<div className="admin-empty">휴지통이 비어 있습니다.</div>}</section>
+}
+
+export default function AdminPage() {
+  const [admin,setAdmin]=useState<Admin|null>(null); const [checking,setChecking]=useState(true); const section=location.pathname.split("/")[2]||"dashboard";
+  useEffect(()=>{adminRequest<{admin:Admin}>("/admin/me").then((data)=>setAdmin(data.admin)).catch(()=>setAdmin(null)).finally(()=>setChecking(false))},[]);
+  const go=(next:string)=>{history.pushState({},"",next==="dashboard"?"/adminpage":`/adminpage/${next}`);dispatchEvent(new PopStateEvent("popstate"))}; const [,render]=useState(0); useEffect(()=>{const pop=()=>render((n)=>n+1);addEventListener("popstate",pop);return()=>removeEventListener("popstate",pop)},[]);
+  if(checking)return <main className="admin-loading"><Shield/><span>관리자 세션 확인 중</span></main>; if(!admin)return <Login onLogin={setAdmin}/>;
+  const nav=[['dashboard','페이지 요약',LayoutDashboard],['blog','관리자 블로그',FileText],['posts','전체 글',FileText],['market','전체 판매글',Package],['users','유저관리',Users],['trash','휴지통',Trash2]] as const;
+  const logout=async()=>{try{await adminRequest("/auth/logout",{method:"POST"})}finally{adminCsrf="";setAdmin(null);history.replaceState({},"","/adminpage")}};
+  return <div className="admin-shell"><aside><div className="admin-brand"><Shield size={18}/><span>TISTORY<b>MANAGEMENT</b></span></div><nav>{nav.map(([key,label,Icon])=><button className={section===key?"active":""} key={key} onClick={()=>go(key)}><Icon size={17}/><span>{label}</span></button>)}</nav><footer><div><i>{admin.nickname.slice(0,1)}</i><span><b>{admin.nickname}</b><small>@{admin.loginId}</small></span></div><button onClick={logout} aria-label="로그아웃"><LogOut size={17}/></button></footer></aside><main>{section==="dashboard"?<Dashboard/>:section==="blog"?<ContentList mode="notices"/>:section==="posts"?<ContentList mode="posts"/>:section==="market"?<ContentList mode="market"/>:section==="users"?<UsersPage/>:<TrashPage/>}</main></div>;
+}

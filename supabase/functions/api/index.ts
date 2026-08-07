@@ -8,8 +8,9 @@ import { handleHomeRoute } from './home.ts'
 import { handleNotificationRoute } from './notifications.ts'
 import { handleAiRoute, recordAiMissionActivity } from './ai.ts'
 import { claimPostImages, handlePostImageRoute, purgePostImages, validateRichDocument } from './post-images.ts'
+import { handleAdminRoute } from './admin/admin.routes.ts'
 
-const reservedSlugs = new Set(['api', 'login', 'signup', 'feed', 'post', 'blog', 'me', 'new', 'manage', 'ai'])
+const reservedSlugs = new Set(['api', 'login', 'signup', 'feed', 'post', 'blog', 'me', 'new', 'manage', 'ai', 'admin', 'adminpage'])
 const slugPattern = /^(?!.*--)[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$/
 
 const blogJson = (blog: Record<string, any>, owner?: Record<string, any>) => ({
@@ -24,6 +25,7 @@ const blogJson = (blog: Record<string, any>, owner?: Record<string, any>) => ({
   ...(owner ? { owner: { id: owner.id, nickname: owner.nickname } } : {}),
   createdAt: blog.created_at,
   updatedAt: blog.updated_at,
+  isOfficial: blog.slug === 'admin',
 })
 
 const validateSlug = (raw: string | null) => {
@@ -497,6 +499,9 @@ Deno.serve(async (request) => {
 
   const authResponse = handleAuthRoute(request, path)
   if (authResponse) return authResponse
+
+  const adminResponse = handleAdminRoute(request, path, url)
+  if (adminResponse) return adminResponse
 
   const systemResponse = handleSystemRoute(request, path)
   if (systemResponse) return systemResponse
