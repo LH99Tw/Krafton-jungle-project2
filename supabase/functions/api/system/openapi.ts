@@ -191,6 +191,12 @@ export const openApiDocument = {
       post: { summary: 'Send a conversation message', responses: { '201': { description: 'Message sent' } } },
     },
     '/market/conversations/{id}/read': { post: { summary: 'Mark received conversation messages as read', responses: { '204': { description: 'Messages marked as read' } } } },
+    '/market/conversations/{id}': { delete: { summary: 'Leave and hide a market conversation for the current participant', responses: { '204': { description: 'Conversation left' } } } },
+    '/market/conversations/{id}/messages/{messageId}': { delete: { summary: 'Soft-delete my market chat message', responses: { '204': { description: 'Message deleted' } } } },
+    '/market/conversations/{id}/messages/{messageId}/reactions': {
+      put: { summary: 'Add one of six reactions to a market chat message', responses: { '201': { description: 'Reaction active' } } },
+      delete: { summary: 'Remove my reaction from a market chat message', responses: { '204': { description: 'Reaction inactive' } } },
+    },
     '/market/items/{id}/restore': { post: { summary: 'Restore a trashed market item', responses: { '200': { description: 'Item restored' } } } },
     '/market/items/{id}/permanent': { delete: { summary: 'Permanently delete or tombstone a trashed item', responses: { '204': { description: 'Item purged' } } } },
     '/health': { get: { summary: 'Check API health', responses: { '200': { description: 'API is healthy' } } } },

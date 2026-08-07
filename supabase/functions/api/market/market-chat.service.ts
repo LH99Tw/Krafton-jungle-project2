@@ -33,6 +33,7 @@ export const startConversation = async (request: Request, itemId: number) => {
     item_id: item.id,
     buyer_id: session.user_id,
     seller_id: item.seller_id,
+    buyer_left_at: null,
     updated_at: new Date().toISOString(),
   }, { onConflict: 'item_id,buyer_id' }).select('*').single()
   if (createError) return apiError(500, 'INTERNAL_SERVER_ERROR', '채팅방을 만들지 못했습니다.')
@@ -89,6 +90,13 @@ export const listMessages = async (request: Request, conversationId: number) => 
     body: message.body,
     readAt: message.read_at,
     createdAt: message.created_at,
+    deletedAt: message.deleted_at,
+    replyTo: message.reply_to_message_id ? {
+      id: message.reply_to_message_id,
+      body: message.reply_body,
+      senderId: message.reply_sender_id,
+    } : null,
+    reactions: Array.isArray(message.reactions) ? message.reactions : [],
   })) })
 }
 
@@ -98,13 +106,76 @@ export const sendMessage = async (request: Request, conversationId: number) => {
   const body = await request.json().catch(() => null)
   const message = body && typeof body === 'object' && !Array.isArray(body) && typeof body.body === 'string' ? body.body.trim() : ''
   if (!message || message.length > 1000) return apiError(400, 'VALIDATION_ERROR', '메시지는 1~1,000자로 입력해 주세요.', { body: '메시지 길이를 확인해 주세요.' })
+  const replyToMessageId = body && typeof body === 'object' && !Array.isArray(body) && Number.isSafeInteger(Number(body.replyToMessageId))
+    ? Number(body.replyToMessageId)
+    : null
+  if (replyToMessageId) {
+    const { data: replied } = await supabase.from('market_messages').select('id')
+      .eq('id', replyToMessageId).eq('conversation_id', conversationId).maybeSingle()
+    if (!replied) return apiError(400, 'VALIDATION_ERROR', '답장할 메시지를 찾을 수 없습니다.')
+  }
   const now = new Date().toISOString()
   const { data, error } = await supabase.from('market_messages').insert({
     conversation_id: conversationId,
     sender_id: access.session!.user_id,
     body: message,
-  }).select('id, conversation_id, sender_id, body, read_at, created_at').single()
+    reply_to_message_id: replyToMessageId,
+  }).select('id, conversation_id, sender_id, body, read_at, created_at, reply_to_message_id').single()
   if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '메시지를 보내지 못했습니다.')
   await supabase.from('market_conversations').update({ updated_at: now }).eq('id', conversationId)
-  return json({ data: { id: data.id, conversationId: data.conversation_id, senderId: data.sender_id, body: data.body, readAt: data.read_at, createdAt: data.created_at } }, 201)
+  return json({ data: {
+    id: data.id,
+    conversationId: data.conversation_id,
+    senderId: data.sender_id,
+    body: data.body,
+    readAt: data.read_at,
+    createdAt: data.created_at,
+    replyTo: replyToMessageId ? { id: replyToMessageId } : null,
+    reactions: [],
+  } }, 201)
+}
+
+const allowedReactions = new Set(['HEART', 'CHECK', 'THUMBS_UP', 'SAD', 'COOL', 'LAUGH'])
+
+export const changeMessageReaction = async (request: Request, conversationId: number, messageId: number, active: boolean) => {
+  const access = await requireParticipant(request, conversationId, true)
+  if (access.error) return access.error
+  const body = await request.json().catch(() => null)
+  const reaction = body && typeof body === 'object' && !Array.isArray(body) && typeof body.reaction === 'string' ? body.reaction : ''
+  if (!allowedReactions.has(reaction)) return apiError(400, 'VALIDATION_ERROR', '지원하지 않는 반응입니다.')
+  const { data: message } = await supabase.from('market_messages').select('id, deleted_at')
+    .eq('id', messageId).eq('conversation_id', conversationId).maybeSingle()
+  if (!message || message.deleted_at) return apiError(404, 'NOT_FOUND', '메시지를 찾을 수 없습니다.')
+  if (active) {
+    const { error } = await supabase.from('market_message_reactions').upsert({
+      message_id: messageId, user_id: access.session!.user_id, reaction,
+    }, { onConflict: 'message_id,user_id,reaction', ignoreDuplicates: true })
+    if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '반응을 저장하지 못했습니다.')
+    return json({ data: { active: true } }, 201)
+  }
+  const { error } = await supabase.from('market_message_reactions').delete()
+    .eq('message_id', messageId).eq('user_id', access.session!.user_id).eq('reaction', reaction)
+  if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '반응을 취소하지 못했습니다.')
+  return new Response(null, { status: 204 })
+}
+
+export const deleteMessage = async (request: Request, conversationId: number, messageId: number) => {
+  const access = await requireParticipant(request, conversationId, true)
+  if (access.error) return access.error
+  const { data, error } = await supabase.from('market_messages').update({ deleted_at: new Date().toISOString(), body: '삭제된 메시지입니다.' })
+    .eq('id', messageId).eq('conversation_id', conversationId).eq('sender_id', access.session!.user_id)
+    .is('deleted_at', null).select('id').maybeSingle()
+  if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '메시지를 삭제하지 못했습니다.')
+  if (!data) return apiError(404, 'NOT_FOUND', '삭제할 메시지를 찾을 수 없습니다.')
+  await supabase.from('market_message_reactions').delete().eq('message_id', messageId)
+  return new Response(null, { status: 204 })
+}
+
+export const leaveConversation = async (request: Request, conversationId: number) => {
+  const access = await requireParticipant(request, conversationId, true)
+  if (access.error) return access.error
+  const column = access.conversation!.buyer_id === access.session!.user_id ? 'buyer_left_at' : 'seller_left_at'
+  const { error } = await supabase.from('market_conversations').update({ [column]: new Date().toISOString() }).eq('id', conversationId)
+  if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '채팅방에서 나가지 못했습니다.')
+  return new Response(null, { status: 204 })
 }
