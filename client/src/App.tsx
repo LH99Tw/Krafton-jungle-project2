@@ -3876,7 +3876,7 @@ function MarketSavedList({ kind, go, user, onLogin }: { kind: "recent" | "wishli
         <div className="section-inner">
           <div className="page-intro saved-intro">
             <p className="eyebrow">{recent ? "RECENTLY VIEWED" : "MY WISHLIST"}</p>
-            <h1>{recent ? "최근 본 상품" : "마음에 담아둔 상품"}</h1>
+            <h1 className="font-jua">{recent ? "최근 본 상품" : "마음에 담아둔 상품"}</h1>
             <p>{recent ? "최근 확인한 상품을 최신순으로 최대 20개까지 보관합니다." : "좋아요를 누른 상품을 한곳에서 다시 확인하세요."}</p>
           </div>
           {error ? (
@@ -3914,7 +3914,7 @@ function MarketPrepared({ kind, go, user, onLogin }: { kind: keyof typeof prepar
             <Package size={30} />
           </div>
           <p className="eyebrow">{eyebrow}</p>
-          <h1>{title}</h1>
+          <h1 className="font-jua">{title}</h1>
           <p>{description}</p>
           <button className="primary-button compact" onClick={() => go("/market")}>
             마켓 둘러보기 <ArrowRight size={15} />
@@ -4718,7 +4718,7 @@ function SearchPage({ go, user, onLogin }: { go: (to: string) => void; user: Use
         <div className="section-inner">
           <div className="page-intro">
             <p className="eyebrow">INTEGRATED SEARCH</p>
-            <h1>{interestTerms.length ? "내 관심사 검색 결과" : `‘${query}’ 검색 결과`}</h1>
+            <h1 className="font-jua">{interestTerms.length ? "내 관심사 검색 결과" : `‘${query}’ 검색 결과`}</h1>
             {interestTerms.length > 0 && (
               <div className="interest-search-terms" aria-label="검색에 사용된 관심사">
                 {interestTerms.map((term) => (
