@@ -386,7 +386,8 @@ ${String(profile.memory_summary || '없음').slice(0, 500)}
   }
   const fallbackFact = fallbackKnowledgeFact(knowledgeMatches)
   const reply = generated ?? { reply: personaFallback(profile.character_id as CharacterId, fallbackFact), emotion: 'focused', memorySummary: profile.memory_summary ?? '', suggestedActionId: fallbackKnowledgeAction(knowledgeMatches)?.id ?? null }
-  const suggestedAction = allMissionsCompleted ? null : resolveSuggestedAction(reply.suggestedActionId, explicitKnowledgeMatches)
+  const resolvedAction = resolveSuggestedAction(reply.suggestedActionId, explicitKnowledgeMatches)
+  const suggestedAction = allMissionsCompleted && resolvedAction?.id === 'ai-missions' ? null : resolvedAction
   const { error: finishError } = await supabase.rpc('finish_ai_turn', {
     p_user_id: userId, p_message_id: reservation.messageId, p_reply: reply.reply, p_emotion: reply.emotion,
     p_memory_summary: reply.memorySummary, p_model: serverTemplate ? 'server-state' : generated ? model : 'local-fallback',
