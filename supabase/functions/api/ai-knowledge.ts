@@ -22,6 +22,9 @@ const knowledge: ServiceKnowledge[] = [
   { id: 'reactions', title: '좋아요·댓글·답글·알림', summary: '공개 글에 좋아요와 댓글을 남길 수 있고 댓글에는 한 단계 답글을 달 수 있다. 내 글의 좋아요와 내 댓글의 답글은 알림으로 확인한다.', conditions: '작성·반응 기능은 로그인이 필요하다.', keywords: ['좋아요', '댓글', '답글', '알림'], paths: [/^\/post\/\d+$/, /^\/notifications$/], action: { id: 'reactions', label: '전체 알림 보기', route: '/notifications' } },
   { id: 'market', title: '팬덤 마켓', summary: '마켓에서 상품을 검색하고 상세 정보를 보며 좋아요, 판매자와의 채팅, 포인트 구매를 이용할 수 있다.', conditions: '현재 거래는 실제 현금 가치가 없는 MVP 포인트를 사용한다.', keywords: ['마켓', '상품 찾', '상품 검색', '상품 구매', '구매', '판매자 채팅'], paths: [/^\/market(?:\/\d+)?$/], action: { id: 'market', label: '마켓 둘러보기', route: '/market' } },
   { id: 'market-create', title: '새 상품 등록', summary: '상품명, 설명, 가격과 이미지를 입력해 블로그 상점과 마켓에 판매 상품을 등록할 수 있다.', conditions: '로그인하고 본인 블로그가 있어야 한다.', keywords: ['상품 등록', '새 상품', '판매 등록', '상품 올리'], paths: [/^\/market\/new$/, /^\/blog\/me\/manage\/market$/], action: { id: 'market-create', label: '새 상품 등록하기', route: '/market/new' } },
+  { id: 'market-cart', title: '장바구니', summary: '마켓 장바구니 안내 화면으로 이동할 수 있다.', conditions: '현재 장바구니 거래 기능은 준비 중이며 화면에서 준비 상태를 확인할 수 있다.', keywords: ['장바구니', '담은 상품', '카트'], paths: [/^\/market\/cart$/], action: { id: 'market-cart', label: '장바구니 보기', route: '/market/cart' } },
+  { id: 'market-recent', title: '최근 본 상품', summary: '최근 확인한 마켓 상품 목록을 볼 수 있다.', conditions: '현재 브라우저에서 확인한 상품 기록을 사용한다.', keywords: ['최근 본 상품', '최근 상품', '봤던 상품'], paths: [/^\/market\/recent$/], action: { id: 'market-recent', label: '최근 본 상품', route: '/market/recent' } },
+  { id: 'market-wishlist', title: '찜한 상품', summary: '좋아요로 저장한 마켓 상품 목록을 볼 수 있다.', conditions: '로그인이 필요하다.', keywords: ['찜한 상품', '찜 목록', '위시리스트', '관심 상품'], paths: [/^\/market\/wishlist$/], action: { id: 'market-wishlist', label: '찜한 상품 보기', route: '/market/wishlist' } },
   { id: 'wallet', title: '포인트 지갑', summary: '지갑에서 포인트 잔액과 충전·구매·판매·미션 보상 거래 내역을 확인할 수 있다.', conditions: '포인트는 서비스 MVP 안에서만 사용하는 테스트 포인트다.', keywords: ['포인트', '지갑', '거래 내역', '잔액', '충전'], paths: [/^\/market\/wallet$/], action: { id: 'wallet', label: '포인트 지갑 보기', route: '/market/wallet' } },
   { id: 'ai-missions', title: 'AI 동행 미션', summary: '세 가지 미션을 캐릭터와 수행하고 서버가 실제 활동을 확인하면 미션별 포인트를 한 번 지급한다.', conditions: '자유 대화 제한이 끝나도 미션 진행과 고정 안내, 보상 지급은 계속 사용할 수 있다.', keywords: ['AI 미션', '미션', '동행', '보상'], paths: [/^\/ai$/], action: { id: 'ai-missions', label: 'AI 미션 보기', route: '/ai' } },
 ]
@@ -29,7 +32,7 @@ const knowledge: ServiceKnowledge[] = [
 const allowedPathPatterns = [
   /^\/$/, /^\/ai$/, /^\/blog\/new$/, /^\/blog\/me\/manage(?:\/(?:settings|interests|categories|posts|market|trash))?$/,
   /^\/blog\/[a-z0-9-]+$/, /^\/write$/, /^\/post\/\d+(?:\/edit)?$/, /^\/feed$/, /^\/search$/, /^\/bookmarks$/,
-  /^\/notifications$/, /^\/market(?:\/(?:new|recent|wishlist|wallet|\d+|\d+\/edit))?$/,
+  /^\/notifications$/, /^\/market(?:\/(?:new|recent|wishlist|wallet|cart|price-guide|coupons|\d+|\d+\/edit))?$/,
 ]
 
 export const normalizeAiPath = (value: unknown) => {
@@ -62,3 +65,8 @@ export const fallbackKnowledgeAction = (matches: ReturnType<typeof selectService
 
 export const fallbackKnowledgeFact = (matches: ReturnType<typeof selectServiceKnowledge>) =>
   matches.find((match) => match.keywordHits > 0)?.entry ?? null
+
+export const explicitNavigationAction = (message: string, matches: ReturnType<typeof selectServiceKnowledge>) => {
+  if (!/(열어|이동|가고\s*싶|가자|보여\s*줘|보러|작성하|등록하|검색하|찾아\s*줘)/i.test(message)) return null
+  return matches.find((match) => match.keywordHits > 0)?.entry.action ?? null
+}

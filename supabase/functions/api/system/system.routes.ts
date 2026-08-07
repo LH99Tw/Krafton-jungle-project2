@@ -24,7 +24,7 @@ export const handleSystemRoute = (request: Request, path: string): Response | Pr
     return Response.redirect('https://krafton-jungle-project2-client.vercel.app/api-docs.html', 302)
   }
   if (path === '/health' || path === '/') {
-    return json({ status: 'ok', service: 'tistory-api', runtime: 'supabase-edge-functions' })
+    return json({ status: 'ok', service: 'jungletory-api', runtime: 'supabase-edge-functions' })
   }
   return null
 }
