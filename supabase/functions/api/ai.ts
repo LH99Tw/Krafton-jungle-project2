@@ -80,14 +80,19 @@ const nextKstReset = () => {
   return new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 15)).toISOString()
 }
 
-const messageJson = (row: Record<string, any>) => ({
-  id: row.id,
-  sender: row.role === 'USER' ? 'user' : 'ai',
-  body: row.body,
-  createdAt: row.created_at,
-  emotion: row.emotion ?? undefined,
-  source: row.status === 'FALLBACK' ? 'fallback' : row.role === 'SYSTEM' ? 'template' : 'model',
-})
+const messageJson = (row: Record<string, any>) => {
+  const sender = row.role === 'USER' ? 'user' : 'ai'
+  const suggestedAction = sender === 'ai' ? fallbackKnowledgeAction(selectServiceKnowledge(row.body, null)) : null
+  return {
+    id: row.id,
+    sender,
+    body: row.body,
+    createdAt: row.created_at,
+    emotion: row.emotion ?? undefined,
+    source: row.status === 'FALLBACK' ? 'fallback' : row.role === 'SYSTEM' ? 'template' : 'model',
+    suggestedAction,
+  }
+}
 
 const missionJson = (mission: Record<string, any>, progress?: Record<string, any>) => ({
   id: mission.id,
@@ -386,7 +391,8 @@ ${String(profile.memory_summary || '없음').slice(0, 500)}
   }
   const fallbackFact = fallbackKnowledgeFact(knowledgeMatches)
   const reply = generated ?? { reply: personaFallback(profile.character_id as CharacterId, fallbackFact), emotion: 'focused', memorySummary: profile.memory_summary ?? '', suggestedActionId: fallbackKnowledgeAction(knowledgeMatches)?.id ?? null }
-  const suggestedAction = allMissionsCompleted ? null : resolveSuggestedAction(reply.suggestedActionId, explicitKnowledgeMatches)
+  const resolvedAction = resolveSuggestedAction(reply.suggestedActionId, explicitKnowledgeMatches)
+  const suggestedAction = allMissionsCompleted && resolvedAction?.id === 'ai-missions' ? null : resolvedAction
   const { error: finishError } = await supabase.rpc('finish_ai_turn', {
     p_user_id: userId, p_message_id: reservation.messageId, p_reply: reply.reply, p_emotion: reply.emotion,
     p_memory_summary: reply.memorySummary, p_model: serverTemplate ? 'server-state' : generated ? model : 'local-fallback',

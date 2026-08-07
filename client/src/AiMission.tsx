@@ -44,7 +44,7 @@ export type AiActivity =
   | { type: 'post_progress'; milestone: 'title' | 'body' | 'classification' }
   | { type: 'market_detail_viewed'; itemId: string }
 
-export const AI_ACTIVITY_EVENT = 'tistory:activity'
+export const AI_ACTIVITY_EVENT = 'jungletory:activity'
 export const emitAiActivity = (activity: AiActivity) => window.dispatchEvent(new CustomEvent<AiActivity>(AI_ACTIVITY_EVENT, { detail: activity }))
 
 export const AI_CHARACTERS: AiCharacter[] = [
@@ -108,6 +108,7 @@ export function useAiMission(userId: number | null, api: Requester) {
   const [completion, setCompletion] = useState<MissionDefinition | null>(null)
   const [dock, setDock] = useState<'open' | 'minimized' | 'hidden'>('open')
   const previousCompleted = useRef(new Set<string>())
+  const completedAnimations = useRef(new Set<string>())
   const hydrated = useRef(false)
   const applyState = useCallback((next: AiServerState) => {
     const newlyCompleted = next.missions.find((mission) => mission.status === 'COMPLETED' && !previousCompleted.current.has(mission.id))
@@ -143,12 +144,14 @@ export function useAiMission(userId: number | null, api: Requester) {
   const startMission = async (mission: MissionDefinition) => { setLoading(true); setError(''); try { applyState(await api<AiServerState>(`/ai/missions/${mission.id}/start`, { method: 'POST' })); setDock('open'); return true } catch (cause) { setError((cause as Error).message); return false } finally { setLoading(false) } }
   const pauseMission = async (missionId: string) => { setLoading(true); setError(''); try { applyState(await api<AiServerState>(`/ai/missions/${missionId}/pause`, { method: 'POST' })) } catch (cause) { setError((cause as Error).message) } finally { setLoading(false) } }
   const clearHistory = async () => { setLoading(true); setError(''); try { await api('/ai/history', { method: 'DELETE' }); await refresh() } catch (cause) { setError((cause as Error).message) } finally { setLoading(false) } }
+  const shouldAnimateMessage = (message: AiMessage) => message.animate === true && !completedAnimations.current.has(message.id)
+  const completeMessageAnimation = (messageId: string) => completedAnimations.current.add(messageId)
   const sendMessage = async (body: string) => { setSending(true); setError(''); const optimistic: AiMessage = { id: crypto.randomUUID(), sender: 'user', body, createdAt: new Date().toISOString() }; setState((current) => ({ ...current, messages: [...current.messages, optimistic] })); try { const result = await api<{ reply: string; emotion: string; source: 'model' | 'fallback' | 'template'; suggestedAction: AiSuggestedAction | null; userRemainingTurns: number; globalRemainingTurns: number; availability: AiServerState['availability']; dailyLimitResetAt: string }>('/ai/messages', { method: 'POST', body: JSON.stringify({ body, idempotencyKey: optimistic.id, context: { pathname: window.location.pathname } }) }); setState((current) => ({ ...current, userRemainingTurns: result.userRemainingTurns, globalRemainingTurns: result.globalRemainingTurns, availability: result.availability, dailyLimitResetAt: result.dailyLimitResetAt, messages: [...current.messages, { id: crypto.randomUUID(), sender: 'ai', body: result.reply, emotion: result.emotion, source: result.source, suggestedAction: result.suggestedAction, animate: true, createdAt: new Date().toISOString() }] })) } catch (cause) { setState((current) => ({ ...current, messages: current.messages.filter((message) => message.id !== optimistic.id) })); setError((cause as Error).message); await refresh() } finally { setSending(false) } }
   const character = AI_CHARACTERS.find((item) => item.id === state.characterId) ?? null
   const currentMission = state.missions.find((mission) => mission.id === state.conversation?.missionId) ?? null
   const completedCount = state.missions.filter((mission) => mission.status === 'COMPLETED').length
   const latestSuggestedAction = [...state.messages].reverse().find((message) => message.sender === 'ai')?.suggestedAction ?? null
-  return { state, character, currentMission, completedCount, latestSuggestedAction, loading, sending, error, completion, dock, refresh, selectCharacter, startMission, pauseMission, clearHistory, sendMessage, setCompletion, setDock }
+  return { state, character, currentMission, completedCount, latestSuggestedAction, loading, sending, error, completion, dock, refresh, selectCharacter, startMission, pauseMission, clearHistory, sendMessage, shouldAnimateMessage, completeMessageAnimation, setCompletion, setDock }
 }
 
 type Controller = ReturnType<typeof useAiMission>
@@ -158,24 +161,39 @@ function CharacterCard({ entry, index, disabled, onSelect }: { entry: AiCharacte
   return <button disabled={disabled} className="ai-character-card" style={{ '--ai-accent': palette.accent, '--ai-soft': palette.soft } as React.CSSProperties} onClick={onSelect}><span className="ai-card-number">0{index + 1}</span><ProgressiveImage eager src={entry.image} alt={`${entry.name}, ${entry.role}`} /><span className="ai-card-shade" /><span className="ai-card-copy"><small>{entry.role}</small><strong>{entry.name}</strong><em>{entry.description}</em><b>이 캐릭터와 시작 <ArrowRight size={16} /></b></span></button>
 }
 
-function AiMessageBody({ message }: { message: AiMessage }) {
-  const [length, setLength] = useState(message.animate && !window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : message.body.length)
+function AiMessageBody({ message, animate, onAnimationComplete }: { message: AiMessage; animate: boolean; onAnimationComplete: () => void }) {
+  const [length, setLength] = useState(animate && !window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : message.body.length)
   useEffect(() => {
-    if (length >= message.body.length) return
+    if (length >= message.body.length) { if (animate) onAnimationComplete(); return }
     const timer = window.setInterval(() => setLength((current) => Math.min(message.body.length, current + 2)), 18)
     return () => window.clearInterval(timer)
-  }, [length, message.body.length])
+  }, [animate, length, message.body.length, onAnimationComplete])
   return <p>{message.body.slice(0, length)}</p>
 }
 
 export function AiMissionPage({ controller, nickname, go }: { controller: Controller; nickname: string; go: (route: string) => void }) {
-  const { state, character, currentMission, completedCount, loading, sending, error, selectCharacter, startMission, pauseMission, clearHistory, sendMessage } = controller
+  const { state, character, currentMission, completedCount, loading, sending, error, selectCharacter, startMission, pauseMission, clearHistory, sendMessage, shouldAnimateMessage, completeMessageAnimation } = controller
   const [choosing, setChoosing] = useState(false)
   const [consent, setConsent] = useState(false)
   const [input, setInput] = useState('')
   const logRef = useRef<HTMLDivElement>(null)
   const palette = useImagePalette(character?.image ?? '', character?.accent ?? '#ef9bb4')
-  useEffect(() => { logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: 'smooth' }) }, [state.messages, sending])
+  const scrollToLatest = useCallback((behavior: ScrollBehavior = 'auto') => {
+    const log = logRef.current
+    if (log) log.scrollTo({ top: log.scrollHeight, behavior })
+  }, [])
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => scrollToLatest(state.messages.length > 0 ? 'smooth' : 'auto'))
+    return () => window.cancelAnimationFrame(frame)
+  }, [scrollToLatest, sending, state.messages])
+  useEffect(() => {
+    const log = logRef.current
+    if (!log) return
+    const observer = new MutationObserver(() => scrollToLatest())
+    observer.observe(log, { childList: true, characterData: true, subtree: true })
+    scrollToLatest()
+    return () => observer.disconnect()
+  }, [scrollToLatest])
   useEffect(() => { if (character) setChoosing(false) }, [character])
   useEffect(() => { if (state.consented) setConsent(true) }, [state.consented])
   if (choosing || !character) return <main id="main" className="ai-stage ai-casting"><div className="ai-casting-inner"><header><p>AI COMPANION · MISSION LAB</p><h1>{nickname}님의<br />동료를 선택하세요.</h1><span>대화는 외부 AI로 처리되며, 최근 대화와 민감정보를 제외한 취향 요약이 저장됩니다.</span></header><div className="ai-character-grid">{AI_CHARACTERS.map((entry, index) => <CharacterCard disabled={!consent || loading} entry={entry} index={index} onSelect={() => void selectCharacter(entry.id).then(() => setChoosing(false))} key={entry.id} />)}</div><label className="ai-consent"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /> AI 처리와 대화 저장 범위를 확인했으며 이에 동의합니다.</label>{error && <p className="form-error">{error}</p>}</div></main>
@@ -184,16 +202,16 @@ export function AiMissionPage({ controller, nickname, go }: { controller: Contro
   const globalStatus = state.globalRemainingTurns === 0 ? '오늘 마감' : state.globalRemainingTurns <= 40 ? '마감 임박' : '오늘 AI 대화 여유 있음'
   return <main id="main" className="ai-stage ai-room" style={{ '--ai-accent': palette.accent, '--ai-soft': palette.soft } as React.CSSProperties}>
     <section className="ai-portrait-pane"><ProgressiveImage src={character.image} alt="" /><div className="ai-portrait-overlay" /><div className="ai-character-meta"><p>YOUR AI COMPANION</p><h1>{character.name}</h1><span>{character.role}</span><div><i /> {state.conversation?.mode === 'MISSION' ? '미션 수행 중' : '일반 대화'}</div></div><button className="ai-switch" onClick={() => setChoosing(true)}><RotateCcw size={14} /> 캐릭터 변경</button></section>
-    <section className="ai-chat-pane"><header><div><span className="ai-online" /><div><strong>{character.name}</strong><small>{currentMission ? `‘${currentMission.title}’ 함께 수행 중` : '일반 대화 모드'}</small></div></div><span>내 남은 대화 {state.userRemainingTurns}/20 · {globalStatus}</span></header><div className="ai-chat-log" ref={logRef}>{state.messages.map((entry) => <div className={`ai-bubble ${entry.sender}`} key={entry.id}>{entry.sender === 'ai' && <ProgressiveImage src={character.image} alt="" />}<div className="ai-bubble-content"><AiMessageBody message={entry} />{entry.suggestedAction && <button className="ai-message-action" onClick={() => go(entry.suggestedAction!.route)}>{entry.suggestedAction.label} <ArrowRight size={13} /></button>}</div></div>)}{sending && <div className="ai-bubble ai"><ProgressiveImage src={character.image} alt="" /><p>생각을 정리하고 있어…</p></div>}</div>{limitText && <p className="ai-limit-message" role="status">{limitText}</p>}{error && <p className="form-error">{error}</p>}<form className="ai-chat-form" onSubmit={submit}><input value={input} onChange={(event) => setInput(event.target.value)} maxLength={300} disabled={sending || state.availability !== 'AVAILABLE'} placeholder={limitText || `${character.name}에게 무엇이든 말해보세요`} /><button aria-label="메시지 보내기" disabled={!input.trim() || sending || state.availability !== 'AVAILABLE'}><Send size={17} /></button></form><div className="ai-suggests">{currentMission && <><button onClick={() => go(currentMission.route)}>다음 행동 열기</button><button onClick={() => void pauseMission(currentMission.id)}>일반 대화로 돌아가기</button></>}<button disabled={loading} onClick={() => { if (window.confirm('AI 대화 기록과 기억 요약을 삭제할까요?')) void clearHistory() }}>대화 기억 삭제</button></div></section>
+    <section className="ai-chat-pane"><header><div><span className="ai-online" /><div><strong>{character.name}</strong><small>{currentMission ? `‘${currentMission.title}’ 함께 수행 중` : '일반 대화 모드'}</small></div></div><span>내 남은 대화 {state.userRemainingTurns}/20 · {globalStatus}</span></header><div className="ai-chat-log" ref={logRef}>{state.messages.map((entry) => <div className={`ai-bubble ${entry.sender}`} key={entry.id}>{entry.sender === 'ai' && <ProgressiveImage src={character.image} alt="" />}<div className="ai-bubble-content"><AiMessageBody message={entry} animate={shouldAnimateMessage(entry)} onAnimationComplete={() => completeMessageAnimation(entry.id)} />{entry.suggestedAction && <button className="ai-message-action" onClick={() => go(entry.suggestedAction!.route)}>{entry.suggestedAction.label} <ArrowRight size={13} /></button>}</div></div>)}{sending && <div className="ai-bubble ai"><ProgressiveImage src={character.image} alt="" /><p>생각을 정리하고 있어…</p></div>}</div>{limitText && <p className="ai-limit-message" role="status">{limitText}</p>}{error && <p className="form-error">{error}</p>}<form className="ai-chat-form" onSubmit={submit}><input value={input} onChange={(event) => setInput(event.target.value)} maxLength={300} disabled={sending || state.availability !== 'AVAILABLE'} placeholder={limitText || `${character.name}에게 무엇이든 말해보세요`} /><button aria-label="메시지 보내기" disabled={!input.trim() || sending || state.availability !== 'AVAILABLE'}><Send size={17} /></button></form><div className="ai-suggests">{currentMission && <><button onClick={() => go(currentMission.route)}>다음 행동 열기</button><button onClick={() => void pauseMission(currentMission.id)}>일반 대화로 돌아가기</button></>}<button disabled={loading} onClick={() => { if (window.confirm('AI 대화 기록과 기억 요약을 삭제할까요?')) void clearHistory() }}>대화 기억 삭제</button></div></section>
     <aside className="ai-mission-pane"><header><p>MISSION QUEUE</p><span>{completedCount} / {state.missions.length}</span></header>{currentMission ? <div className="ai-current-mission"><small>MISSION MODE · {currentMission.index}</small><h2>{currentMission.title}</h2><p>{currentMission.description}</p><strong>+{currentMission.reward}P <em>완료 시 지급</em></strong><button onClick={() => go(currentMission.route)}>같이 수행하기 <ArrowRight size={16} /></button></div> : <div className="ai-all-clear"><Sparkles size={28} /><h2>함께할 미션을 골라보세요</h2><p>카드를 누르면 캐릭터와 미션 모드로 전환됩니다.</p></div>}<div className="ai-mission-list">{state.missions.map((mission) => { const done = mission.status === 'COMPLETED'; return <button disabled={done || loading} className={done ? 'done' : currentMission?.id === mission.id ? 'active' : ''} key={mission.id} onClick={() => void startMission(mission).then((started) => started && go(mission.route))}><span>{done ? <Check size={14} /> : mission.index}</span><div><strong>{mission.title}</strong><small>+{mission.reward}P · {done ? '지급 완료' : '시작하기'}</small></div></button> })}</div><footer>미션 완료는 실제 서비스 활동으로 확인되며<br />보상은 한 번만 지급됩니다.</footer></aside>
   </main>
 }
 
-export function AiCompanionDock({ controller, path, go }: { controller: Controller; path: string; go: (route: string) => void }) {
+export function AiCompanionDock({ controller, path, go, enabled, onDismiss }: { controller: Controller; path: string; go: (route: string) => void; enabled: boolean; onDismiss: () => void }) {
   const { character, currentMission, latestSuggestedAction, completion, dock, setCompletion, setDock } = controller
   const palette = useImagePalette(character?.image ?? '', character?.accent ?? '#ef9bb4')
-  if (!character || path === '/ai' || (dock === 'hidden' && !completion)) return null
+  if (!enabled || !character || path === '/ai' || (dock === 'hidden' && !completion)) return null
   if (dock === 'minimized' && !completion) return <button className="ai-dock-min" aria-label="AI 동반자 열기" style={{ '--ai-accent': palette.accent } as React.CSSProperties} onClick={() => setDock('open')}><ProgressiveImage src={character.image} alt="" /><MessageCircle size={16} /></button>
   const mission = completion ?? currentMission
-  return <aside className={`ai-dock${completion ? ' success' : ''}`} style={{ '--ai-accent': palette.accent, '--ai-soft': palette.soft } as React.CSSProperties} aria-live="polite"><ProgressiveImage src={character.image} alt="" /><div><small>{completion ? 'MISSION COMPLETE' : currentMission ? 'MISSION MODE' : `WITH ${character.name}`}</small><strong>{completion ? `${mission?.title} 완료!` : mission?.title ?? '일반 대화 중'}</strong><p>{completion ? `${character.success[0]} +${mission?.reward ?? 0}P가 지급됐어.` : mission?.description ?? '필요할 때 언제든 이야기해 주세요.'}</p>{!completion && latestSuggestedAction && path !== latestSuggestedAction.route && <button onClick={() => go(latestSuggestedAction.route)}>{latestSuggestedAction.label} <ArrowRight size={13} /></button>}<button onClick={() => go('/ai')}>AI 공간 열기 <ArrowRight size={13} /></button></div><div className="ai-dock-controls"><button aria-label="최소화" onClick={() => { setCompletion(null); setDock('minimized') }}><ChevronDown size={15} /></button><button aria-label="닫기" onClick={() => { setCompletion(null); setDock('hidden') }}><X size={15} /></button></div></aside>
+  return <aside className={`ai-dock${completion ? ' success' : ''}`} style={{ '--ai-accent': palette.accent, '--ai-soft': palette.soft } as React.CSSProperties} aria-live="polite"><ProgressiveImage src={character.image} alt="" /><div><small>{completion ? 'MISSION COMPLETE' : currentMission ? 'MISSION MODE' : `WITH ${character.name}`}</small><strong>{completion ? `${mission?.title} 완료!` : mission?.title ?? '일반 대화 중'}</strong><p>{completion ? `${character.success[0]} +${mission?.reward ?? 0}P가 지급됐어.` : mission?.description ?? '필요할 때 언제든 이야기해 주세요.'}</p>{!completion && latestSuggestedAction && path !== latestSuggestedAction.route && <button onClick={() => go(latestSuggestedAction.route)}>{latestSuggestedAction.label} <ArrowRight size={13} /></button>}<button onClick={() => go('/ai')}>AI 공간 열기 <ArrowRight size={13} /></button></div><div className="ai-dock-controls"><button aria-label="최소화" onClick={() => { setCompletion(null); setDock('minimized') }}><ChevronDown size={15} /></button><button aria-label="닫기" onClick={() => { setCompletion(null); setDock('hidden'); onDismiss() }}><X size={15} /></button></div></aside>
 }

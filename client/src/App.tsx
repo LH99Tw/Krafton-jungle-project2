@@ -1,15 +1,18 @@
-import { createContext, FormEvent, PointerEvent as ReactPointerEvent, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, FormEvent, PointerEvent as ReactPointerEvent, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bell, BookOpen, Bookmark, Check, ChevronDown, ChevronRight, Clipboard, Clock3, Compass, Eye, FileText, Heart, Image, Layers3, LayoutDashboard, LineChart, Lock, Menu, MessageCircle, Package, Palette, Pencil, PenLine, RotateCcw, Search, Send, Settings, ShoppingCart, Sparkles, Tags, TicketPercent, Trash2, Upload, Volume2, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bell, BookOpen, Bookmark, Check, ChevronDown, ChevronLeft, ChevronRight, Clipboard, Clock3, Compass, Eye, FileText, Heart, Image, Layers3, LayoutDashboard, LineChart, Lock, LogOut, Menu, MessageCircle, Package, Palette, Pencil, PenLine, RotateCcw, Search, Send, Settings, ShoppingCart, Sparkles, Tags, TicketPercent, Trash2, Upload, Volume2, X } from "lucide-react";
 import { AiCompanionDock, AiMissionPage, emitAiActivity, useAiMission } from "./AiMission";
 import { assetUrl } from "./assets";
 import { ProgressiveImage } from "./ProgressiveImage";
 import { clearUserQueryState, subscribeMarketChatChanges } from "./query-client";
 import { RichContent, RichTextEditor, type RichDocument, type UploadedPostImage } from "./RichTextEditor";
+import AdminPage from "./AdminPage";
 type User = {
   id: number;
   email: string;
   nickname: string;
+  accountStatus?: "ACTIVE" | "BLOCKED" | "WITHDRAWN";
+  passwordChangeRequired?: boolean;
   interests?: string[];
   blog?: {
     id: number;
@@ -31,6 +34,7 @@ type Blog = {
   owner?: { id: number; nickname: string };
   isSubscribed?: boolean;
   subscriberCount?: number;
+  isOfficial?: boolean;
 };
 type BlogCategory = {
   id: number;
@@ -110,7 +114,12 @@ type ChatMessage = {
   body: string;
   readAt?: string | null;
   createdAt: string;
+  deletedAt?: string | null;
+  pending?: boolean;
+  replyTo?: { id: number | string; body?: string | null; senderId?: number | string } | null;
+  reactions?: { type: ChatReaction; count: number; reactedByMe: boolean }[];
 };
+type ChatReaction = "HEART" | "CHECK" | "THUMBS_UP" | "SAD" | "COOL" | "LAUGH";
 type WalletTransaction = {
   id: number;
   orderId?: number;
@@ -196,7 +205,8 @@ type NotificationData = {
   pagination: Page;
 };
 
-const AUTH_SNAPSHOT_KEY = "tistory.auth-display.v1";
+const AUTH_SNAPSHOT_KEY = "jungletory.auth-display.v1";
+const AI_DOCK_STATE_KEY = "jungletory.ai-dock-state.v1";
 const AuthBootstrapContext = createContext<{
   pending: boolean;
   cachedUser: User | null;
@@ -220,8 +230,21 @@ const writeAuthSnapshot = (user: User) => {
     }),
   );
 };
+const readAiDockEnabled = (userId: number) => {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(AI_DOCK_STATE_KEY) ?? "null") as { userId?: number; enabled?: boolean } | null;
+    return value?.userId === userId && value.enabled === true;
+  } catch {
+    return false;
+  }
+};
+const writeAiDockEnabled = (userId: number, enabled: boolean) => {
+  if (enabled) sessionStorage.setItem(AI_DOCK_STATE_KEY, JSON.stringify({ userId, enabled: true }));
+  else sessionStorage.removeItem(AI_DOCK_STATE_KEY);
+};
 const clearClientAuthState = () => {
   sessionStorage.removeItem(AUTH_SNAPSHOT_KEY);
+  sessionStorage.removeItem(AI_DOCK_STATE_KEY);
   clearUserQueryState();
   csrfToken = "";
 };
@@ -376,7 +399,7 @@ const popularCharacters = [
   ["스누피", "스누피", assetUrl("characters/snoopy.webp"), "#e7e4dc"],
 ];
 
-const RECENT_MARKET_KEY = "tistory.recent-market-items";
+const RECENT_MARKET_KEY = "jungletory.recent-market-items";
 const readRecentMarketItems = () => {
   try {
     return (JSON.parse(localStorage.getItem(RECENT_MARKET_KEY) ?? "[]") as MarketItem[]).slice(0, 20);
@@ -579,7 +602,7 @@ function Header({ go, user, onLogin }: { go: (to: string) => void; user: User | 
       <header className={fixed ? "site-header is-fixed" : "site-header"} data-od-id="site-header">
         <div className="header-inner">
           <button className="brand" data-od-id="brand" onClick={() => navigate("/")}>
-            티스토리
+            정글토리
           </button>
           <nav className={mobile ? "main-nav open" : "main-nav"} aria-label="주요 메뉴">
             {[
@@ -845,9 +868,9 @@ function Footer({ go }: { go: (to: string) => void }) {
     <footer className="site-footer">
       <div className="footer-inner">
         <div className="footer-brand">
-          <strong>TISTORY</strong>
+          <strong>JUNGLETORY</strong>
           <p>
-            티스토리는 Daum에서 <ProgressiveImage src={assetUrl("tistory/heart.png")} alt="사랑" /> 을 담아 만듭니다.
+            정글토리는 Daum에서 <ProgressiveImage src={assetUrl("jungletory/heart.png")} alt="사랑" /> 을 담아 만듭니다.
           </p>
           <small>© Daum Corp.</small>
         </div>
@@ -882,7 +905,7 @@ function FooterGroup({ title, links, go }: { title: string; links: string[][]; g
 function Pager({ page, total, onChange, label }: { page: number; total: number; onChange: (page: number) => void; label: string }) {
   const move = (delta: number) => onChange(((page - 1 + delta + total) % total) + 1);
   return (
-    <div className="tistory-pager" aria-label={label}>
+    <div className="jungletory-pager" aria-label={label}>
       <button onClick={() => move(-1)} aria-label="이전 페이지">
         <ChevronDown size={14} />
       </button>
@@ -986,6 +1009,8 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
   const [category, setCategory] = useState("전체");
   const [categoryPage, setCategoryPage] = useState(1);
   const [tipPage, setTipPage] = useState(1);
+  const [bannerPage, setBannerPage] = useState(0);
+  const [bannerHover, setBannerHover] = useState(false);
   const { data: home = null } = useQuery({
     queryKey: ["home"],
     queryFn: () => request<HomeData>("/home"),
@@ -999,18 +1024,17 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
   const latestPosts = fillPostSlots(home?.latestPosts, fallbackLatest, 5);
   const popularMarketItems = fillMarketSlots(home?.marketItems, 5);
   const shownTips = tipPage === 1 ? sidebarTips : [...sidebarTips].reverse();
-  const banner: HomeBanner = home?.banners[0] ?? {
-    id: 0,
-    eyebrow: "NOTICE · EVENT",
-    title: "최애를 기록하고\n취향을 나누는 새로운 공간",
-    description: "팬들이 함께 만드는 굿즈 이야기와 새로운 이벤트를 만나보세요.",
-    imageUrl: null,
-    ctaLabel: "이벤트 자세히 보기",
-    ctaUrl: "/notice/2702",
-    startsAt: "",
-    position: 0,
-    isActive: true,
-  };
+  const bannerPlaceholders: HomeBanner[] = [
+    { id:-1,eyebrow:"NOTICE · EVENT",title:"최애를 기록하고\n취향을 나누는 새로운 공간",description:"팬들이 함께 만드는 굿즈 이야기와 새로운 이벤트를 만나보세요.",imageUrl:null,ctaLabel:"이벤트 자세히 보기",ctaUrl:"/blog/admin",startsAt:"",position:0,isActive:true },
+    { id:-2,eyebrow:"FANDOM · STORY",title:"좋아하는 마음이\n한 편의 기록이 되는 곳",description:"팬들의 새로운 이야기와 취향을 천천히 둘러보세요.",imageUrl:null,ctaLabel:"새로운 글 둘러보기",ctaUrl:"/feed",startsAt:"",position:1,isActive:true },
+    { id:-3,eyebrow:"GOODS · MARKET",title:"소중히 간직한 굿즈의\n다음 주인을 찾아요",description:"취향이 맞는 팬과 안전하게 굿즈를 나눠보세요.",imageUrl:null,ctaLabel:"마켓 둘러보기",ctaUrl:"/market",startsAt:"",position:2,isActive:true },
+    { id:-4,eyebrow:"FAN · COMMUNITY",title:"같은 장면을 좋아하는\n사람들과 만나는 순간",description:"오늘의 감상과 오래 간직한 이야기를 함께 나눠보세요.",imageUrl:null,ctaLabel:"팬 이야기 만나기",ctaUrl:"/feed",startsAt:"",position:3,isActive:true },
+    { id:-5,eyebrow:"JUNGLETORY · PICK",title:"오늘 발견한 취향을\n나만의 방식으로 기록해요",description:"사진과 글로 완성된 다채로운 팬 기록을 만나보세요.",imageUrl:null,ctaLabel:"추천 기록 보기",ctaUrl:"/",startsAt:"",position:4,isActive:true },
+  ];
+  const connectedBanners = (home?.banners ?? []).slice(0,5);
+  const bannerSlides = [...connectedBanners, ...bannerPlaceholders.slice(connectedBanners.length)].slice(0,5);
+  useEffect(()=>{ if(bannerHover)return; const timer=window.setInterval(()=>setBannerPage((page)=>(page+1)%5),3000); return()=>window.clearInterval(timer) },[bannerHover]);
+  useEffect(()=>{ if(bannerPage>=bannerSlides.length)setBannerPage(0) },[bannerPage,bannerSlides.length]);
   const openPost = (post: Post) => (post.id > 0 ? go(`/post/${post.id}`) : go("/feed"));
   const tags = (post: Post) => (
     <span className="home-post-tags">
@@ -1026,30 +1050,44 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
       <main id="main" className="home-main">
         <div className="home-frame">
           <div className="home-content">
-            <section className="today-tistory">
-              <div
-                className={`today-card${banner.imageUrl ? " has-image" : ""}`}
-                style={
-                  banner.imageUrl
-                    ? {
-                        backgroundImage: `linear-gradient(90deg,rgba(16,19,24,.75),rgba(16,19,24,.08)),url(${banner.imageUrl})`,
-                      }
-                    : { backgroundColor: solidColor(0) }
-                }
-              >
-                <div>
-                  <p>{banner.eyebrow}</p>
-                  <h1>{banner.title}</h1>
-                  <span>{banner.description}</span>
-                  <button onClick={() => go(banner.ctaUrl)}>{banner.ctaLabel}</button>
+            <section className="today-jungletory" aria-roledescription="carousel" aria-label="이벤트 및 주요 소식" onMouseEnter={()=>setBannerHover(true)} onMouseLeave={()=>setBannerHover(false)}>
+              {bannerSlides.map((slide,index)=>(
+                <div
+                  aria-hidden={bannerPage!==index}
+                  className={`today-card today-slide-${index}${slide.imageUrl ? " has-image" : ""}${bannerPage===index ? " active" : ""}`}
+                  key={slide.id}
+                  style={
+                    slide.imageUrl
+                      ? {
+                          backgroundImage: `linear-gradient(90deg,rgba(16,19,24,.75),rgba(16,19,24,.08)),url(${slide.imageUrl})`,
+                        }
+                      : { backgroundColor: solidColor(index) }
+                  }
+                >
+                  <div>
+                    <p>{slide.eyebrow}</p>
+                    <h1>{slide.title}</h1>
+                    <span>{slide.description}</span>
+                    <button tabIndex={bannerPage===index ? 0 : -1} onClick={() => go(slide.ctaUrl)}>{slide.ctaLabel}</button>
+                  </div>
                 </div>
-              </div>
-              <div className="today-dots">
-                <i />
-                <i />
-                <b />
-                <i />
-              </div>
+              ))}
+              <svg className="today-goo-defs" aria-hidden="true" focusable="false">
+                <defs>
+                  <filter id="today-goo" x="-200%" y="-200%" width="500%" height="500%" colorInterpolationFilters="sRGB">
+                    <feGaussianBlur in="SourceGraphic" stdDeviation="11" result="blur" />
+                    <feColorMatrix
+                      in="blur"
+                      mode="matrix"
+                      values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 32 -11"
+                      result="goo"
+                    />
+                  </filter>
+                </defs>
+              </svg>
+              <button className="today-nav today-nav-prev" aria-label="이전 이벤트" onClick={()=>setBannerPage((page)=>(page+4)%5)}><span/><ChevronLeft size={22}/></button>
+              <button className="today-nav today-nav-next" aria-label="다음 이벤트" onClick={()=>setBannerPage((page)=>(page+1)%5)}><span/><ChevronRight size={22}/></button>
+              <div className="today-dots" role="tablist" aria-label="이벤트 페이지 선택">{bannerSlides.map((slide,index)=><button key={slide.id} role="tab" aria-selected={bannerPage===index} aria-label={`${index+1}번 이벤트`} className={bannerPage===index?"active":""} onClick={()=>setBannerPage(index)}/>)}</div>
             </section>
 
             <section className="best-popularity" aria-label="추천글">
@@ -1126,12 +1164,12 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
             <HomeEditorial title="최애 이야기를 나눠요" description="구매 후기부터 전시와 보관까지 팬들의 기록을 만나보세요." posts={latestPosts} go={go} />
           </div>
 
-          <aside className="tistory-right">
+          <aside className="jungletory-right">
             {user ? (
               <AccountPanel user={user} go={go} />
             ) : (
-              <section className="my-tistory">
-                <p>티스토리에 로그인하시고 더 많은 기능을 이용해보세요!</p>
+              <section className="my-jungletory">
+                <p>정글토리에 로그인하시고 더 많은 기능을 이용해보세요!</p>
                 <button onClick={onLogin}>✉　이메일로 시작하기</button>
               </section>
             )}
@@ -1267,7 +1305,7 @@ function Feed({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
       <main id="main" className="page-main">
         <div className="section-inner">
           <div className="page-intro">
-            <p className="eyebrow">TISTORY FEED</p>
+            <p className="eyebrow">JUNGLETORY FEED</p>
             <h1>
               {user ? (
                 <>
@@ -1532,13 +1570,13 @@ function Auth({ mode, go, onSuccess }: { mode: "login" | "signup"; go: (to: stri
 
   if (!signup)
     return (
-      <main id="main" className="tistory-auth-page">
+      <main id="main" className="jungletory-auth-page">
         <button className="standalone-close" onClick={() => go("/")} aria-label="로그인 닫기">
           <X size={24} />
         </button>
-        <section className="tistory-auth-card credentials">
+        <section className="jungletory-auth-card credentials">
           <button className="login-wordmark" onClick={() => go("/")}>
-            TISTORY
+            JUNGLETORY
           </button>
           <p className="credential-title">이메일로 로그인</p>
           <p className="login-description">회원가입할 때 등록한 이메일과 비밀번호를 입력하세요.</p>
@@ -1594,7 +1632,7 @@ function Auth({ mode, go, onSuccess }: { mode: "login" | "signup"; go: (to: stri
         >
           <header className="interest-step-top">
             <button type="button" className="auth-brand" onClick={() => go("/")}>
-              티스토리
+              정글토리
             </button>
             <span>관심분야 설정</span>
           </header>
@@ -1669,7 +1707,7 @@ function Auth({ mode, go, onSuccess }: { mode: "login" | "signup"; go: (to: stri
     <main id="main" className="auth-page">
       <div className="auth-panel">
         <button className="auth-brand" onClick={() => go("/")}>
-          티스토리
+          정글토리
         </button>
         <p className="eyebrow">CREATE YOUR SPACE · STEP 01</p>
         <h1>
@@ -1733,7 +1771,7 @@ function Agreement({ go, onDecided }: { go: (to: string) => void; onDecided: () 
   return (
     <main id="main" className="agreement-page">
       <section className="agreement-panel">
-        <h1>[선택] 티스토리 개인정보 제 3자 제공동의</h1>
+        <h1>[선택] 정글토리 개인정보 제 3자 제공동의</h1>
         <table>
           <tbody>
             <tr>
@@ -1746,7 +1784,7 @@ function Agreement({ go, onDecided }: { go: (to: string) => void; onDecided: () 
             </tr>
             <tr>
               <th>제공 항목</th>
-              <td>블로그 방문, 활동 기록 등 티스토리 서비스 이용내역</td>
+              <td>블로그 방문, 활동 기록 등 정글토리 서비스 이용내역</td>
             </tr>
             <tr>
               <th>보유 및 이용 기간</th>
@@ -1757,7 +1795,7 @@ function Agreement({ go, onDecided }: { go: (to: string) => void; onDecided: () 
           </tbody>
         </table>
         <p>
-          개인정보 제공에 대한 동의를 거부할 권리가 있으며, 동의를 거부하더라도 티스토리 서비스를 이용할 수 있습니다.
+          개인정보 제공에 대한 동의를 거부할 권리가 있으며, 동의를 거부하더라도 정글토리 서비스를 이용할 수 있습니다.
           <br />
           자세한 내용은 <button>개인정보처리방침</button>을 확인해주세요.
         </p>
@@ -1779,6 +1817,13 @@ function Agreement({ go, onDecided }: { go: (to: string) => void; onDecided: () 
   );
 }
 
+function PasswordChange({ go, onDone }: { go: (to: string) => void; onDone: () => void }) {
+  const [form, setForm] = useState({ currentPassword: "", password: "", passwordConfirm: "" });
+  const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
+  const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); setError(""); try { await request("/auth/change-password", { method: "POST", body: JSON.stringify(form) }); onDone(); go("/"); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } };
+  return <main className="jungletory-auth-page"><section className="jungletory-auth-card credentials"><strong className="login-wordmark">JUNGLETORY</strong><p className="credential-title">새 비밀번호 설정</p><p className="login-description">관리자가 발급한 임시 비밀번호를 변경해야 서비스를 계속 이용할 수 있습니다.</p><form className="credential-form" onSubmit={submit}><label><span>임시 비밀번호</span><input autoFocus required type="password" value={form.currentPassword} onChange={(e)=>setForm({...form,currentPassword:e.target.value})}/></label><label><span>새 비밀번호</span><input required minLength={8} type="password" value={form.password} onChange={(e)=>setForm({...form,password:e.target.value})}/></label><label><span>새 비밀번호 확인</span><input required minLength={8} type="password" value={form.passwordConfirm} onChange={(e)=>setForm({...form,passwordConfirm:e.target.value})}/></label>{error&&<p className="form-error">{error}</p>}<button className="credential-submit" disabled={busy}>{busy?"변경 중…":"비밀번호 변경"}</button></form></section></main>;
+}
+
 function NoticeArticle({ go }: { go: (to: string) => void }) {
   return (
     <div className="notice-blog-page">
@@ -1786,7 +1831,7 @@ function NoticeArticle({ go }: { go: (to: string) => void }) {
         본문 바로가기
       </a>
       <header className="notice-blog-header">
-        <button onClick={() => go("/")}>TISTORY</button>
+        <button onClick={() => go("/")}>JUNGLETORY</button>
         <button className="notice-menu" aria-label="메뉴">
           <Menu size={22} />
         </button>
@@ -1797,12 +1842,12 @@ function NoticeArticle({ go }: { go: (to: string) => void }) {
             <span className="notice-category">운영 정책 안내</span>
             <h1>[안내] 불법촬영물 유통 방지 조치 대상 확대 안내</h1>
             <p>
-              <strong>TISTORY</strong>
+              <strong>JUNGLETORY</strong>
               <time>2026. 6. 25. 11:08</time>
             </p>
           </div>
           <article className="notice-body">
-            <p>안녕하세요. 티스토리입니다.</p>
+            <p>안녕하세요. 정글토리입니다.</p>
             <p>관련 법령에 따라 불법촬영물 등의 유통을 방지하고 이용자를 보호하기 위한 기술적·관리적 조치를 시행하고 있습니다.</p>
             <p>불법촬영물 유통 방지 조치의 적용 대상이 기존 동영상 파일에서 이미지 파일까지 확대됩니다. 새로운 의무가 추가되는 것이 아니라 기존 조치의 적용 범위가 이미지까지 넓어지는 변경입니다.</p>
             <p>정보통신망에서 불법촬영물을 유통하면 게시물 삭제와 검색 제한 등 필요한 조치가 적용되며 관련 법률에 따라 처벌될 수 있으니 서비스 이용 시 유의해 주세요.</p>
@@ -1851,9 +1896,9 @@ function NoticeArticle({ go }: { go: (to: string) => void }) {
         </div>
       </main>
       <footer className="notice-blog-footer">
-        <strong>TISTORY</strong>
-        <span>티스토리의 새로운 소식을 전합니다.</span>
-        <button onClick={() => go("/")}>티스토리 홈으로</button>
+        <strong>JUNGLETORY</strong>
+        <span>정글토리의 새로운 소식을 전합니다.</span>
+        <button onClick={() => go("/")}>정글토리 홈으로</button>
       </footer>
     </div>
   );
@@ -1943,7 +1988,7 @@ function BlogSetup({ go, onDone }: { go: (to: string) => void; onDone: (blog: Bl
                 }}
                 placeholder="jungle-dev"
               />
-              <span>.tistory.com</span>
+              <span>.jungletory.com</span>
               <button type="button" onClick={check}>
                 중복 확인
               </button>
@@ -2010,6 +2055,7 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
   };
   const posts = data?.posts.items ?? [];
   const market = data?.market.items ?? [];
+  const official = slug === "admin" || data?.blog.isOfficial === true;
   const ownerName = data?.blog.owner?.nickname ?? slug;
   const statusLabel: Record<MarketItem["status"], string> = {
     SELLING: "판매 중",
@@ -2022,13 +2068,13 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
         <div className="creator-blog-shell">
           {error && <p className="creator-blog-error">{error}</p>}
           <div className="creator-blog-top">
-            <aside className="creator-profile-panel">
-              <div className={`creator-profile-image${data?.blog.profileImageUrl ? " has-photo" : ""}`} style={data?.blog.profileImageUrl ? { backgroundImage: `url(${data.blog.profileImageUrl})` } : undefined} aria-label={`${ownerName} 프로필 이미지`} />
-              <p className="creator-kicker">CREATOR JOURNAL</p>
-              <h1 className="font-jua">{data?.blog.name ?? slug}</h1>
-              <span className="creator-handle">@{data?.blog.slug ?? slug}</span>
-              <p className="creator-description">{data?.blog.description || blankPlaceholder}</p>
-              <dl className="creator-stats">
+            <aside className={`creator-profile-panel${official ? " official-profile-panel" : ""}`}>
+              {!official && <div className={`creator-profile-image${data?.blog.profileImageUrl ? " has-photo" : ""}`} style={data?.blog.profileImageUrl ? { backgroundImage: `url(${data.blog.profileImageUrl})` } : undefined} aria-label={`${ownerName} 프로필 이미지`} />}
+              {!official && <p className="creator-kicker">CREATOR JOURNAL</p>}
+              <h1 className="font-jua">{official ? "관리자" : data?.blog.name ?? slug}</h1>
+              {!official && <span className="creator-handle">@{data?.blog.slug ?? slug}</span>}
+              <p className="creator-description">{official ? "서비스 소식과 주요 안내를 전하는 공식 공지 블로그입니다." : data?.blog.description || blankPlaceholder}</p>
+              {!official && <dl className="creator-stats">
                 <div>
                   <dt className="font-jua">{data?.posts.pagination.totalItems ?? posts.length}</dt>
                   <dd className="font-jua">글</dd>
@@ -2041,8 +2087,8 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
                   <dt className="font-jua">{data?.market.pagination.totalItems ?? market.length}</dt>
                   <dd className="font-jua">상품</dd>
                 </div>
-              </dl>
-              {mine ? (
+              </dl>}
+              {official ? <span className="official-blog-badge"><i aria-hidden="true">T</i><span><b>공식 운영 블로그</b><small>Official notice channel</small></span></span> : mine ? (
                 <button className="creator-subscribe font-jua" onClick={() => go("/blog/me/manage")}>
                   블로그 관리
                 </button>
@@ -2055,10 +2101,10 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
             <section className="creator-editorial">
               <header className="creator-section-head">
                 <div>
-                  <p className="creator-kicker">LATEST STORIES</p>
-                  <h2 className="font-jua">요즘의 기록</h2>
+                  {!official && <p className="creator-kicker">LATEST STORIES</p>}
+                  <h2 className="font-jua">{official ? "공지사항" : "요즘의 기록"}</h2>
                 </div>
-                {mine && (
+                {mine && !official && (
                   <div className="creator-section-actions">
                     <button className="font-jua" onClick={() => go("/market/new")}>새 상품 등록 ↗</button>
                     <button className="font-jua" onClick={() => go("/write")}>새 글 쓰기 ↗</button>
@@ -2071,7 +2117,7 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
                 <div className="creator-editorial-grid">
                   <div className="creator-story-list">
                     {posts.slice(0, 3).map((post, index) => (
-                      <button className="creator-story" key={post.id} onClick={() => go(`/post/${post.id}`)}>
+                      <button className="creator-story" key={post.id} onClick={() => go(official ? `/notice/${post.id}` : `/post/${post.id}`)}>
                         <small>{index === 0 ? "LATEST" : "STORY 0" + (index + 1)}</small>
                         <h3 className="font-jua">{post.title}</h3>
                         <time>
@@ -2083,7 +2129,7 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
                   </div>
                   <div className="creator-gallery" aria-label="최근 글 갤러리">
                     {posts.slice(0, 9).map((post, index) => (
-                      <button className={`creator-gallery-tile creator-tone-${index % 9}${post.thumbnailUrl ? " has-image" : ""}`} key={post.id} onClick={() => go(`/post/${post.id}`)}>
+                      <button className={`creator-gallery-tile creator-tone-${index % 9}${post.thumbnailUrl ? " has-image" : ""}`} key={post.id} onClick={() => go(official ? `/notice/${post.id}` : `/post/${post.id}`)}>
                         {post.thumbnailUrl ? <ProgressiveImage src={post.thumbnailUrl} alt="" /> : <i />}
                         <span className="font-jua">{post.title}</span>
                       </button>
@@ -2095,7 +2141,7 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
               )}
             </section>
           </div>
-          <section className="creator-shop">
+          {!official && <section className="creator-shop">
             <header className="creator-section-head">
               <div>
                 <p className="creator-kicker">CURATOR'S SHOP</p>
@@ -2120,7 +2166,7 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
             ) : (
               <Empty text="아직 등록된 상품이 없습니다." detail={mine ? "상품을 등록하면 내 블로그 상점에도 자동으로 표시됩니다." : undefined} />
             )}
-          </section>
+          </section>}
         </div>
       </main>
     </Shell>
@@ -2962,7 +3008,7 @@ function MarketImageCropModal({ file, remaining, onCancel, onDone }: { file: Fil
   );
 }
 
-function Manage({ path, go, user, onLogin, onUserChange }: { path: string; go: (to: string) => void; user: User | null; onLogin: () => void; onUserChange: (user: User) => void }) {
+function Manage({ path, go, user, onLogin, onUserChange, onWithdraw }: { path: string; go: (to: string) => void; user: User | null; onLogin: () => void; onUserChange: (user: User) => void; onWithdraw: () => void }) {
   const [blog, setBlog] = useState<Blog | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -3008,7 +3054,7 @@ function Manage({ path, go, user, onLogin, onUserChange }: { path: string; go: (
         <section className="manage-workspace">
           <header className="manage-console-head">
             <div>
-              <p className="eyebrow">MY TISTORY</p>
+              <p className="eyebrow">MY JUNGLETORY</p>
               <h1 className="font-jua">{nav.find(([key]) => key === section)?.[1] ?? "블로그 관리"}</h1>
               <span>{blog?.name ?? "블로그 정보를 불러오는 중입니다."}</span>
             </div>
@@ -3026,7 +3072,7 @@ function Manage({ path, go, user, onLogin, onUserChange }: { path: string; go: (
           </header>
           {error && <p className="manage-error">{error}</p>}
           {section === "overview" && <ManageOverview go={go} />}
-          {section === "settings" && blog && <ManageSettings blog={blog} setBlog={setBlog} user={user} onUserChange={onUserChange} />}
+          {section === "settings" && blog && <ManageSettings blog={blog} setBlog={setBlog} user={user} onUserChange={onUserChange} onWithdraw={onWithdraw} />}
           {section === "interests" && <ManageInterests user={user} onUserChange={onUserChange} />}
           {section === "categories" && <ManageCategories go={go} />}
           {section === "posts" && <ManagePosts go={go} />}
@@ -3117,7 +3163,7 @@ function ManageOverview({ go }: { go: (to: string) => void }) {
   );
 }
 
-function ManageSettings({ blog, setBlog, user, onUserChange }: { blog: Blog; setBlog: (blog: Blog) => void; user: User; onUserChange: (user: User) => void }) {
+function ManageSettings({ blog, setBlog, user, onUserChange, onWithdraw }: { blog: Blog; setBlog: (blog: Blog) => void; user: User; onUserChange: (user: User) => void; onWithdraw: () => void }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState(blog.name);
   const [description, setDescription] = useState(blog.description);
@@ -3130,6 +3176,11 @@ function ManageSettings({ blog, setBlog, user, onUserChange }: { blog: Blog; set
   const [interests, setInterests] = useState<string[]>(user.interests ?? []);
   const [savedInterests, setSavedInterests] = useState<string[]>(user.interests ?? []);
   const [interestBusy, setInterestBusy] = useState(false);
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [withdrawPassword, setWithdrawPassword] = useState("");
+  const [withdrawConfirmation, setWithdrawConfirmation] = useState("");
+  const [withdrawBusy, setWithdrawBusy] = useState(false);
+  const [withdrawError, setWithdrawError] = useState("");
   const interestDirty = interests.join("|") !== savedInterests.join("|");
   const toggleInterest = (interest: string) => setInterests((current) => (current.includes(interest) ? current.filter((item) => item !== interest) : current.length < 8 ? [...current, interest] : current));
   const saveInterests = async () => {
@@ -3224,6 +3275,21 @@ function ManageSettings({ blog, setBlog, user, onUserChange }: { blog: Blog; set
       setMessage((e as Error).message);
     } finally {
       setBusy(false);
+    }
+  };
+  const withdraw = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!withdrawPassword || withdrawConfirmation !== "회원탈퇴") return;
+    setWithdrawBusy(true);
+    setWithdrawError("");
+    try {
+      await request("/me", { method: "DELETE", body: JSON.stringify({ password: withdrawPassword, confirmation: withdrawConfirmation }) });
+      queryClient.clear();
+      clearClientAuthState();
+      onWithdraw();
+    } catch (e) {
+      setWithdrawError((e as Error).message);
+      setWithdrawBusy(false);
     }
   };
   return (
@@ -3324,7 +3390,27 @@ function ManageSettings({ blog, setBlog, user, onUserChange }: { blog: Blog; set
           {busy ? "저장 중…" : "변경사항 저장"}
         </button>
       </section>
+      <section className="manage-withdraw-section" aria-labelledby="withdraw-heading">
+        <div>
+          <h2 className="font-jua" id="withdraw-heading">회원 탈퇴</h2>
+          <p>계정과 개인정보는 익명화되며 작성한 글과 상품은 공개 화면에서 숨겨집니다. 콘텐츠는 운영 확인을 위해 관리자 휴지통에 보관됩니다.</p>
+        </div>
+        <button className="manage-withdraw-button font-jua" type="button" onClick={() => { setWithdrawError(""); setWithdrawOpen(true); }}>회원 탈퇴</button>
+      </section>
       {cropSource && <CropModal source={cropSource} onClose={() => setCropSource("")} onDone={upload} />}
+      {withdrawOpen && <div className="manage-modal" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !withdrawBusy) setWithdrawOpen(false); }}>
+        <form className="withdraw-dialog" role="dialog" aria-modal="true" aria-labelledby="withdraw-dialog-title" onSubmit={withdraw}>
+          <header>
+            <div><p>ACCOUNT WITHDRAWAL</p><h2 className="font-jua" id="withdraw-dialog-title">정말 탈퇴하시겠습니까?</h2></div>
+            <button type="button" disabled={withdrawBusy} onClick={() => setWithdrawOpen(false)} aria-label="회원 탈퇴 창 닫기"><X size={18} /></button>
+          </header>
+          <div className="withdraw-warning"><strong>탈퇴 후에는 다시 로그인할 수 없습니다.</strong><span>작성 글과 마켓 상품은 즉시 비공개 처리되며 관리자 휴지통에 보관됩니다.</span></div>
+          <label className="font-jua">현재 비밀번호<input autoFocus type="password" autoComplete="current-password" value={withdrawPassword} onChange={(event) => setWithdrawPassword(event.target.value)} placeholder="현재 비밀번호" /></label>
+          <label className="font-jua">확인 문구<input value={withdrawConfirmation} onChange={(event) => setWithdrawConfirmation(event.target.value)} placeholder="회원탈퇴 입력" /><small>계속하려면 <b>회원탈퇴</b>를 정확히 입력하세요.</small></label>
+          {withdrawError && <p className="form-error" role="alert">{withdrawError}</p>}
+          <footer><button type="button" disabled={withdrawBusy} onClick={() => setWithdrawOpen(false)}>취소</button><button type="submit" disabled={withdrawBusy || !withdrawPassword || withdrawConfirmation !== "회원탈퇴"}>{withdrawBusy ? "탈퇴 처리 중…" : "계정 영구 탈퇴"}</button></footer>
+        </form>
+      </div>}
     </div>
   );
 }
@@ -3884,7 +3970,7 @@ function MarketSavedList({ kind, go, user, onLogin }: { kind: "recent" | "wishli
         <div className="section-inner">
           <div className="page-intro saved-intro">
             <p className="eyebrow">{recent ? "RECENTLY VIEWED" : "MY WISHLIST"}</p>
-            <h1>{recent ? "최근 본 상품" : "마음에 담아둔 상품"}</h1>
+            <h1 className="font-jua">{recent ? "최근 본 상품" : "마음에 담아둔 상품"}</h1>
             <p>{recent ? "최근 확인한 상품을 최신순으로 최대 20개까지 보관합니다." : "좋아요를 누른 상품을 한곳에서 다시 확인하세요."}</p>
           </div>
           {error ? (
@@ -3922,7 +4008,7 @@ function MarketPrepared({ kind, go, user, onLogin }: { kind: keyof typeof prepar
             <Package size={30} />
           </div>
           <p className="eyebrow">{eyebrow}</p>
-          <h1>{title}</h1>
+          <h1 className="font-jua">{title}</h1>
           <p>{description}</p>
           <button className="primary-button compact" onClick={() => go("/market")}>
             마켓 둘러보기 <ArrowRight size={15} />
@@ -4726,7 +4812,7 @@ function SearchPage({ go, user, onLogin }: { go: (to: string) => void; user: Use
         <div className="section-inner">
           <div className="page-intro">
             <p className="eyebrow">INTEGRATED SEARCH</p>
-            <h1>{interestTerms.length ? "내 관심사 검색 결과" : `‘${query}’ 검색 결과`}</h1>
+            <h1 className="font-jua">{interestTerms.length ? "내 관심사 검색 결과" : `‘${query}’ 검색 결과`}</h1>
             {interestTerms.length > 0 && (
               <div className="interest-search-terms" aria-label="검색에 사용된 관심사">
                 {interestTerms.map((term) => (
@@ -4793,7 +4879,7 @@ function StaticHub({ kind, go, user, onLogin }: { kind: "skin" | "ai"; go: (to: 
       <main id="main" className="page-main">
         <div className="section-inner">
           <div className="page-intro">
-            <p className="eyebrow">{skin ? "TISTORY SKIN" : "TISTORY AI"}</p>
+            <p className="eyebrow">{skin ? "JUNGLETORY SKIN" : "JUNGLETORY AI"}</p>
             <h1>{skin ? "내 블로그에 어울리는 스킨을 만나보세요." : "AI 미션을 시작해보세요."}</h1>
             <p className="muted">{skin ? "다양한 레이아웃의 스킨을 둘러보고 블로그에 적용할 수 있습니다." : "AI 기능은 준비 중입니다."}</p>
           </div>
@@ -4811,7 +4897,7 @@ function InterestMockup({ go }: { go: (to: string) => void }) {
       <section className="auth-panel interest-step-panel">
         <header className="interest-step-top">
           <button className="auth-brand" onClick={() => go("/")}>
-            티스토리
+            정글토리
           </button>
           <div>
             <span>01</span>
@@ -4857,7 +4943,16 @@ function InterestMockup({ go }: { go: (to: string) => void }) {
   );
 }
 
-const CHAT_BALL_POSITION_KEY = 'tistory.market-chat-ball.v1'
+const CHAT_BALL_POSITION_KEY = 'jungletory.market-chat-ball.v1'
+const CHAT_REACTIONS: { type: ChatReaction; emoji: string; label: string }[] = [
+  { type: 'HEART', emoji: '❤️', label: '하트' },
+  { type: 'CHECK', emoji: '✅', label: '확인' },
+  { type: 'THUMBS_UP', emoji: '👍', label: '엄지척' },
+  { type: 'SAD', emoji: '😢', label: '슬퍼요' },
+  { type: 'COOL', emoji: '😎', label: '멋져요' },
+  { type: 'LAUGH', emoji: '😂', label: '웃겨요' },
+]
+const reactionMeta = (type: ChatReaction) => CHAT_REACTIONS.find((item) => item.type === type) ?? CHAT_REACTIONS[0]
 const clampChatBall = (position: { x: number; y: number }) => ({
   x: Math.max(12, Math.min(window.innerWidth - 72, position.x)),
   y: Math.max(72, Math.min(window.innerHeight - 72, position.y)),
@@ -4869,6 +4964,9 @@ function MarketChatDock({ user, onLogin }: { user: User | null; onLogin: () => v
   const [active, setActive] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [draft, setDraft] = useState('')
+  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null)
+  const [reactionPicker, setReactionPicker] = useState<number | string | null>(null)
+  const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
   const [position, setPosition] = useState(() => {
     try { return clampChatBall(JSON.parse(localStorage.getItem(CHAT_BALL_POSITION_KEY) ?? 'null') ?? { x: window.innerWidth - 88, y: window.innerHeight - 104 }) }
@@ -4876,6 +4974,8 @@ function MarketChatDock({ user, onLogin }: { user: User | null; onLogin: () => v
   })
   const drag = useRef<{ pointerId: number; offsetX: number; offsetY: number; moved: boolean } | null>(null)
   const suppressClick = useRef(false)
+  const messageList = useRef<HTMLDivElement | null>(null)
+  const positionedRoom = useRef<string | null>(null)
   const unread = rooms.reduce((sum, room) => sum + (room.unreadCount ?? 0), 0)
 
   const loadRooms = async () => {
@@ -4886,7 +4986,10 @@ function MarketChatDock({ user, onLogin }: { user: User | null; onLogin: () => v
   const loadMessages = async (room: Conversation, markRead = true) => {
     try {
       const next = await request<ChatMessage[]>(`/market/conversations/${room.id}/messages`) ?? []
-      setMessages(next)
+      setMessages((current) => {
+        const pending = current.filter((entry) => entry.pending)
+        return [...next, ...pending.filter((entry) => !next.some((saved) => saved.body === entry.body && saved.createdAt >= entry.createdAt))]
+      })
       const hasUnreadReceivedMessage = next.some((entry) => String(entry.senderId) !== String(user?.id) && !entry.readAt)
       if (markRead && hasUnreadReceivedMessage) {
         await request(`/market/conversations/${room.id}/read`, { method: 'POST' })
@@ -4905,6 +5008,13 @@ function MarketChatDock({ user, onLogin }: { user: User | null; onLogin: () => v
     })
   }, [user?.id, open, active?.id])
   useEffect(() => { if (open && active) void loadMessages(active) }, [open, active?.id])
+  useLayoutEffect(() => {
+    if (!active || !messageList.current || !messages.length) return
+    const roomId = String(active.id)
+    const firstPosition = positionedRoom.current !== roomId
+    messageList.current.scrollTo({ top: messageList.current.scrollHeight, behavior: firstPosition ? 'auto' : 'smooth' })
+    positionedRoom.current = roomId
+  }, [open, active?.id, messages[messages.length - 1]?.id])
   useEffect(() => {
     const resize = () => setPosition((current) => clampChatBall(current))
     window.addEventListener('resize', resize)
@@ -4935,15 +5045,66 @@ function MarketChatDock({ user, onLogin }: { user: User | null; onLogin: () => v
     setOpen((value) => !value)
     void loadRooms()
   }
-  const selectRoom = (room: Conversation) => { setActive(room); void loadMessages(room) }
+  const selectRoom = (room: Conversation) => { setActive(room); setReplyingTo(null); setReactionPicker(null); void loadMessages(room) }
   const sendMessage = async (event: FormEvent) => {
     event.preventDefault()
     const body = draft.trim()
-    if (!active || !body) return
+    if (!active || !body || !user) return
+    const optimisticId = `pending-${crypto.randomUUID()}`
+    const optimistic: ChatMessage = {
+      id: optimisticId, conversationId: active.id, senderId: user.id, body,
+      createdAt: new Date().toISOString(), pending: true,
+      replyTo: replyingTo ? { id: replyingTo.id, body: replyingTo.body, senderId: replyingTo.senderId } : null,
+      reactions: [],
+    }
+    setDraft(''); setReplyingTo(null); setSending(true); setMessages((current) => [...current, optimistic])
     try {
-      const sent = await request<ChatMessage>(`/market/conversations/${active.id}/messages`, { method: 'POST', body: JSON.stringify({ body }) })
-      setMessages((current) => [...current, sent]); setDraft(''); await loadRooms()
-    } catch (reason) { setError((reason as Error).message) }
+      const sent = await request<ChatMessage>(`/market/conversations/${active.id}/messages`, {
+        method: 'POST', body: JSON.stringify({ body, replyToMessageId: optimistic.replyTo?.id ?? null }),
+      })
+      setMessages((current) => current.some((entry) => String(entry.id) === String(sent.id))
+        ? current.filter((entry) => entry.id !== optimisticId)
+        : current.map((entry) => entry.id === optimisticId ? { ...sent, replyTo: optimistic.replyTo } : entry))
+      void loadRooms()
+    } catch (reason) {
+      setMessages((current) => current.filter((entry) => entry.id !== optimisticId)); setDraft(body); setError((reason as Error).message)
+    } finally { setSending(false) }
+  }
+
+  const toggleReaction = async (message: ChatMessage, type: ChatReaction) => {
+    if (!active || message.pending || message.deletedAt) return
+    const previous = message.reactions ?? []
+    const selected = previous.find((item) => item.type === type)
+    const activeNext = !selected?.reactedByMe
+    const next = selected
+      ? previous.map((item) => item.type === type ? { ...item, count: Math.max(0, item.count + (activeNext ? 1 : -1)), reactedByMe: activeNext } : item).filter((item) => item.count > 0)
+      : [...previous, { type, count: 1, reactedByMe: true }]
+    setMessages((current) => current.map((entry) => String(entry.id) === String(message.id) ? { ...entry, reactions: next } : entry))
+    setReactionPicker(null)
+    try {
+      await request(`/market/conversations/${active.id}/messages/${message.id}/reactions`, {
+        method: activeNext ? 'PUT' : 'DELETE', body: JSON.stringify({ reaction: type }),
+      })
+    } catch (reason) {
+      setMessages((current) => current.map((entry) => String(entry.id) === String(message.id) ? { ...entry, reactions: previous } : entry))
+      setError((reason as Error).message)
+    }
+  }
+
+  const deleteChatMessage = async (message: ChatMessage) => {
+    if (!active || message.pending || !confirm('이 메시지를 삭제할까요?')) return
+    const previous = messages
+    setMessages((current) => current.map((entry) => String(entry.id) === String(message.id) ? { ...entry, body: '', deletedAt: new Date().toISOString(), reactions: [] } : entry))
+    try { await request(`/market/conversations/${active.id}/messages/${message.id}`, { method: 'DELETE' }) }
+    catch (reason) { setMessages(previous); setError((reason as Error).message) }
+  }
+
+  const leaveRoom = async () => {
+    if (!active || !confirm('이 채팅방에서 나갈까요? 내 채팅 목록에서 숨겨집니다.')) return
+    const leaving = active
+    setActive(null); setMessages([]); setReplyingTo(null); setRooms((current) => current.filter((room) => String(room.id) !== String(leaving.id)))
+    try { await request(`/market/conversations/${leaving.id}`, { method: 'DELETE' }) }
+    catch (reason) { setRooms((current) => [leaving, ...current]); setError((reason as Error).message) }
   }
 
   return <>
@@ -4951,11 +5112,28 @@ function MarketChatDock({ user, onLogin }: { user: User | null; onLogin: () => v
       <Send size={24} fill="currentColor" />{unread > 0 && <b>{unread > 99 ? '99+' : unread}</b>}
     </button>
     {open && user && <aside className="market-chat-inbox" aria-label="마켓 다이렉트 메시지">
-      <header><div><small>DIRECT MESSAGE</small><strong>{active ? active.peer?.nickname ?? '채팅' : '마켓 채팅'}</strong></div><button onClick={() => setOpen(false)} aria-label="채팅함 닫기"><X size={18} /></button></header>
+      <header><div><small>DIRECT MESSAGE</small><strong>{active ? active.peer?.nickname ?? '채팅' : '마켓 채팅'}</strong></div><span className="market-chat-head-actions">{active && <button onClick={leaveRoom} aria-label="채팅방 나가기" title="채팅방 나가기"><LogOut size={16} /></button>}<button onClick={() => setOpen(false)} aria-label="채팅함 닫기"><X size={18} /></button></span></header>
       {active ? <>
         <button className="market-chat-back" onClick={() => { setActive(null); setMessages([]) }}><ArrowLeft size={14} /> 모든 대화 <span>{active.item?.title}</span></button>
-        <div className="market-chat-inbox-messages">{messages.length ? messages.map((entry) => <div className={`chat-message${String(entry.senderId) === String(user.id) ? ' mine' : ''}`} key={entry.id}><p>{entry.body}</p><time>{new Date(entry.createdAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time></div>) : <p className="market-chat-empty">아직 메시지가 없습니다.</p>}</div>
-        <form onSubmit={sendMessage}><input maxLength={1000} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="메시지를 입력하세요" /><button disabled={!draft.trim()} aria-label="메시지 전송"><Send size={17} /></button></form>
+        <div className="market-chat-inbox-messages" ref={messageList}>{messages.length ? messages.map((entry) => {
+          const mine = String(entry.senderId) === String(user.id)
+          return <div className={`chat-message${mine ? ' mine' : ''}${entry.pending ? ' pending' : ''}${entry.deletedAt ? ' deleted' : ''}`} key={entry.id}>
+            <div className="chat-message-bubble">
+              {entry.replyTo && <button className="chat-reply-preview" onClick={() => document.getElementById(`chat-message-${entry.replyTo?.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}><strong>{String(entry.replyTo.senderId) === String(user.id) ? '내 메시지' : active.peer?.nickname ?? '상대방'}</strong><span>{entry.replyTo.body || '삭제된 메시지입니다.'}</span></button>}
+              <p id={`chat-message-${entry.id}`}>{entry.deletedAt ? '삭제된 메시지입니다.' : entry.body}</p>
+              {!entry.deletedAt && <div className="chat-message-actions">
+                <button onClick={() => setReplyingTo(entry)} aria-label="답장"><MessageCircle size={12} /> 답장</button>
+                <button onClick={() => setReactionPicker((current) => current === entry.id ? null : entry.id)} aria-label="반응 남기기">＋ 반응</button>
+                {mine && <button onClick={() => deleteChatMessage(entry)} aria-label="메시지 삭제"><Trash2 size={11} /></button>}
+              </div>}
+              {reactionPicker === entry.id && <div className="chat-reaction-picker">{CHAT_REACTIONS.map((reaction) => <button key={reaction.type} title={reaction.label} aria-label={reaction.label} onClick={() => toggleReaction(entry, reaction.type)}>{reaction.emoji}</button>)}</div>}
+              {!entry.deletedAt && !!entry.reactions?.length && <div className="chat-reaction-summary">{entry.reactions.map((reaction) => <button className={reaction.reactedByMe ? 'active' : ''} key={reaction.type} title={reactionMeta(reaction.type).label} onClick={() => toggleReaction(entry, reaction.type)}><span>{reactionMeta(reaction.type).emoji}</span>{reaction.count}</button>)}</div>}
+            </div>
+            <time>{entry.pending ? '전송 중…' : new Date(entry.createdAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time>
+          </div>
+        }) : <p className="market-chat-empty">아직 메시지가 없습니다.</p>}</div>
+        {replyingTo && <div className="market-chat-replying"><span><strong>{String(replyingTo.senderId) === String(user.id) ? '내 메시지' : active.peer?.nickname ?? '상대방'}에게 답장</strong>{replyingTo.body}</span><button onClick={() => setReplyingTo(null)} aria-label="답장 취소"><X size={14} /></button></div>}
+        <form onSubmit={sendMessage}><input maxLength={1000} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={replyingTo ? '답장을 입력하세요' : '메시지를 입력하세요'} /><button disabled={!draft.trim() || sending} aria-label="메시지 전송"><Send size={17} /></button></form>
       </> : <div className="market-chat-room-list">{rooms.length ? rooms.map((room) => <button key={room.id} onClick={() => selectRoom(room)}><span className={`market-chat-peer${room.peer?.profileImageUrl ? ' has-photo' : ''}`} style={room.peer?.profileImageUrl ? { backgroundImage: `url(${room.peer.profileImageUrl})` } : undefined} aria-label={`${room.peer?.nickname ?? '상대방'} 프로필 이미지`}>{room.peer?.profileImageUrl ? '' : room.peer?.nickname?.[0] ?? '?'}</span><span><strong>{room.peer?.nickname ?? '상대방'}</strong><small>{room.item?.title ?? '마켓 상품'}</small><p>{room.lastMessage?.body ?? '대화를 시작해 보세요.'}</p></span>{(room.unreadCount ?? 0) > 0 && <b>{room.unreadCount}</b>}</button>) : <p className="market-chat-empty">아직 시작한 마켓 대화가 없습니다.<br />상품에서 채팅하기를 눌러 시작해 보세요.</p>}</div>}
       {error && <p className="market-chat-error">{error}</p>}
     </aside>}
@@ -4970,6 +5148,16 @@ function App() {
   const [requiresConsent, setRequiresConsent] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const aiMission = useAiMission(user?.id ?? null, request);
+  const [aiVisitedUserId, setAiVisitedUserId] = useState<number | null>(() => cachedUser && readAiDockEnabled(cachedUser.id) ? cachedUser.id : null);
+  useEffect(() => {
+    if (path !== "/ai" || !user?.id) return;
+    writeAiDockEnabled(user.id, true);
+    setAiVisitedUserId(user.id);
+    aiMission.setDock("open");
+  }, [path, user?.id, aiMission.setDock]);
+  useEffect(() => {
+    if (authState === "anonymous") setAiVisitedUserId(null);
+  }, [authState]);
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -5030,6 +5218,9 @@ function App() {
     setAuthState("authenticated");
   }, [user]);
   useEffect(() => {
+    if (user?.passwordChangeRequired && path !== "/change-password") go("/change-password");
+  }, [user?.passwordChangeRequired, path]);
+  useEffect(() => {
     const updateProfile = (event: Event) => {
       const profileImageUrl = (event as CustomEvent<string | null>).detail;
       setUser((current) => (current?.blog ? { ...current, blog: { ...current.blog, profileImageUrl } } : current));
@@ -5040,9 +5231,10 @@ function App() {
   const onLogin = () => setLoginOpen(true);
   const authPending = authState === "loading" || authState === "degraded";
   const visibleUser = user ?? (authPending ? cachedUser : null);
-  const publicWhileAuthLoads = path === "/" || path === "/login" || path === "/signup" || path === "/interests/mockup" || path === "/notice/2702" || path === "/feed" || path === "/search" || path === "/skin" || path === "/market" || path === "/market/recent" || path === "/market/cart" || path === "/market/price-guide" || path === "/market/coupons" || /^\/market\/\d+$/.test(path) || /^\/post\/\d+$/.test(path) || (/^\/blog\/[^/]+$/.test(path) && path !== "/blog/new");
+  const publicWhileAuthLoads = path.startsWith("/adminpage") || path === "/" || path === "/login" || path === "/signup" || path === "/interests/mockup" || /^\/notice\/\d+$/.test(path) || path === "/feed" || path === "/search" || path === "/skin" || path === "/market" || path === "/market/recent" || path === "/market/cart" || path === "/market/price-guide" || path === "/market/coupons" || /^\/market\/\d+$/.test(path) || /^\/post\/\d+$/.test(path) || (/^\/blog\/[^/]+$/.test(path) && path !== "/blog/new");
   let content: React.ReactNode;
-  if ((authState === "loading" || authState === "degraded") && !publicWhileAuthLoads)
+  if (path.startsWith("/adminpage")) content = <AdminPage />;
+  else if ((authState === "loading" || authState === "degraded") && !publicWhileAuthLoads)
     content = (
       <Shell go={go} user={null} onLogin={onLogin}>
         <main id="main" className="page-main">
@@ -5076,6 +5268,8 @@ function App() {
         }}
       />
     );
+  else if (path === "/change-password")
+    content = user?.passwordChangeRequired ? <PasswordChange go={go} onDone={() => setUser((current) => current ? { ...current, passwordChangeRequired: false } : current)} /> : <Home go={go} user={visibleUser} onLogin={onLogin} />;
   else if (path === "/agreement/third-party-consent")
     content =
       user && requiresConsent ? (
@@ -5094,6 +5288,7 @@ function App() {
         />
       );
   else if (path === "/notice/2702") content = <NoticeArticle go={go} />;
+  else if (/^\/notice\/\d+$/.test(path)) content = <PostDetail id={path.split("/").pop()!} go={go} user={visibleUser} onLogin={onLogin} />;
   else if (path === "/blog/new")
     content = (
       <BlogSetup
@@ -5195,7 +5390,7 @@ function App() {
         }}
       />
     );
-  else if (path === "/blog/me/manage" || path.startsWith("/blog/me/manage/")) content = <Manage path={path} go={go} user={user} onLogin={onLogin} onUserChange={setUser} />;
+  else if (path === "/blog/me/manage" || path.startsWith("/blog/me/manage/")) content = <Manage path={path} go={go} user={user} onLogin={onLogin} onUserChange={setUser} onWithdraw={() => { setUser(null); setCachedUser(null); setAuthState("anonymous"); go("/"); }} />;
   else if (path.startsWith("/post/") && path.endsWith("/edit"))
     content = user ? (
       <Editor id={path.split("/")[2]} go={go} user={user} />
@@ -5217,18 +5412,27 @@ function App() {
     <AuthBootstrapContext.Provider value={{ pending: authPending, cachedUser }}>
       <div className={authPending ? "auth-verifying" : undefined} aria-busy={authPending}>
         {content}
-        <AiCompanionDock controller={aiMission} path={path} go={go} />
-        <MarketChatDock user={visibleUser} onLogin={onLogin} />
+        {!path.startsWith("/adminpage") && <AiCompanionDock
+          controller={aiMission}
+          path={path}
+          go={go}
+          enabled={Boolean(user?.id && aiVisitedUserId === user.id)}
+          onDismiss={() => {
+            if (user?.id) writeAiDockEnabled(user.id, false);
+            setAiVisitedUserId(null);
+          }}
+        />}
+        {!path.startsWith("/adminpage") && <MarketChatDock user={visibleUser} onLogin={onLogin} />}
       </div>
       {loginOpen && (
-        <div className="modal-backdrop tistory-login-backdrop" role="dialog" aria-modal="true" aria-label="티스토리 로그인" onMouseDown={() => setLoginOpen(false)}>
-          <div className="login-modal tistory-login-modal" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="modal-backdrop jungletory-login-backdrop" role="dialog" aria-modal="true" aria-label="정글토리 로그인" onMouseDown={() => setLoginOpen(false)}>
+          <div className="login-modal jungletory-login-modal" onMouseDown={(event) => event.stopPropagation()}>
             <button className="modal-close" onClick={() => setLoginOpen(false)} aria-label="닫기">
               <X size={20} />
             </button>
-            <strong className="login-wordmark">TISTORY</strong>
+            <strong className="login-wordmark">JUNGLETORY</strong>
             <p className="login-description">회원가입한 이메일과 비밀번호로 로그인하세요.</p>
-            <ProgressiveImage eager className="login-visual" src="https://t1.daumcdn.net/tistory_admin/static/top/pc/img_login.png" alt="" />
+            <ProgressiveImage eager className="login-visual" src={assetUrl("jungletory/login.png")} alt="" />
             <button
               className="kakao-login-button"
               onClick={() => {
