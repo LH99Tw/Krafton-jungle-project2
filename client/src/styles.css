@@ -826,6 +826,8 @@ body:has(.home-main) .jungletory-right:before{content:'';position:absolute;top:0
 /* Placeholder content uses stable solid swatches and never requests arbitrary images. */
 body:has(.home-main) .today-card:not(.has-image){background-image:none!important}
 body:has(.home-main) .post-thumb,body:has(.home-main) .editorial-thumb{background-image:none!important}
+body:has(.home-main) .post-thumb:not(.has-image),body:has(.home-main) .editorial-thumb:not(.has-image){background-color:#fff!important}
+body:has(.home-main) .post-thumb:not(.has-image):before{display:none}
 body:has(.home-main) .creator-color{display:block;width:100px;height:66px;border-radius:3px}
 body:has(.home-main) .rising-card{background-image:none!important;background-color:#8fa3c2}
 body:has(.home-main) .store-preview{background:#c3a6b8}
