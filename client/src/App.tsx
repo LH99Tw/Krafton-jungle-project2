@@ -197,6 +197,7 @@ type NotificationData = {
 };
 
 const AUTH_SNAPSHOT_KEY = "tistory.auth-display.v1";
+const AI_DOCK_STATE_KEY = "tistory.ai-dock-state.v1";
 const AuthBootstrapContext = createContext<{
   pending: boolean;
   cachedUser: User | null;
@@ -220,8 +221,21 @@ const writeAuthSnapshot = (user: User) => {
     }),
   );
 };
+const readAiDockEnabled = (userId: number) => {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(AI_DOCK_STATE_KEY) ?? "null") as { userId?: number; enabled?: boolean } | null;
+    return value?.userId === userId && value.enabled === true;
+  } catch {
+    return false;
+  }
+};
+const writeAiDockEnabled = (userId: number, enabled: boolean) => {
+  if (enabled) sessionStorage.setItem(AI_DOCK_STATE_KEY, JSON.stringify({ userId, enabled: true }));
+  else sessionStorage.removeItem(AI_DOCK_STATE_KEY);
+};
 const clearClientAuthState = () => {
   sessionStorage.removeItem(AUTH_SNAPSHOT_KEY);
+  sessionStorage.removeItem(AI_DOCK_STATE_KEY);
   clearUserQueryState();
   csrfToken = "";
 };
@@ -4970,10 +4984,16 @@ function App() {
   const [requiresConsent, setRequiresConsent] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const aiMission = useAiMission(user?.id ?? null, request);
-  const [aiVisitedUserId, setAiVisitedUserId] = useState<number | null>(null);
+  const [aiVisitedUserId, setAiVisitedUserId] = useState<number | null>(() => cachedUser && readAiDockEnabled(cachedUser.id) ? cachedUser.id : null);
   useEffect(() => {
-    if (path === "/ai" && user?.id) setAiVisitedUserId(user.id);
-  }, [path, user?.id]);
+    if (path !== "/ai" || !user?.id) return;
+    writeAiDockEnabled(user.id, true);
+    setAiVisitedUserId(user.id);
+    aiMission.setDock("open");
+  }, [path, user?.id, aiMission.setDock]);
+  useEffect(() => {
+    if (authState === "anonymous") setAiVisitedUserId(null);
+  }, [authState]);
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -5221,7 +5241,16 @@ function App() {
     <AuthBootstrapContext.Provider value={{ pending: authPending, cachedUser }}>
       <div className={authPending ? "auth-verifying" : undefined} aria-busy={authPending}>
         {content}
-        <AiCompanionDock controller={aiMission} path={path} go={go} enabled={Boolean(user?.id && aiVisitedUserId === user.id)} />
+        <AiCompanionDock
+          controller={aiMission}
+          path={path}
+          go={go}
+          enabled={Boolean(user?.id && aiVisitedUserId === user.id)}
+          onDismiss={() => {
+            if (user?.id) writeAiDockEnabled(user.id, false);
+            setAiVisitedUserId(null);
+          }}
+        />
         <MarketChatDock user={visibleUser} onLogin={onLogin} />
       </div>
       {loginOpen && (
