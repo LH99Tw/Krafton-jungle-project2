@@ -1,6 +1,13 @@
 # API 계약
 
-기준일: 2026-08-06. 실행 가능한 OpenAPI 원본은 `supabase/functions/api/system/openapi.ts`이며 브라우저 요청에는 `/api` 접두사를 붙인다.
+기준일: 2026-08-07. 실행 가능한 OpenAPI 원본은 `supabase/functions/api/system/openapi.ts`이며 브라우저 요청에는 `/api` 접두사를 붙인다.
+
+## 계정과 알림
+
+- `PATCH /auth/interests`: 현재 사용자의 관심분야를 교체한다.
+- `POST /me/third-party-consent`: 현재 사용자의 제3자 정보 처리 동의 여부를 저장한다.
+- `GET /notifications`: 내 알림 목록과 읽지 않은 개수를 반환한다.
+- `PATCH /notifications/{id}/read`, `PATCH /notifications/read-all`: 개별 또는 전체 알림을 읽음 처리한다.
 
 ## 카테고리와 분류의 경계
 
@@ -67,6 +74,10 @@
 - `PUT|DELETE /market/conversations/{id}/messages/{messageId}/reactions`: `HEART`, `CHECK`, `THUMBS_UP`, `SAD`, `COOL`, `LAUGH` 반응을 추가하거나 취소한다.
 - 대화 목록과 메시지 조회는 service role 전용 `get_market_chat_conversations`, `get_market_chat_messages` RPC를 사용한다.
 - `market-chat` Broadcast와 `market_chat_versions`의 Postgres Changes는 데이터가 아닌 갱신 신호만 전달한다.
+- `GET /market/wallet`, `POST /market/wallet/charge`: 내 포인트 잔액·최근 거래를 조회하고 지원되는 금액을 충전한다.
+- `POST /market/items/{id}/purchase`: 판매 중인 상품을 포인트로 구매한다.
+- `GET /market/orders?role=buyer|seller`: 구매자 또는 판매자 기준 주문 내역을 조회한다.
+- `POST /market/orders/{id}/complete`: 구매자가 결제된 주문의 거래를 완료한다.
 
 ## 관리자 콘솔
 

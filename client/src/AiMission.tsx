@@ -44,7 +44,7 @@ export type AiActivity =
   | { type: 'post_progress'; milestone: 'title' | 'body' | 'classification' }
   | { type: 'market_detail_viewed'; itemId: string }
 
-export const AI_ACTIVITY_EVENT = 'tistory:activity'
+export const AI_ACTIVITY_EVENT = 'jungletory:activity'
 export const emitAiActivity = (activity: AiActivity) => window.dispatchEvent(new CustomEvent<AiActivity>(AI_ACTIVITY_EVENT, { detail: activity }))
 
 export const AI_CHARACTERS: AiCharacter[] = [

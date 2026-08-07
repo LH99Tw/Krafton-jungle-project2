@@ -205,8 +205,8 @@ type NotificationData = {
   pagination: Page;
 };
 
-const AUTH_SNAPSHOT_KEY = "tistory.auth-display.v1";
-const AI_DOCK_STATE_KEY = "tistory.ai-dock-state.v1";
+const AUTH_SNAPSHOT_KEY = "jungletory.auth-display.v1";
+const AI_DOCK_STATE_KEY = "jungletory.ai-dock-state.v1";
 const AuthBootstrapContext = createContext<{
   pending: boolean;
   cachedUser: User | null;
@@ -399,7 +399,7 @@ const popularCharacters = [
   ["스누피", "스누피", assetUrl("characters/snoopy.webp"), "#e7e4dc"],
 ];
 
-const RECENT_MARKET_KEY = "tistory.recent-market-items";
+const RECENT_MARKET_KEY = "jungletory.recent-market-items";
 const readRecentMarketItems = () => {
   try {
     return (JSON.parse(localStorage.getItem(RECENT_MARKET_KEY) ?? "[]") as MarketItem[]).slice(0, 20);
@@ -602,7 +602,7 @@ function Header({ go, user, onLogin }: { go: (to: string) => void; user: User | 
       <header className={fixed ? "site-header is-fixed" : "site-header"} data-od-id="site-header">
         <div className="header-inner">
           <button className="brand" data-od-id="brand" onClick={() => navigate("/")}>
-            티스토리
+            정글토리
           </button>
           <nav className={mobile ? "main-nav open" : "main-nav"} aria-label="주요 메뉴">
             {[
@@ -868,9 +868,9 @@ function Footer({ go }: { go: (to: string) => void }) {
     <footer className="site-footer">
       <div className="footer-inner">
         <div className="footer-brand">
-          <strong>TISTORY</strong>
+          <strong>JUNGLETORY</strong>
           <p>
-            티스토리는 Daum에서 <ProgressiveImage src={assetUrl("tistory/heart.png")} alt="사랑" /> 을 담아 만듭니다.
+            정글토리는 Daum에서 <ProgressiveImage src={assetUrl("jungletory/heart.png")} alt="사랑" /> 을 담아 만듭니다.
           </p>
           <small>© Daum Corp.</small>
         </div>
@@ -905,7 +905,7 @@ function FooterGroup({ title, links, go }: { title: string; links: string[][]; g
 function Pager({ page, total, onChange, label }: { page: number; total: number; onChange: (page: number) => void; label: string }) {
   const move = (delta: number) => onChange(((page - 1 + delta + total) % total) + 1);
   return (
-    <div className="tistory-pager" aria-label={label}>
+    <div className="jungletory-pager" aria-label={label}>
       <button onClick={() => move(-1)} aria-label="이전 페이지">
         <ChevronDown size={14} />
       </button>
@@ -1029,7 +1029,7 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
     { id:-2,eyebrow:"FANDOM · STORY",title:"좋아하는 마음이\n한 편의 기록이 되는 곳",description:"팬들의 새로운 이야기와 취향을 천천히 둘러보세요.",imageUrl:null,ctaLabel:"새로운 글 둘러보기",ctaUrl:"/feed",startsAt:"",position:1,isActive:true },
     { id:-3,eyebrow:"GOODS · MARKET",title:"소중히 간직한 굿즈의\n다음 주인을 찾아요",description:"취향이 맞는 팬과 안전하게 굿즈를 나눠보세요.",imageUrl:null,ctaLabel:"마켓 둘러보기",ctaUrl:"/market",startsAt:"",position:2,isActive:true },
     { id:-4,eyebrow:"FAN · COMMUNITY",title:"같은 장면을 좋아하는\n사람들과 만나는 순간",description:"오늘의 감상과 오래 간직한 이야기를 함께 나눠보세요.",imageUrl:null,ctaLabel:"팬 이야기 만나기",ctaUrl:"/feed",startsAt:"",position:3,isActive:true },
-    { id:-5,eyebrow:"TISTORY · PICK",title:"오늘 발견한 취향을\n나만의 방식으로 기록해요",description:"사진과 글로 완성된 다채로운 팬 기록을 만나보세요.",imageUrl:null,ctaLabel:"추천 기록 보기",ctaUrl:"/",startsAt:"",position:4,isActive:true },
+    { id:-5,eyebrow:"JUNGLETORY · PICK",title:"오늘 발견한 취향을\n나만의 방식으로 기록해요",description:"사진과 글로 완성된 다채로운 팬 기록을 만나보세요.",imageUrl:null,ctaLabel:"추천 기록 보기",ctaUrl:"/",startsAt:"",position:4,isActive:true },
   ];
   const connectedBanners = (home?.banners ?? []).slice(0,5);
   const bannerSlides = [...connectedBanners, ...bannerPlaceholders.slice(connectedBanners.length)].slice(0,5);
@@ -1050,7 +1050,7 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
       <main id="main" className="home-main">
         <div className="home-frame">
           <div className="home-content">
-            <section className="today-tistory" aria-roledescription="carousel" aria-label="이벤트 및 주요 소식" onMouseEnter={()=>setBannerHover(true)} onMouseLeave={()=>setBannerHover(false)}>
+            <section className="today-jungletory" aria-roledescription="carousel" aria-label="이벤트 및 주요 소식" onMouseEnter={()=>setBannerHover(true)} onMouseLeave={()=>setBannerHover(false)}>
               {bannerSlides.map((slide,index)=>(
                 <div
                   aria-hidden={bannerPage!==index}
@@ -1164,12 +1164,12 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
             <HomeEditorial title="최애 이야기를 나눠요" description="구매 후기부터 전시와 보관까지 팬들의 기록을 만나보세요." posts={latestPosts} go={go} />
           </div>
 
-          <aside className="tistory-right">
+          <aside className="jungletory-right">
             {user ? (
               <AccountPanel user={user} go={go} />
             ) : (
-              <section className="my-tistory">
-                <p>티스토리에 로그인하시고 더 많은 기능을 이용해보세요!</p>
+              <section className="my-jungletory">
+                <p>정글토리에 로그인하시고 더 많은 기능을 이용해보세요!</p>
                 <button onClick={onLogin}>✉　이메일로 시작하기</button>
               </section>
             )}
@@ -1305,7 +1305,7 @@ function Feed({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
       <main id="main" className="page-main">
         <div className="section-inner">
           <div className="page-intro">
-            <p className="eyebrow">TISTORY FEED</p>
+            <p className="eyebrow">JUNGLETORY FEED</p>
             <h1>
               {user ? (
                 <>
@@ -1570,13 +1570,13 @@ function Auth({ mode, go, onSuccess }: { mode: "login" | "signup"; go: (to: stri
 
   if (!signup)
     return (
-      <main id="main" className="tistory-auth-page">
+      <main id="main" className="jungletory-auth-page">
         <button className="standalone-close" onClick={() => go("/")} aria-label="로그인 닫기">
           <X size={24} />
         </button>
-        <section className="tistory-auth-card credentials">
+        <section className="jungletory-auth-card credentials">
           <button className="login-wordmark" onClick={() => go("/")}>
-            TISTORY
+            JUNGLETORY
           </button>
           <p className="credential-title">이메일로 로그인</p>
           <p className="login-description">회원가입할 때 등록한 이메일과 비밀번호를 입력하세요.</p>
@@ -1632,7 +1632,7 @@ function Auth({ mode, go, onSuccess }: { mode: "login" | "signup"; go: (to: stri
         >
           <header className="interest-step-top">
             <button type="button" className="auth-brand" onClick={() => go("/")}>
-              티스토리
+              정글토리
             </button>
             <span>관심분야 설정</span>
           </header>
@@ -1707,7 +1707,7 @@ function Auth({ mode, go, onSuccess }: { mode: "login" | "signup"; go: (to: stri
     <main id="main" className="auth-page">
       <div className="auth-panel">
         <button className="auth-brand" onClick={() => go("/")}>
-          티스토리
+          정글토리
         </button>
         <p className="eyebrow">CREATE YOUR SPACE · STEP 01</p>
         <h1>
@@ -1771,7 +1771,7 @@ function Agreement({ go, onDecided }: { go: (to: string) => void; onDecided: () 
   return (
     <main id="main" className="agreement-page">
       <section className="agreement-panel">
-        <h1>[선택] 티스토리 개인정보 제 3자 제공동의</h1>
+        <h1>[선택] 정글토리 개인정보 제 3자 제공동의</h1>
         <table>
           <tbody>
             <tr>
@@ -1784,7 +1784,7 @@ function Agreement({ go, onDecided }: { go: (to: string) => void; onDecided: () 
             </tr>
             <tr>
               <th>제공 항목</th>
-              <td>블로그 방문, 활동 기록 등 티스토리 서비스 이용내역</td>
+              <td>블로그 방문, 활동 기록 등 정글토리 서비스 이용내역</td>
             </tr>
             <tr>
               <th>보유 및 이용 기간</th>
@@ -1795,7 +1795,7 @@ function Agreement({ go, onDecided }: { go: (to: string) => void; onDecided: () 
           </tbody>
         </table>
         <p>
-          개인정보 제공에 대한 동의를 거부할 권리가 있으며, 동의를 거부하더라도 티스토리 서비스를 이용할 수 있습니다.
+          개인정보 제공에 대한 동의를 거부할 권리가 있으며, 동의를 거부하더라도 정글토리 서비스를 이용할 수 있습니다.
           <br />
           자세한 내용은 <button>개인정보처리방침</button>을 확인해주세요.
         </p>
@@ -1821,7 +1821,7 @@ function PasswordChange({ go, onDone }: { go: (to: string) => void; onDone: () =
   const [form, setForm] = useState({ currentPassword: "", password: "", passwordConfirm: "" });
   const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
   const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); setError(""); try { await request("/auth/change-password", { method: "POST", body: JSON.stringify(form) }); onDone(); go("/"); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } };
-  return <main className="tistory-auth-page"><section className="tistory-auth-card credentials"><strong className="login-wordmark">TISTORY</strong><p className="credential-title">새 비밀번호 설정</p><p className="login-description">관리자가 발급한 임시 비밀번호를 변경해야 서비스를 계속 이용할 수 있습니다.</p><form className="credential-form" onSubmit={submit}><label><span>임시 비밀번호</span><input autoFocus required type="password" value={form.currentPassword} onChange={(e)=>setForm({...form,currentPassword:e.target.value})}/></label><label><span>새 비밀번호</span><input required minLength={8} type="password" value={form.password} onChange={(e)=>setForm({...form,password:e.target.value})}/></label><label><span>새 비밀번호 확인</span><input required minLength={8} type="password" value={form.passwordConfirm} onChange={(e)=>setForm({...form,passwordConfirm:e.target.value})}/></label>{error&&<p className="form-error">{error}</p>}<button className="credential-submit" disabled={busy}>{busy?"변경 중…":"비밀번호 변경"}</button></form></section></main>;
+  return <main className="jungletory-auth-page"><section className="jungletory-auth-card credentials"><strong className="login-wordmark">JUNGLETORY</strong><p className="credential-title">새 비밀번호 설정</p><p className="login-description">관리자가 발급한 임시 비밀번호를 변경해야 서비스를 계속 이용할 수 있습니다.</p><form className="credential-form" onSubmit={submit}><label><span>임시 비밀번호</span><input autoFocus required type="password" value={form.currentPassword} onChange={(e)=>setForm({...form,currentPassword:e.target.value})}/></label><label><span>새 비밀번호</span><input required minLength={8} type="password" value={form.password} onChange={(e)=>setForm({...form,password:e.target.value})}/></label><label><span>새 비밀번호 확인</span><input required minLength={8} type="password" value={form.passwordConfirm} onChange={(e)=>setForm({...form,passwordConfirm:e.target.value})}/></label>{error&&<p className="form-error">{error}</p>}<button className="credential-submit" disabled={busy}>{busy?"변경 중…":"비밀번호 변경"}</button></form></section></main>;
 }
 
 function NoticeArticle({ go }: { go: (to: string) => void }) {
@@ -1831,7 +1831,7 @@ function NoticeArticle({ go }: { go: (to: string) => void }) {
         본문 바로가기
       </a>
       <header className="notice-blog-header">
-        <button onClick={() => go("/")}>TISTORY</button>
+        <button onClick={() => go("/")}>JUNGLETORY</button>
         <button className="notice-menu" aria-label="메뉴">
           <Menu size={22} />
         </button>
@@ -1842,12 +1842,12 @@ function NoticeArticle({ go }: { go: (to: string) => void }) {
             <span className="notice-category">운영 정책 안내</span>
             <h1>[안내] 불법촬영물 유통 방지 조치 대상 확대 안내</h1>
             <p>
-              <strong>TISTORY</strong>
+              <strong>JUNGLETORY</strong>
               <time>2026. 6. 25. 11:08</time>
             </p>
           </div>
           <article className="notice-body">
-            <p>안녕하세요. 티스토리입니다.</p>
+            <p>안녕하세요. 정글토리입니다.</p>
             <p>관련 법령에 따라 불법촬영물 등의 유통을 방지하고 이용자를 보호하기 위한 기술적·관리적 조치를 시행하고 있습니다.</p>
             <p>불법촬영물 유통 방지 조치의 적용 대상이 기존 동영상 파일에서 이미지 파일까지 확대됩니다. 새로운 의무가 추가되는 것이 아니라 기존 조치의 적용 범위가 이미지까지 넓어지는 변경입니다.</p>
             <p>정보통신망에서 불법촬영물을 유통하면 게시물 삭제와 검색 제한 등 필요한 조치가 적용되며 관련 법률에 따라 처벌될 수 있으니 서비스 이용 시 유의해 주세요.</p>
@@ -1896,9 +1896,9 @@ function NoticeArticle({ go }: { go: (to: string) => void }) {
         </div>
       </main>
       <footer className="notice-blog-footer">
-        <strong>TISTORY</strong>
-        <span>티스토리의 새로운 소식을 전합니다.</span>
-        <button onClick={() => go("/")}>티스토리 홈으로</button>
+        <strong>JUNGLETORY</strong>
+        <span>정글토리의 새로운 소식을 전합니다.</span>
+        <button onClick={() => go("/")}>정글토리 홈으로</button>
       </footer>
     </div>
   );
@@ -1988,7 +1988,7 @@ function BlogSetup({ go, onDone }: { go: (to: string) => void; onDone: (blog: Bl
                 }}
                 placeholder="jungle-dev"
               />
-              <span>.tistory.com</span>
+              <span>.jungletory.com</span>
               <button type="button" onClick={check}>
                 중복 확인
               </button>
@@ -3054,7 +3054,7 @@ function Manage({ path, go, user, onLogin, onUserChange, onWithdraw }: { path: s
         <section className="manage-workspace">
           <header className="manage-console-head">
             <div>
-              <p className="eyebrow">MY TISTORY</p>
+              <p className="eyebrow">MY JUNGLETORY</p>
               <h1 className="font-jua">{nav.find(([key]) => key === section)?.[1] ?? "블로그 관리"}</h1>
               <span>{blog?.name ?? "블로그 정보를 불러오는 중입니다."}</span>
             </div>
@@ -4879,7 +4879,7 @@ function StaticHub({ kind, go, user, onLogin }: { kind: "skin" | "ai"; go: (to: 
       <main id="main" className="page-main">
         <div className="section-inner">
           <div className="page-intro">
-            <p className="eyebrow">{skin ? "TISTORY SKIN" : "TISTORY AI"}</p>
+            <p className="eyebrow">{skin ? "JUNGLETORY SKIN" : "JUNGLETORY AI"}</p>
             <h1>{skin ? "내 블로그에 어울리는 스킨을 만나보세요." : "AI 미션을 시작해보세요."}</h1>
             <p className="muted">{skin ? "다양한 레이아웃의 스킨을 둘러보고 블로그에 적용할 수 있습니다." : "AI 기능은 준비 중입니다."}</p>
           </div>
@@ -4897,7 +4897,7 @@ function InterestMockup({ go }: { go: (to: string) => void }) {
       <section className="auth-panel interest-step-panel">
         <header className="interest-step-top">
           <button className="auth-brand" onClick={() => go("/")}>
-            티스토리
+            정글토리
           </button>
           <div>
             <span>01</span>
@@ -4943,7 +4943,7 @@ function InterestMockup({ go }: { go: (to: string) => void }) {
   );
 }
 
-const CHAT_BALL_POSITION_KEY = 'tistory.market-chat-ball.v1'
+const CHAT_BALL_POSITION_KEY = 'jungletory.market-chat-ball.v1'
 const CHAT_REACTIONS: { type: ChatReaction; emoji: string; label: string }[] = [
   { type: 'HEART', emoji: '❤️', label: '하트' },
   { type: 'CHECK', emoji: '✅', label: '확인' },
@@ -5425,14 +5425,14 @@ function App() {
         {!path.startsWith("/adminpage") && <MarketChatDock user={visibleUser} onLogin={onLogin} />}
       </div>
       {loginOpen && (
-        <div className="modal-backdrop tistory-login-backdrop" role="dialog" aria-modal="true" aria-label="티스토리 로그인" onMouseDown={() => setLoginOpen(false)}>
-          <div className="login-modal tistory-login-modal" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="modal-backdrop jungletory-login-backdrop" role="dialog" aria-modal="true" aria-label="정글토리 로그인" onMouseDown={() => setLoginOpen(false)}>
+          <div className="login-modal jungletory-login-modal" onMouseDown={(event) => event.stopPropagation()}>
             <button className="modal-close" onClick={() => setLoginOpen(false)} aria-label="닫기">
               <X size={20} />
             </button>
-            <strong className="login-wordmark">TISTORY</strong>
+            <strong className="login-wordmark">JUNGLETORY</strong>
             <p className="login-description">회원가입한 이메일과 비밀번호로 로그인하세요.</p>
-            <ProgressiveImage eager className="login-visual" src="https://t1.daumcdn.net/tistory_admin/static/top/pc/img_login.png" alt="" />
+            <ProgressiveImage eager className="login-visual" src={assetUrl("jungletory/login.png")} alt="" />
             <button
               className="kakao-login-button"
               onClick={() => {

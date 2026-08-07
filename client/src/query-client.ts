@@ -14,7 +14,7 @@ export const queryClient = new QueryClient({
   },
 })
 
-export const PUBLIC_QUERY_CACHE_KEY = 'tistory.public-query-cache.v1'
+export const PUBLIC_QUERY_CACHE_KEY = 'jungletory.public-query-cache.v1'
 export const publicQueryPersister = createSyncStoragePersister({
   storage: window.sessionStorage,
   key: PUBLIC_QUERY_CACHE_KEY,
