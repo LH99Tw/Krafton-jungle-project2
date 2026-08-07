@@ -61,5 +61,9 @@
 - `DELETE /market/items/{id}/like`: 자신의 좋아요를 제거하며 중복 호출에도 `204`를 반환한다.
 - `GET /market/conversations`: 구매자·판매자 공용 채팅 목록과 상대방, 상품, 마지막 메시지, 안 읽은 개수를 반환한다.
 - `POST /market/conversations/{id}/read`: 상대방이 보낸 안 읽은 메시지를 읽음 처리한다.
+- `DELETE /market/conversations/{id}`: 현재 사용자의 채팅 목록에서 방을 나가고 숨긴다.
+- `POST /market/conversations/{id}/messages`: `body`와 선택적인 `replyToMessageId`로 일반 메시지 또는 답장을 보낸다.
+- `DELETE /market/conversations/{id}/messages/{messageId}`: 내가 보낸 메시지를 소프트 삭제한다.
+- `PUT|DELETE /market/conversations/{id}/messages/{messageId}/reactions`: `HEART`, `CHECK`, `THUMBS_UP`, `SAD`, `COOL`, `LAUGH` 반응을 추가하거나 취소한다.
 - 대화 목록과 메시지 조회는 service role 전용 `get_market_chat_conversations`, `get_market_chat_messages` RPC를 사용한다.
 - `market-chat` Broadcast와 `market_chat_versions`의 Postgres Changes는 데이터가 아닌 갱신 신호만 전달한다.

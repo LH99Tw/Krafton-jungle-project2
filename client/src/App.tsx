@@ -1,6 +1,6 @@
-import { createContext, FormEvent, PointerEvent as ReactPointerEvent, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, FormEvent, PointerEvent as ReactPointerEvent, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bell, BookOpen, Bookmark, Check, ChevronDown, ChevronRight, Clipboard, Clock3, Compass, Eye, FileText, Heart, Image, Layers3, LayoutDashboard, LineChart, Lock, Menu, MessageCircle, Package, Palette, Pencil, PenLine, RotateCcw, Search, Send, Settings, ShoppingCart, Sparkles, Tags, TicketPercent, Trash2, Upload, Volume2, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bell, BookOpen, Bookmark, Check, ChevronDown, ChevronRight, Clipboard, Clock3, Compass, Eye, FileText, Heart, Image, Layers3, LayoutDashboard, LineChart, Lock, LogOut, Menu, MessageCircle, Package, Palette, Pencil, PenLine, RotateCcw, Search, Send, Settings, ShoppingCart, Sparkles, Tags, TicketPercent, Trash2, Upload, Volume2, X } from "lucide-react";
 import { AiCompanionDock, AiMissionPage, emitAiActivity, useAiMission } from "./AiMission";
 import { assetUrl } from "./assets";
 import { ProgressiveImage } from "./ProgressiveImage";
@@ -110,7 +110,12 @@ type ChatMessage = {
   body: string;
   readAt?: string | null;
   createdAt: string;
+  deletedAt?: string | null;
+  pending?: boolean;
+  replyTo?: { id: number | string; body?: string | null; senderId?: number | string } | null;
+  reactions?: { type: ChatReaction; count: number; reactedByMe: boolean }[];
 };
+type ChatReaction = "HEART" | "CHECK" | "THUMBS_UP" | "SAD" | "COOL" | "LAUGH";
 type WalletTransaction = {
   id: number;
   orderId?: number;
@@ -4872,6 +4877,15 @@ function InterestMockup({ go }: { go: (to: string) => void }) {
 }
 
 const CHAT_BALL_POSITION_KEY = 'tistory.market-chat-ball.v1'
+const CHAT_REACTIONS: { type: ChatReaction; emoji: string; label: string }[] = [
+  { type: 'HEART', emoji: '❤️', label: '하트' },
+  { type: 'CHECK', emoji: '✅', label: '확인' },
+  { type: 'THUMBS_UP', emoji: '👍', label: '엄지척' },
+  { type: 'SAD', emoji: '😢', label: '슬퍼요' },
+  { type: 'COOL', emoji: '😎', label: '멋져요' },
+  { type: 'LAUGH', emoji: '😂', label: '웃겨요' },
+]
+const reactionMeta = (type: ChatReaction) => CHAT_REACTIONS.find((item) => item.type === type) ?? CHAT_REACTIONS[0]
 const clampChatBall = (position: { x: number; y: number }) => ({
   x: Math.max(12, Math.min(window.innerWidth - 72, position.x)),
   y: Math.max(72, Math.min(window.innerHeight - 72, position.y)),
@@ -4883,6 +4897,9 @@ function MarketChatDock({ user, onLogin }: { user: User | null; onLogin: () => v
   const [active, setActive] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [draft, setDraft] = useState('')
+  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null)
+  const [reactionPicker, setReactionPicker] = useState<number | string | null>(null)
+  const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
   const [position, setPosition] = useState(() => {
     try { return clampChatBall(JSON.parse(localStorage.getItem(CHAT_BALL_POSITION_KEY) ?? 'null') ?? { x: window.innerWidth - 88, y: window.innerHeight - 104 }) }
@@ -4890,6 +4907,8 @@ function MarketChatDock({ user, onLogin }: { user: User | null; onLogin: () => v
   })
   const drag = useRef<{ pointerId: number; offsetX: number; offsetY: number; moved: boolean } | null>(null)
   const suppressClick = useRef(false)
+  const messageList = useRef<HTMLDivElement | null>(null)
+  const positionedRoom = useRef<string | null>(null)
   const unread = rooms.reduce((sum, room) => sum + (room.unreadCount ?? 0), 0)
 
   const loadRooms = async () => {
@@ -4900,7 +4919,10 @@ function MarketChatDock({ user, onLogin }: { user: User | null; onLogin: () => v
   const loadMessages = async (room: Conversation, markRead = true) => {
     try {
       const next = await request<ChatMessage[]>(`/market/conversations/${room.id}/messages`) ?? []
-      setMessages(next)
+      setMessages((current) => {
+        const pending = current.filter((entry) => entry.pending)
+        return [...next, ...pending.filter((entry) => !next.some((saved) => saved.body === entry.body && saved.createdAt >= entry.createdAt))]
+      })
       const hasUnreadReceivedMessage = next.some((entry) => String(entry.senderId) !== String(user?.id) && !entry.readAt)
       if (markRead && hasUnreadReceivedMessage) {
         await request(`/market/conversations/${room.id}/read`, { method: 'POST' })
@@ -4919,6 +4941,13 @@ function MarketChatDock({ user, onLogin }: { user: User | null; onLogin: () => v
     })
   }, [user?.id, open, active?.id])
   useEffect(() => { if (open && active) void loadMessages(active) }, [open, active?.id])
+  useLayoutEffect(() => {
+    if (!active || !messageList.current || !messages.length) return
+    const roomId = String(active.id)
+    const firstPosition = positionedRoom.current !== roomId
+    messageList.current.scrollTo({ top: messageList.current.scrollHeight, behavior: firstPosition ? 'auto' : 'smooth' })
+    positionedRoom.current = roomId
+  }, [open, active?.id, messages[messages.length - 1]?.id])
   useEffect(() => {
     const resize = () => setPosition((current) => clampChatBall(current))
     window.addEventListener('resize', resize)
@@ -4949,15 +4978,66 @@ function MarketChatDock({ user, onLogin }: { user: User | null; onLogin: () => v
     setOpen((value) => !value)
     void loadRooms()
   }
-  const selectRoom = (room: Conversation) => { setActive(room); void loadMessages(room) }
+  const selectRoom = (room: Conversation) => { setActive(room); setReplyingTo(null); setReactionPicker(null); void loadMessages(room) }
   const sendMessage = async (event: FormEvent) => {
     event.preventDefault()
     const body = draft.trim()
-    if (!active || !body) return
+    if (!active || !body || !user) return
+    const optimisticId = `pending-${crypto.randomUUID()}`
+    const optimistic: ChatMessage = {
+      id: optimisticId, conversationId: active.id, senderId: user.id, body,
+      createdAt: new Date().toISOString(), pending: true,
+      replyTo: replyingTo ? { id: replyingTo.id, body: replyingTo.body, senderId: replyingTo.senderId } : null,
+      reactions: [],
+    }
+    setDraft(''); setReplyingTo(null); setSending(true); setMessages((current) => [...current, optimistic])
     try {
-      const sent = await request<ChatMessage>(`/market/conversations/${active.id}/messages`, { method: 'POST', body: JSON.stringify({ body }) })
-      setMessages((current) => [...current, sent]); setDraft(''); await loadRooms()
-    } catch (reason) { setError((reason as Error).message) }
+      const sent = await request<ChatMessage>(`/market/conversations/${active.id}/messages`, {
+        method: 'POST', body: JSON.stringify({ body, replyToMessageId: optimistic.replyTo?.id ?? null }),
+      })
+      setMessages((current) => current.some((entry) => String(entry.id) === String(sent.id))
+        ? current.filter((entry) => entry.id !== optimisticId)
+        : current.map((entry) => entry.id === optimisticId ? { ...sent, replyTo: optimistic.replyTo } : entry))
+      void loadRooms()
+    } catch (reason) {
+      setMessages((current) => current.filter((entry) => entry.id !== optimisticId)); setDraft(body); setError((reason as Error).message)
+    } finally { setSending(false) }
+  }
+
+  const toggleReaction = async (message: ChatMessage, type: ChatReaction) => {
+    if (!active || message.pending || message.deletedAt) return
+    const previous = message.reactions ?? []
+    const selected = previous.find((item) => item.type === type)
+    const activeNext = !selected?.reactedByMe
+    const next = selected
+      ? previous.map((item) => item.type === type ? { ...item, count: Math.max(0, item.count + (activeNext ? 1 : -1)), reactedByMe: activeNext } : item).filter((item) => item.count > 0)
+      : [...previous, { type, count: 1, reactedByMe: true }]
+    setMessages((current) => current.map((entry) => String(entry.id) === String(message.id) ? { ...entry, reactions: next } : entry))
+    setReactionPicker(null)
+    try {
+      await request(`/market/conversations/${active.id}/messages/${message.id}/reactions`, {
+        method: activeNext ? 'PUT' : 'DELETE', body: JSON.stringify({ reaction: type }),
+      })
+    } catch (reason) {
+      setMessages((current) => current.map((entry) => String(entry.id) === String(message.id) ? { ...entry, reactions: previous } : entry))
+      setError((reason as Error).message)
+    }
+  }
+
+  const deleteChatMessage = async (message: ChatMessage) => {
+    if (!active || message.pending || !confirm('이 메시지를 삭제할까요?')) return
+    const previous = messages
+    setMessages((current) => current.map((entry) => String(entry.id) === String(message.id) ? { ...entry, body: '', deletedAt: new Date().toISOString(), reactions: [] } : entry))
+    try { await request(`/market/conversations/${active.id}/messages/${message.id}`, { method: 'DELETE' }) }
+    catch (reason) { setMessages(previous); setError((reason as Error).message) }
+  }
+
+  const leaveRoom = async () => {
+    if (!active || !confirm('이 채팅방에서 나갈까요? 내 채팅 목록에서 숨겨집니다.')) return
+    const leaving = active
+    setActive(null); setMessages([]); setReplyingTo(null); setRooms((current) => current.filter((room) => String(room.id) !== String(leaving.id)))
+    try { await request(`/market/conversations/${leaving.id}`, { method: 'DELETE' }) }
+    catch (reason) { setRooms((current) => [leaving, ...current]); setError((reason as Error).message) }
   }
 
   return <>
@@ -4965,11 +5045,28 @@ function MarketChatDock({ user, onLogin }: { user: User | null; onLogin: () => v
       <Send size={24} fill="currentColor" />{unread > 0 && <b>{unread > 99 ? '99+' : unread}</b>}
     </button>
     {open && user && <aside className="market-chat-inbox" aria-label="마켓 다이렉트 메시지">
-      <header><div><small>DIRECT MESSAGE</small><strong>{active ? active.peer?.nickname ?? '채팅' : '마켓 채팅'}</strong></div><button onClick={() => setOpen(false)} aria-label="채팅함 닫기"><X size={18} /></button></header>
+      <header><div><small>DIRECT MESSAGE</small><strong>{active ? active.peer?.nickname ?? '채팅' : '마켓 채팅'}</strong></div><span className="market-chat-head-actions">{active && <button onClick={leaveRoom} aria-label="채팅방 나가기" title="채팅방 나가기"><LogOut size={16} /></button>}<button onClick={() => setOpen(false)} aria-label="채팅함 닫기"><X size={18} /></button></span></header>
       {active ? <>
         <button className="market-chat-back" onClick={() => { setActive(null); setMessages([]) }}><ArrowLeft size={14} /> 모든 대화 <span>{active.item?.title}</span></button>
-        <div className="market-chat-inbox-messages">{messages.length ? messages.map((entry) => <div className={`chat-message${String(entry.senderId) === String(user.id) ? ' mine' : ''}`} key={entry.id}><p>{entry.body}</p><time>{new Date(entry.createdAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time></div>) : <p className="market-chat-empty">아직 메시지가 없습니다.</p>}</div>
-        <form onSubmit={sendMessage}><input maxLength={1000} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="메시지를 입력하세요" /><button disabled={!draft.trim()} aria-label="메시지 전송"><Send size={17} /></button></form>
+        <div className="market-chat-inbox-messages" ref={messageList}>{messages.length ? messages.map((entry) => {
+          const mine = String(entry.senderId) === String(user.id)
+          return <div className={`chat-message${mine ? ' mine' : ''}${entry.pending ? ' pending' : ''}${entry.deletedAt ? ' deleted' : ''}`} key={entry.id}>
+            <div className="chat-message-bubble">
+              {entry.replyTo && <button className="chat-reply-preview" onClick={() => document.getElementById(`chat-message-${entry.replyTo?.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}><strong>{String(entry.replyTo.senderId) === String(user.id) ? '내 메시지' : active.peer?.nickname ?? '상대방'}</strong><span>{entry.replyTo.body || '삭제된 메시지입니다.'}</span></button>}
+              <p id={`chat-message-${entry.id}`}>{entry.deletedAt ? '삭제된 메시지입니다.' : entry.body}</p>
+              {!entry.deletedAt && <div className="chat-message-actions">
+                <button onClick={() => setReplyingTo(entry)} aria-label="답장"><MessageCircle size={12} /> 답장</button>
+                <button onClick={() => setReactionPicker((current) => current === entry.id ? null : entry.id)} aria-label="반응 남기기">＋ 반응</button>
+                {mine && <button onClick={() => deleteChatMessage(entry)} aria-label="메시지 삭제"><Trash2 size={11} /></button>}
+              </div>}
+              {reactionPicker === entry.id && <div className="chat-reaction-picker">{CHAT_REACTIONS.map((reaction) => <button key={reaction.type} title={reaction.label} aria-label={reaction.label} onClick={() => toggleReaction(entry, reaction.type)}>{reaction.emoji}</button>)}</div>}
+              {!entry.deletedAt && !!entry.reactions?.length && <div className="chat-reaction-summary">{entry.reactions.map((reaction) => <button className={reaction.reactedByMe ? 'active' : ''} key={reaction.type} title={reactionMeta(reaction.type).label} onClick={() => toggleReaction(entry, reaction.type)}><span>{reactionMeta(reaction.type).emoji}</span>{reaction.count}</button>)}</div>}
+            </div>
+            <time>{entry.pending ? '전송 중…' : new Date(entry.createdAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time>
+          </div>
+        }) : <p className="market-chat-empty">아직 메시지가 없습니다.</p>}</div>
+        {replyingTo && <div className="market-chat-replying"><span><strong>{String(replyingTo.senderId) === String(user.id) ? '내 메시지' : active.peer?.nickname ?? '상대방'}에게 답장</strong>{replyingTo.body}</span><button onClick={() => setReplyingTo(null)} aria-label="답장 취소"><X size={14} /></button></div>}
+        <form onSubmit={sendMessage}><input maxLength={1000} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={replyingTo ? '답장을 입력하세요' : '메시지를 입력하세요'} /><button disabled={!draft.trim() || sending} aria-label="메시지 전송"><Send size={17} /></button></form>
       </> : <div className="market-chat-room-list">{rooms.length ? rooms.map((room) => <button key={room.id} onClick={() => selectRoom(room)}><span className={`market-chat-peer${room.peer?.profileImageUrl ? ' has-photo' : ''}`} style={room.peer?.profileImageUrl ? { backgroundImage: `url(${room.peer.profileImageUrl})` } : undefined} aria-label={`${room.peer?.nickname ?? '상대방'} 프로필 이미지`}>{room.peer?.profileImageUrl ? '' : room.peer?.nickname?.[0] ?? '?'}</span><span><strong>{room.peer?.nickname ?? '상대방'}</strong><small>{room.item?.title ?? '마켓 상품'}</small><p>{room.lastMessage?.body ?? '대화를 시작해 보세요.'}</p></span>{(room.unreadCount ?? 0) > 0 && <b>{room.unreadCount}</b>}</button>) : <p className="market-chat-empty">아직 시작한 마켓 대화가 없습니다.<br />상품에서 채팅하기를 눌러 시작해 보세요.</p>}</div>}
       {error && <p className="market-chat-error">{error}</p>}
     </aside>}

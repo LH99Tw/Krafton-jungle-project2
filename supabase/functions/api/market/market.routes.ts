@@ -1,6 +1,6 @@
 import { apiError } from '../shared.ts'
 import { changeMarketItemLike, createMarketItem, deleteMarketItem, listMarketItems, permanentlyDeleteMarketItem, readMarketItem, replaceMarketItemImages, restoreMarketItem, updateMarketItem } from './market.service.ts'
-import { listConversations, listMessages, markConversationRead, sendMessage, startConversation } from './market-chat.service.ts'
+import { changeMessageReaction, deleteMessage, leaveConversation, listConversations, listMessages, markConversationRead, sendMessage, startConversation } from './market-chat.service.ts'
 import { chargeWallet, completeOrder, listOrders, purchaseItem, readWallet } from './market-transaction.service.ts'
 
 export const handleMarketRoute = (request: Request, path: string, url: URL) => {
@@ -14,6 +14,8 @@ export const handleMarketRoute = (request: Request, path: string, url: URL) => {
     return completeOrder(request, orderId)
   }
   if (path === '/market/conversations' && request.method === 'GET') return listConversations(request)
+  const conversationLeaveMatch = path.match(/^\/market\/conversations\/(\d+)$/)
+  if (conversationLeaveMatch && request.method === 'DELETE') return leaveConversation(request, Number(conversationLeaveMatch[1]))
   const conversationReadMatch = path.match(/^\/market\/conversations\/(\d+)\/read$/)
   if (conversationReadMatch && request.method === 'POST') return markConversationRead(request, Number(conversationReadMatch[1]))
   const conversationMatch = path.match(/^\/market\/conversations\/(\d+)\/messages$/)
@@ -22,6 +24,14 @@ export const handleMarketRoute = (request: Request, path: string, url: URL) => {
     if (!Number.isSafeInteger(conversationId) || conversationId < 1) return apiError(404, 'NOT_FOUND', '채팅방을 찾을 수 없습니다.')
     if (request.method === 'GET') return listMessages(request, conversationId)
     if (request.method === 'POST') return sendMessage(request, conversationId)
+  }
+  const messageReactionMatch = path.match(/^\/market\/conversations\/(\d+)\/messages\/(\d+)\/reactions$/)
+  if (messageReactionMatch && (request.method === 'PUT' || request.method === 'DELETE')) {
+    return changeMessageReaction(request, Number(messageReactionMatch[1]), Number(messageReactionMatch[2]), request.method === 'PUT')
+  }
+  const messageDeleteMatch = path.match(/^\/market\/conversations\/(\d+)\/messages\/(\d+)$/)
+  if (messageDeleteMatch && request.method === 'DELETE') {
+    return deleteMessage(request, Number(messageDeleteMatch[1]), Number(messageDeleteMatch[2]))
   }
   const startChatMatch = path.match(/^\/market\/items\/(\d+)\/conversations$/)
   if (startChatMatch && request.method === 'POST') {
