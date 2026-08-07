@@ -221,7 +221,7 @@ const listPosts = async (request: Request, url: URL) => {
   const interest = (url.searchParams.get('interest') ?? '').trim()
   const requestedStatus = url.searchParams.get('status')
   const deleted = url.searchParams.get('deleted') ?? 'exclude'
-  const categoryId = url.searchParams.get('categoryId')
+  const categoryId = (url.searchParams.get('categoryId') ?? '').trim() || null
   if (!['public', 'mine', 'following', 'bookmarked'].includes(scope) || !['latest', 'popular'].includes(sort) || !['exclude', 'only'].includes(deleted) || !page || !size) {
     return apiError(400, 'VALIDATION_ERROR', '목록 조건을 확인해 주세요.')
   }

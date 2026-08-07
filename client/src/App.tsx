@@ -48,6 +48,7 @@ type Post = {
   content?: string;
   contentDocument?: RichDocument | null;
   excerpt?: string;
+  thumbnailUrl?: string | null;
   status: "DRAFT" | "PUBLISHED";
   category?: { id: number; name: string } | null;
   classifications: { id: number; name: string }[];
@@ -1065,7 +1066,9 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
                         조회 {post.viewCount} · 좋아요 {post.likeCount} · 댓글 {post.commentCount}
                       </small>
                     </div>
-                    <div className="post-thumb" style={{ backgroundColor: solidColor(index, 1) }} />
+                    <div className={`post-thumb${post.thumbnailUrl ? " has-image" : ""}`} style={{ backgroundColor: solidColor(index, 1) }}>
+                      {post.thumbnailUrl && <ProgressiveImage src={post.thumbnailUrl} alt="" />}
+                    </div>
                   </article>
                 ))}
               </div>
@@ -1103,11 +1106,13 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
                         </small>
                       </div>
                       <div
-                        className="post-thumb"
+                        className={`post-thumb${post.thumbnailUrl ? " has-image" : ""}`}
                         style={{
                           backgroundColor: solidColor(index, categoryPage),
                         }}
-                      />
+                      >
+                        {post.thumbnailUrl && <ProgressiveImage src={post.thumbnailUrl} alt="" />}
+                      </div>
                     </article>
                   ))
                 ) : (
@@ -1194,7 +1199,9 @@ function HomeEditorial({ title, description, posts, go }: { title: string; descr
               <button onClick={() => (post.id > 0 ? go(`/post/${post.id}`) : go("/feed"))}>{post.title}</button>
             </h3>
             <p>{post.excerpt ?? "팬들이 함께 나누는 새로운 이야기와 기록입니다."}</p>
-            <div className="editorial-thumb" style={{ backgroundColor: solidColor(index, title.length) }} />
+            <div className={`editorial-thumb${post.thumbnailUrl ? " has-image" : ""}`} style={{ backgroundColor: solidColor(index, title.length) }}>
+              {post.thumbnailUrl && <ProgressiveImage src={post.thumbnailUrl} alt="" />}
+            </div>
             <small>
               조회 {post.viewCount}　♡ {post.likeCount}　댓글 {post.commentCount}
             </small>
@@ -1234,8 +1241,8 @@ function HomeMarketEditorial({ items, go }: { items: MarketItem[]; go: (to: stri
             <small>
               {item.seller.nickname} · ♡ {item.likeCount ?? 0}
             </small>
-            <button className="editorial-thumb home-market-thumb" style={{ backgroundColor: solidColor(index, 6) }} onClick={() => go(item.url ?? `/market/${item.id}`)} aria-label={`${item.title} 상품 보기`}>
-              <span>{item.category}</span>
+            <button className={`editorial-thumb home-market-thumb${item.thumbnailUrl ? " has-image" : ""}`} style={{ backgroundColor: solidColor(index, 6) }} onClick={() => go(item.url ?? `/market/${item.id}`)} aria-label={`${item.title} 상품 보기`}>
+              {item.thumbnailUrl ? <ProgressiveImage src={item.thumbnailUrl} alt="" /> : <span>{item.category}</span>}
             </button>
           </article>
         ))}
@@ -2076,8 +2083,8 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
                   </div>
                   <div className="creator-gallery" aria-label="최근 글 갤러리">
                     {posts.slice(0, 9).map((post, index) => (
-                      <button className={`creator-gallery-tile creator-tone-${index % 9}`} key={post.id} onClick={() => go(`/post/${post.id}`)}>
-                        <i />
+                      <button className={`creator-gallery-tile creator-tone-${index % 9}${post.thumbnailUrl ? " has-image" : ""}`} key={post.id} onClick={() => go(`/post/${post.id}`)}>
+                        {post.thumbnailUrl ? <ProgressiveImage src={post.thumbnailUrl} alt="" /> : <i />}
                         <span className="font-jua">{post.title}</span>
                       </button>
                     ))}
@@ -2100,8 +2107,8 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
             {market.length ? (
               <div className="creator-product-grid">
                 {market.map((item, index) => (
-                  <button className={`creator-product creator-tone-${(index + 2) % 9}`} key={item.id} onClick={() => go(`/market/${item.id}`)}>
-                    <i />
+                  <button className={`creator-product creator-tone-${(index + 2) % 9}${item.thumbnailUrl ? " has-image" : ""}`} key={item.id} onClick={() => go(`/market/${item.id}`)}>
+                    {item.thumbnailUrl ? <ProgressiveImage src={item.thumbnailUrl} alt="" /> : <i />}
                     <span>
                       <em>{statusLabel[item.status]}</em>
                       <strong>{item.title}</strong>
@@ -2190,16 +2197,17 @@ function Editor({ id, go, user }: { id?: string; go: (to: string) => void; user:
   }, [classificationIds, classifications]);
   const toggleClassification = (classificationId: number) => setClassificationIds((ids) => (ids.includes(classificationId) ? ids.filter((value) => value !== classificationId) : ids.length < 5 ? [...ids, classificationId] : ids));
   const createClassification = async (name: string, source: BlogClassification["source"]) => {
-    const existing = classifications.find((item) => item.name === name);
-    if (existing) {
+    const normalizedName = name.trim().toLocaleLowerCase("ko-KR");
+    const existing = classifications.find((item) => item.name.trim().toLocaleLowerCase("ko-KR") === normalizedName);
+    if (existing && (existing.source === source || source === "CUSTOM")) {
       toggleClassification(existing.id);
       return existing;
     }
     setClassificationBusy(true);
     try {
       const created = await request<BlogClassification>("/blogs/me/classifications", { method: "POST", body: JSON.stringify({ name, source }) });
-      setClassifications((items) => [...items, created]);
-      setClassificationIds((ids) => [...ids, created.id].slice(0, 5));
+      setClassifications((items) => [...items.filter((item) => item.id !== created.id), created]);
+      setClassificationIds((ids) => (ids.includes(created.id) ? ids : [...ids, created.id].slice(0, 5)));
       return created;
     } catch (error) {
       setClassificationError((error as Error).message);
@@ -2244,7 +2252,7 @@ function Editor({ id, go, user }: { id?: string; go: (to: string) => void; user:
   };
   const deleteImage = (imageId: string) => request<void>(`/posts/images/${imageId}`, { method: "DELETE" });
   const save = async (status: "DRAFT" | "PUBLISHED") => {
-    if (uploading || busy) return;
+    if (uploading || busy || classificationBusy) return;
     setBusy(true);
     setError("");
     try {
@@ -2280,10 +2288,10 @@ function Editor({ id, go, user }: { id?: string; go: (to: string) => void; user:
         </button>
         <div>
           {uploading && <span className="editor-upload-state">이미지 처리 중…</span>}
-          <button className="save-button" disabled={busy || uploading} onClick={() => save("DRAFT")}>
+          <button className="save-button" disabled={busy || uploading || classificationBusy} onClick={() => save("DRAFT")}>
             임시저장
           </button>
-          <button className="publish-button" disabled={busy || uploading} onClick={() => save("PUBLISHED")}>
+          <button className="publish-button" disabled={busy || uploading || classificationBusy} onClick={() => save("PUBLISHED")}>
             발행하기
           </button>
         </div>

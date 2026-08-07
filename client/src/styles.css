@@ -326,6 +326,16 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .home-market-price{display:block;margin-top:7px;font-size:13px;letter-spacing:-.2px}
 .home-market-thumb{display:flex;align-items:center;justify-content:center;border:0;color:#fff;text-align:center}
 .home-market-thumb span{padding:6px;font-size:9px;font-weight:700;line-height:1.25;text-shadow:0 1px 4px rgba(0,0,0,.22)}
+.post-thumb.has-image:before{display:none}
+.post-thumb.has-image img,.editorial-thumb.has-image img{display:block;width:100%;height:100%;object-fit:cover}
+.editorial-thumb.has-image{overflow:hidden;background-color:#ecefeb}
+.home-market-thumb.has-image{padding:0}
+.creator-gallery-tile:before,.creator-product:before{z-index:1}
+.creator-gallery-tile.has-image:before{background:linear-gradient(to top,rgba(10,10,9,.72),transparent 58%)}
+.creator-gallery-tile>img,.creator-product>img{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover;transition:transform .35s}
+.creator-gallery-tile.has-image:hover>img,.creator-product.has-image:hover>img{transform:scale(1.045)}
+.creator-product-grid .creator-product{aspect-ratio:1}
+.creator-product-grid.is-preview .creator-product:after{z-index:3}
 .home-main .skin-preview{background:linear-gradient(135deg,#111 0 56%,#f2c8b3 56% 100%)}
 .home-main .skin-preview:after{content:'Whatever';position:absolute;right:18px;bottom:16px;color:#111;font-size:11px;font-weight:700;letter-spacing:.08em}
 .home-main .skin-preview strong{z-index:1}
@@ -632,10 +642,12 @@ body:has(.home-main) .tip-module>.tistory-pager{height:72px;margin:0;padding-top
 body:has(.home-main) .character-module{margin-top:12px;padding:0 0 48px}
 body:has(.home-main) .character-module .sidebar-heading{height:65px;padding-top:20px}
 body:has(.home-main) .character-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px 11px}
-body:has(.home-main) .character-grid button{text-align:left}
-body:has(.home-main) .character-grid button>span{display:block;height:118px;overflow:hidden;border-radius:7px;background:inherit}
-body:has(.home-main) .character-grid img{width:100%;height:100%;object-fit:cover;mix-blend-mode:multiply;transition:transform .22s ease}
-body:has(.home-main) .character-grid strong{display:block;margin-top:8px;color:#333;font-size:11px;font-weight:700;text-align:center}
+body:has(.home-main) .character-grid button{position:relative;height:118px;overflow:hidden;border-radius:7px;text-align:left;isolation:isolate}
+body:has(.home-main) .character-grid button>span{position:absolute;inset:0;display:block;overflow:hidden;background:inherit}
+body:has(.home-main) .character-grid button>span:after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,9,12,.12) 20%,rgba(8,9,12,.28) 58%,rgba(8,9,12,.76) 100%);transition:background .22s ease}
+body:has(.home-main) .character-grid img{width:100%;height:100%;object-fit:cover;filter:saturate(.9) brightness(.9);transition:transform .32s cubic-bezier(.2,.7,.2,1),filter .22s ease}
+body:has(.home-main) .character-grid strong{position:absolute;z-index:1;right:11px;bottom:10px;left:11px;display:block;margin:0;color:#fff;font-size:11px;font-weight:800;line-height:1.25;text-align:left;text-shadow:0 1px 5px rgba(0,0,0,.48)}
+body:has(.home-main) .character-grid button:hover>span:after,body:has(.home-main) .character-grid button:focus-visible>span:after{background:linear-gradient(180deg,rgba(8,9,12,.06) 20%,rgba(8,9,12,.22) 58%,rgba(8,9,12,.72) 100%)}
 body:has(.home-main) .character-grid button:hover img,body:has(.home-main) .character-grid button:focus-visible img{transform:scale(1.07)}
 body:has(.home-main) .character-grid button:active img{transform:scale(.98)}
 
@@ -653,7 +665,7 @@ body:has(.home-main) .character-grid button:active img{transform:scale(.98)}
   body:has(.home-main) .tip-grid button span{width:105px;font-size:11px}
   body:has(.home-main) .tip-module{height:475px}
   body:has(.home-main) .character-grid{gap:16px 8px}
-  body:has(.home-main) .character-grid button>span{height:92px}
+  body:has(.home-main) .character-grid button{height:92px}
 }
 
 @media(max-width:700px){
