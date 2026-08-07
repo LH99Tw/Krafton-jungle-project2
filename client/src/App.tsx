@@ -1,15 +1,18 @@
-import { createContext, FormEvent, PointerEvent as ReactPointerEvent, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, FormEvent, PointerEvent as ReactPointerEvent, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bell, BookOpen, Bookmark, Check, ChevronDown, ChevronRight, Clipboard, Clock3, Compass, Eye, FileText, Heart, Image, Layers3, LayoutDashboard, LineChart, Lock, Menu, MessageCircle, Package, Palette, Pencil, PenLine, RotateCcw, Search, Send, Settings, ShoppingCart, Sparkles, Tags, TicketPercent, Trash2, Upload, Volume2, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bell, BookOpen, Bookmark, Check, ChevronDown, ChevronRight, Clipboard, Clock3, Compass, Eye, FileText, Heart, Image, Layers3, LayoutDashboard, LineChart, Lock, LogOut, Menu, MessageCircle, Package, Palette, Pencil, PenLine, RotateCcw, Search, Send, Settings, ShoppingCart, Sparkles, Tags, TicketPercent, Trash2, Upload, Volume2, X } from "lucide-react";
 import { AiCompanionDock, AiMissionPage, emitAiActivity, useAiMission } from "./AiMission";
 import { assetUrl } from "./assets";
 import { ProgressiveImage } from "./ProgressiveImage";
 import { clearUserQueryState, subscribeMarketChatChanges } from "./query-client";
 import { RichContent, RichTextEditor, type RichDocument, type UploadedPostImage } from "./RichTextEditor";
+import AdminPage from "./AdminPage";
 type User = {
   id: number;
   email: string;
   nickname: string;
+  accountStatus?: "ACTIVE" | "BLOCKED" | "WITHDRAWN";
+  passwordChangeRequired?: boolean;
   interests?: string[];
   blog?: {
     id: number;
@@ -31,6 +34,7 @@ type Blog = {
   owner?: { id: number; nickname: string };
   isSubscribed?: boolean;
   subscriberCount?: number;
+  isOfficial?: boolean;
 };
 type BlogCategory = {
   id: number;
@@ -48,6 +52,7 @@ type Post = {
   content?: string;
   contentDocument?: RichDocument | null;
   excerpt?: string;
+  thumbnailUrl?: string | null;
   status: "DRAFT" | "PUBLISHED";
   category?: { id: number; name: string } | null;
   classifications: { id: number; name: string }[];
@@ -109,7 +114,12 @@ type ChatMessage = {
   body: string;
   readAt?: string | null;
   createdAt: string;
+  deletedAt?: string | null;
+  pending?: boolean;
+  replyTo?: { id: number | string; body?: string | null; senderId?: number | string } | null;
+  reactions?: { type: ChatReaction; count: number; reactedByMe: boolean }[];
 };
+type ChatReaction = "HEART" | "CHECK" | "THUMBS_UP" | "SAD" | "COOL" | "LAUGH";
 type WalletTransaction = {
   id: number;
   orderId?: number;
@@ -196,6 +206,7 @@ type NotificationData = {
 };
 
 const AUTH_SNAPSHOT_KEY = "tistory.auth-display.v1";
+const AI_DOCK_STATE_KEY = "tistory.ai-dock-state.v1";
 const AuthBootstrapContext = createContext<{
   pending: boolean;
   cachedUser: User | null;
@@ -219,8 +230,21 @@ const writeAuthSnapshot = (user: User) => {
     }),
   );
 };
+const readAiDockEnabled = (userId: number) => {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(AI_DOCK_STATE_KEY) ?? "null") as { userId?: number; enabled?: boolean } | null;
+    return value?.userId === userId && value.enabled === true;
+  } catch {
+    return false;
+  }
+};
+const writeAiDockEnabled = (userId: number, enabled: boolean) => {
+  if (enabled) sessionStorage.setItem(AI_DOCK_STATE_KEY, JSON.stringify({ userId, enabled: true }));
+  else sessionStorage.removeItem(AI_DOCK_STATE_KEY);
+};
 const clearClientAuthState = () => {
   sessionStorage.removeItem(AUTH_SNAPSHOT_KEY);
+  sessionStorage.removeItem(AI_DOCK_STATE_KEY);
   clearUserQueryState();
   csrfToken = "";
 };
@@ -1065,7 +1089,9 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
                         조회 {post.viewCount} · 좋아요 {post.likeCount} · 댓글 {post.commentCount}
                       </small>
                     </div>
-                    <div className="post-thumb" style={{ backgroundColor: solidColor(index, 1) }} />
+                    <div className={`post-thumb${post.thumbnailUrl ? " has-image" : ""}`} style={{ backgroundColor: solidColor(index, 1) }}>
+                      {post.thumbnailUrl && <ProgressiveImage src={post.thumbnailUrl} alt="" />}
+                    </div>
                   </article>
                 ))}
               </div>
@@ -1103,11 +1129,13 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
                         </small>
                       </div>
                       <div
-                        className="post-thumb"
+                        className={`post-thumb${post.thumbnailUrl ? " has-image" : ""}`}
                         style={{
                           backgroundColor: solidColor(index, categoryPage),
                         }}
-                      />
+                      >
+                        {post.thumbnailUrl && <ProgressiveImage src={post.thumbnailUrl} alt="" />}
+                      </div>
                     </article>
                   ))
                 ) : (
@@ -1194,7 +1222,9 @@ function HomeEditorial({ title, description, posts, go }: { title: string; descr
               <button onClick={() => (post.id > 0 ? go(`/post/${post.id}`) : go("/feed"))}>{post.title}</button>
             </h3>
             <p>{post.excerpt ?? "팬들이 함께 나누는 새로운 이야기와 기록입니다."}</p>
-            <div className="editorial-thumb" style={{ backgroundColor: solidColor(index, title.length) }} />
+            <div className={`editorial-thumb${post.thumbnailUrl ? " has-image" : ""}`} style={{ backgroundColor: solidColor(index, title.length) }}>
+              {post.thumbnailUrl && <ProgressiveImage src={post.thumbnailUrl} alt="" />}
+            </div>
             <small>
               조회 {post.viewCount}　♡ {post.likeCount}　댓글 {post.commentCount}
             </small>
@@ -1234,8 +1264,8 @@ function HomeMarketEditorial({ items, go }: { items: MarketItem[]; go: (to: stri
             <small>
               {item.seller.nickname} · ♡ {item.likeCount ?? 0}
             </small>
-            <button className="editorial-thumb home-market-thumb" style={{ backgroundColor: solidColor(index, 6) }} onClick={() => go(item.url ?? `/market/${item.id}`)} aria-label={`${item.title} 상품 보기`}>
-              <span>{item.category}</span>
+            <button className={`editorial-thumb home-market-thumb${item.thumbnailUrl ? " has-image" : ""}`} style={{ backgroundColor: solidColor(index, 6) }} onClick={() => go(item.url ?? `/market/${item.id}`)} aria-label={`${item.title} 상품 보기`}>
+              {item.thumbnailUrl ? <ProgressiveImage src={item.thumbnailUrl} alt="" /> : <span>{item.category}</span>}
             </button>
           </article>
         ))}
@@ -1772,6 +1802,13 @@ function Agreement({ go, onDecided }: { go: (to: string) => void; onDecided: () 
   );
 }
 
+function PasswordChange({ go, onDone }: { go: (to: string) => void; onDone: () => void }) {
+  const [form, setForm] = useState({ currentPassword: "", password: "", passwordConfirm: "" });
+  const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
+  const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); setError(""); try { await request("/auth/change-password", { method: "POST", body: JSON.stringify(form) }); onDone(); go("/"); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } };
+  return <main className="tistory-auth-page"><section className="tistory-auth-card credentials"><strong className="login-wordmark">TISTORY</strong><p className="credential-title">새 비밀번호 설정</p><p className="login-description">관리자가 발급한 임시 비밀번호를 변경해야 서비스를 계속 이용할 수 있습니다.</p><form className="credential-form" onSubmit={submit}><label><span>임시 비밀번호</span><input autoFocus required type="password" value={form.currentPassword} onChange={(e)=>setForm({...form,currentPassword:e.target.value})}/></label><label><span>새 비밀번호</span><input required minLength={8} type="password" value={form.password} onChange={(e)=>setForm({...form,password:e.target.value})}/></label><label><span>새 비밀번호 확인</span><input required minLength={8} type="password" value={form.passwordConfirm} onChange={(e)=>setForm({...form,passwordConfirm:e.target.value})}/></label>{error&&<p className="form-error">{error}</p>}<button className="credential-submit" disabled={busy}>{busy?"변경 중…":"비밀번호 변경"}</button></form></section></main>;
+}
+
 function NoticeArticle({ go }: { go: (to: string) => void }) {
   return (
     <div className="notice-blog-page">
@@ -2003,6 +2040,7 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
   };
   const posts = data?.posts.items ?? [];
   const market = data?.market.items ?? [];
+  const official = slug === "admin" || data?.blog.isOfficial === true;
   const ownerName = data?.blog.owner?.nickname ?? slug;
   const statusLabel: Record<MarketItem["status"], string> = {
     SELLING: "판매 중",
@@ -2015,13 +2053,13 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
         <div className="creator-blog-shell">
           {error && <p className="creator-blog-error">{error}</p>}
           <div className="creator-blog-top">
-            <aside className="creator-profile-panel">
-              <div className={`creator-profile-image${data?.blog.profileImageUrl ? " has-photo" : ""}`} style={data?.blog.profileImageUrl ? { backgroundImage: `url(${data.blog.profileImageUrl})` } : undefined} aria-label={`${ownerName} 프로필 이미지`} />
-              <p className="creator-kicker">CREATOR JOURNAL</p>
-              <h1 className="font-jua">{data?.blog.name ?? slug}</h1>
-              <span className="creator-handle">@{data?.blog.slug ?? slug}</span>
-              <p className="creator-description">{data?.blog.description || blankPlaceholder}</p>
-              <dl className="creator-stats">
+            <aside className={`creator-profile-panel${official ? " official-profile-panel" : ""}`}>
+              {!official && <div className={`creator-profile-image${data?.blog.profileImageUrl ? " has-photo" : ""}`} style={data?.blog.profileImageUrl ? { backgroundImage: `url(${data.blog.profileImageUrl})` } : undefined} aria-label={`${ownerName} 프로필 이미지`} />}
+              {!official && <p className="creator-kicker">CREATOR JOURNAL</p>}
+              <h1 className="font-jua">{official ? "관리자" : data?.blog.name ?? slug}</h1>
+              {!official && <span className="creator-handle">@{data?.blog.slug ?? slug}</span>}
+              <p className="creator-description">{official ? "서비스 소식과 주요 안내를 전하는 공식 공지 블로그입니다." : data?.blog.description || blankPlaceholder}</p>
+              {!official && <dl className="creator-stats">
                 <div>
                   <dt className="font-jua">{data?.posts.pagination.totalItems ?? posts.length}</dt>
                   <dd className="font-jua">글</dd>
@@ -2034,8 +2072,8 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
                   <dt className="font-jua">{data?.market.pagination.totalItems ?? market.length}</dt>
                   <dd className="font-jua">상품</dd>
                 </div>
-              </dl>
-              {mine ? (
+              </dl>}
+              {official ? <span className="official-blog-badge"><i aria-hidden="true">T</i><span><b>공식 운영 블로그</b><small>Official notice channel</small></span></span> : mine ? (
                 <button className="creator-subscribe font-jua" onClick={() => go("/blog/me/manage")}>
                   블로그 관리
                 </button>
@@ -2048,8 +2086,8 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
             <section className="creator-editorial">
               <header className="creator-section-head">
                 <div>
-                  <p className="creator-kicker">LATEST STORIES</p>
-                  <h2 className="font-jua">요즘의 기록</h2>
+                  {!official && <p className="creator-kicker">LATEST STORIES</p>}
+                  <h2 className="font-jua">{official ? "공지사항" : "요즘의 기록"}</h2>
                 </div>
                 {mine && (
                   <div className="creator-section-actions">
@@ -2064,7 +2102,7 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
                 <div className="creator-editorial-grid">
                   <div className="creator-story-list">
                     {posts.slice(0, 3).map((post, index) => (
-                      <button className="creator-story" key={post.id} onClick={() => go(`/post/${post.id}`)}>
+                      <button className="creator-story" key={post.id} onClick={() => go(official ? `/notice/${post.id}` : `/post/${post.id}`)}>
                         <small>{index === 0 ? "LATEST" : "STORY 0" + (index + 1)}</small>
                         <h3 className="font-jua">{post.title}</h3>
                         <time>
@@ -2076,8 +2114,8 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
                   </div>
                   <div className="creator-gallery" aria-label="최근 글 갤러리">
                     {posts.slice(0, 9).map((post, index) => (
-                      <button className={`creator-gallery-tile creator-tone-${index % 9}`} key={post.id} onClick={() => go(`/post/${post.id}`)}>
-                        <i />
+                      <button className={`creator-gallery-tile creator-tone-${index % 9}${post.thumbnailUrl ? " has-image" : ""}`} key={post.id} onClick={() => go(official ? `/notice/${post.id}` : `/post/${post.id}`)}>
+                        {post.thumbnailUrl ? <ProgressiveImage src={post.thumbnailUrl} alt="" /> : <i />}
                         <span className="font-jua">{post.title}</span>
                       </button>
                     ))}
@@ -2088,7 +2126,7 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
               )}
             </section>
           </div>
-          <section className="creator-shop">
+          {!official && <section className="creator-shop">
             <header className="creator-section-head">
               <div>
                 <p className="creator-kicker">CURATOR'S SHOP</p>
@@ -2100,8 +2138,8 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
             {market.length ? (
               <div className="creator-product-grid">
                 {market.map((item, index) => (
-                  <button className={`creator-product creator-tone-${(index + 2) % 9}`} key={item.id} onClick={() => go(`/market/${item.id}`)}>
-                    <i />
+                  <button className={`creator-product creator-tone-${(index + 2) % 9}${item.thumbnailUrl ? " has-image" : ""}`} key={item.id} onClick={() => go(`/market/${item.id}`)}>
+                    {item.thumbnailUrl ? <ProgressiveImage src={item.thumbnailUrl} alt="" /> : <i />}
                     <span>
                       <em>{statusLabel[item.status]}</em>
                       <strong>{item.title}</strong>
@@ -2113,7 +2151,7 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
             ) : (
               <Empty text="아직 등록된 상품이 없습니다." detail={mine ? "상품을 등록하면 내 블로그 상점에도 자동으로 표시됩니다." : undefined} />
             )}
-          </section>
+          </section>}
         </div>
       </main>
     </Shell>
@@ -2190,16 +2228,17 @@ function Editor({ id, go, user }: { id?: string; go: (to: string) => void; user:
   }, [classificationIds, classifications]);
   const toggleClassification = (classificationId: number) => setClassificationIds((ids) => (ids.includes(classificationId) ? ids.filter((value) => value !== classificationId) : ids.length < 5 ? [...ids, classificationId] : ids));
   const createClassification = async (name: string, source: BlogClassification["source"]) => {
-    const existing = classifications.find((item) => item.name === name);
-    if (existing) {
+    const normalizedName = name.trim().toLocaleLowerCase("ko-KR");
+    const existing = classifications.find((item) => item.name.trim().toLocaleLowerCase("ko-KR") === normalizedName);
+    if (existing && (existing.source === source || source === "CUSTOM")) {
       toggleClassification(existing.id);
       return existing;
     }
     setClassificationBusy(true);
     try {
       const created = await request<BlogClassification>("/blogs/me/classifications", { method: "POST", body: JSON.stringify({ name, source }) });
-      setClassifications((items) => [...items, created]);
-      setClassificationIds((ids) => [...ids, created.id].slice(0, 5));
+      setClassifications((items) => [...items.filter((item) => item.id !== created.id), created]);
+      setClassificationIds((ids) => (ids.includes(created.id) ? ids : [...ids, created.id].slice(0, 5)));
       return created;
     } catch (error) {
       setClassificationError((error as Error).message);
@@ -2244,7 +2283,7 @@ function Editor({ id, go, user }: { id?: string; go: (to: string) => void; user:
   };
   const deleteImage = (imageId: string) => request<void>(`/posts/images/${imageId}`, { method: "DELETE" });
   const save = async (status: "DRAFT" | "PUBLISHED") => {
-    if (uploading || busy) return;
+    if (uploading || busy || classificationBusy) return;
     setBusy(true);
     setError("");
     try {
@@ -2280,10 +2319,10 @@ function Editor({ id, go, user }: { id?: string; go: (to: string) => void; user:
         </button>
         <div>
           {uploading && <span className="editor-upload-state">이미지 처리 중…</span>}
-          <button className="save-button" disabled={busy || uploading} onClick={() => save("DRAFT")}>
+          <button className="save-button" disabled={busy || uploading || classificationBusy} onClick={() => save("DRAFT")}>
             임시저장
           </button>
-          <button className="publish-button" disabled={busy || uploading} onClick={() => save("PUBLISHED")}>
+          <button className="publish-button" disabled={busy || uploading || classificationBusy} onClick={() => save("PUBLISHED")}>
             발행하기
           </button>
         </div>
@@ -2954,7 +2993,7 @@ function MarketImageCropModal({ file, remaining, onCancel, onDone }: { file: Fil
   );
 }
 
-function Manage({ path, go, user, onLogin, onUserChange }: { path: string; go: (to: string) => void; user: User | null; onLogin: () => void; onUserChange: (user: User) => void }) {
+function Manage({ path, go, user, onLogin, onUserChange, onWithdraw }: { path: string; go: (to: string) => void; user: User | null; onLogin: () => void; onUserChange: (user: User) => void; onWithdraw: () => void }) {
   const [blog, setBlog] = useState<Blog | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -3018,7 +3057,7 @@ function Manage({ path, go, user, onLogin, onUserChange }: { path: string; go: (
           </header>
           {error && <p className="manage-error">{error}</p>}
           {section === "overview" && <ManageOverview go={go} />}
-          {section === "settings" && blog && <ManageSettings blog={blog} setBlog={setBlog} user={user} onUserChange={onUserChange} />}
+          {section === "settings" && blog && <ManageSettings blog={blog} setBlog={setBlog} user={user} onUserChange={onUserChange} onWithdraw={onWithdraw} />}
           {section === "interests" && <ManageInterests user={user} onUserChange={onUserChange} />}
           {section === "categories" && <ManageCategories go={go} />}
           {section === "posts" && <ManagePosts go={go} />}
@@ -3109,7 +3148,7 @@ function ManageOverview({ go }: { go: (to: string) => void }) {
   );
 }
 
-function ManageSettings({ blog, setBlog, user, onUserChange }: { blog: Blog; setBlog: (blog: Blog) => void; user: User; onUserChange: (user: User) => void }) {
+function ManageSettings({ blog, setBlog, user, onUserChange, onWithdraw }: { blog: Blog; setBlog: (blog: Blog) => void; user: User; onUserChange: (user: User) => void; onWithdraw: () => void }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState(blog.name);
   const [description, setDescription] = useState(blog.description);
@@ -3122,6 +3161,11 @@ function ManageSettings({ blog, setBlog, user, onUserChange }: { blog: Blog; set
   const [interests, setInterests] = useState<string[]>(user.interests ?? []);
   const [savedInterests, setSavedInterests] = useState<string[]>(user.interests ?? []);
   const [interestBusy, setInterestBusy] = useState(false);
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [withdrawPassword, setWithdrawPassword] = useState("");
+  const [withdrawConfirmation, setWithdrawConfirmation] = useState("");
+  const [withdrawBusy, setWithdrawBusy] = useState(false);
+  const [withdrawError, setWithdrawError] = useState("");
   const interestDirty = interests.join("|") !== savedInterests.join("|");
   const toggleInterest = (interest: string) => setInterests((current) => (current.includes(interest) ? current.filter((item) => item !== interest) : current.length < 8 ? [...current, interest] : current));
   const saveInterests = async () => {
@@ -3216,6 +3260,21 @@ function ManageSettings({ blog, setBlog, user, onUserChange }: { blog: Blog; set
       setMessage((e as Error).message);
     } finally {
       setBusy(false);
+    }
+  };
+  const withdraw = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!withdrawPassword || withdrawConfirmation !== "회원탈퇴") return;
+    setWithdrawBusy(true);
+    setWithdrawError("");
+    try {
+      await request("/me", { method: "DELETE", body: JSON.stringify({ password: withdrawPassword, confirmation: withdrawConfirmation }) });
+      queryClient.clear();
+      clearClientAuthState();
+      onWithdraw();
+    } catch (e) {
+      setWithdrawError((e as Error).message);
+      setWithdrawBusy(false);
     }
   };
   return (
@@ -3316,7 +3375,27 @@ function ManageSettings({ blog, setBlog, user, onUserChange }: { blog: Blog; set
           {busy ? "저장 중…" : "변경사항 저장"}
         </button>
       </section>
+      <section className="manage-withdraw-section" aria-labelledby="withdraw-heading">
+        <div>
+          <h2 className="font-jua" id="withdraw-heading">회원 탈퇴</h2>
+          <p>계정과 개인정보는 익명화되며 작성한 글과 상품은 공개 화면에서 숨겨집니다. 콘텐츠는 운영 확인을 위해 관리자 휴지통에 보관됩니다.</p>
+        </div>
+        <button className="manage-withdraw-button font-jua" type="button" onClick={() => { setWithdrawError(""); setWithdrawOpen(true); }}>회원 탈퇴</button>
+      </section>
       {cropSource && <CropModal source={cropSource} onClose={() => setCropSource("")} onDone={upload} />}
+      {withdrawOpen && <div className="manage-modal" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !withdrawBusy) setWithdrawOpen(false); }}>
+        <form className="withdraw-dialog" role="dialog" aria-modal="true" aria-labelledby="withdraw-dialog-title" onSubmit={withdraw}>
+          <header>
+            <div><p>ACCOUNT WITHDRAWAL</p><h2 className="font-jua" id="withdraw-dialog-title">정말 탈퇴하시겠습니까?</h2></div>
+            <button type="button" disabled={withdrawBusy} onClick={() => setWithdrawOpen(false)} aria-label="회원 탈퇴 창 닫기"><X size={18} /></button>
+          </header>
+          <div className="withdraw-warning"><strong>탈퇴 후에는 다시 로그인할 수 없습니다.</strong><span>작성 글과 마켓 상품은 즉시 비공개 처리되며 관리자 휴지통에 보관됩니다.</span></div>
+          <label className="font-jua">현재 비밀번호<input autoFocus type="password" autoComplete="current-password" value={withdrawPassword} onChange={(event) => setWithdrawPassword(event.target.value)} placeholder="현재 비밀번호" /></label>
+          <label className="font-jua">확인 문구<input value={withdrawConfirmation} onChange={(event) => setWithdrawConfirmation(event.target.value)} placeholder="회원탈퇴 입력" /><small>계속하려면 <b>회원탈퇴</b>를 정확히 입력하세요.</small></label>
+          {withdrawError && <p className="form-error" role="alert">{withdrawError}</p>}
+          <footer><button type="button" disabled={withdrawBusy} onClick={() => setWithdrawOpen(false)}>취소</button><button type="submit" disabled={withdrawBusy || !withdrawPassword || withdrawConfirmation !== "회원탈퇴"}>{withdrawBusy ? "탈퇴 처리 중…" : "계정 영구 탈퇴"}</button></footer>
+        </form>
+      </div>}
     </div>
   );
 }
@@ -4850,6 +4929,15 @@ function InterestMockup({ go }: { go: (to: string) => void }) {
 }
 
 const CHAT_BALL_POSITION_KEY = 'tistory.market-chat-ball.v1'
+const CHAT_REACTIONS: { type: ChatReaction; emoji: string; label: string }[] = [
+  { type: 'HEART', emoji: '❤️', label: '하트' },
+  { type: 'CHECK', emoji: '✅', label: '확인' },
+  { type: 'THUMBS_UP', emoji: '👍', label: '엄지척' },
+  { type: 'SAD', emoji: '😢', label: '슬퍼요' },
+  { type: 'COOL', emoji: '😎', label: '멋져요' },
+  { type: 'LAUGH', emoji: '😂', label: '웃겨요' },
+]
+const reactionMeta = (type: ChatReaction) => CHAT_REACTIONS.find((item) => item.type === type) ?? CHAT_REACTIONS[0]
 const clampChatBall = (position: { x: number; y: number }) => ({
   x: Math.max(12, Math.min(window.innerWidth - 72, position.x)),
   y: Math.max(72, Math.min(window.innerHeight - 72, position.y)),
@@ -4861,6 +4949,9 @@ function MarketChatDock({ user, onLogin }: { user: User | null; onLogin: () => v
   const [active, setActive] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [draft, setDraft] = useState('')
+  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null)
+  const [reactionPicker, setReactionPicker] = useState<number | string | null>(null)
+  const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
   const [position, setPosition] = useState(() => {
     try { return clampChatBall(JSON.parse(localStorage.getItem(CHAT_BALL_POSITION_KEY) ?? 'null') ?? { x: window.innerWidth - 88, y: window.innerHeight - 104 }) }
@@ -4868,6 +4959,8 @@ function MarketChatDock({ user, onLogin }: { user: User | null; onLogin: () => v
   })
   const drag = useRef<{ pointerId: number; offsetX: number; offsetY: number; moved: boolean } | null>(null)
   const suppressClick = useRef(false)
+  const messageList = useRef<HTMLDivElement | null>(null)
+  const positionedRoom = useRef<string | null>(null)
   const unread = rooms.reduce((sum, room) => sum + (room.unreadCount ?? 0), 0)
 
   const loadRooms = async () => {
@@ -4878,7 +4971,10 @@ function MarketChatDock({ user, onLogin }: { user: User | null; onLogin: () => v
   const loadMessages = async (room: Conversation, markRead = true) => {
     try {
       const next = await request<ChatMessage[]>(`/market/conversations/${room.id}/messages`) ?? []
-      setMessages(next)
+      setMessages((current) => {
+        const pending = current.filter((entry) => entry.pending)
+        return [...next, ...pending.filter((entry) => !next.some((saved) => saved.body === entry.body && saved.createdAt >= entry.createdAt))]
+      })
       const hasUnreadReceivedMessage = next.some((entry) => String(entry.senderId) !== String(user?.id) && !entry.readAt)
       if (markRead && hasUnreadReceivedMessage) {
         await request(`/market/conversations/${room.id}/read`, { method: 'POST' })
@@ -4897,6 +4993,13 @@ function MarketChatDock({ user, onLogin }: { user: User | null; onLogin: () => v
     })
   }, [user?.id, open, active?.id])
   useEffect(() => { if (open && active) void loadMessages(active) }, [open, active?.id])
+  useLayoutEffect(() => {
+    if (!active || !messageList.current || !messages.length) return
+    const roomId = String(active.id)
+    const firstPosition = positionedRoom.current !== roomId
+    messageList.current.scrollTo({ top: messageList.current.scrollHeight, behavior: firstPosition ? 'auto' : 'smooth' })
+    positionedRoom.current = roomId
+  }, [open, active?.id, messages[messages.length - 1]?.id])
   useEffect(() => {
     const resize = () => setPosition((current) => clampChatBall(current))
     window.addEventListener('resize', resize)
@@ -4927,15 +5030,66 @@ function MarketChatDock({ user, onLogin }: { user: User | null; onLogin: () => v
     setOpen((value) => !value)
     void loadRooms()
   }
-  const selectRoom = (room: Conversation) => { setActive(room); void loadMessages(room) }
+  const selectRoom = (room: Conversation) => { setActive(room); setReplyingTo(null); setReactionPicker(null); void loadMessages(room) }
   const sendMessage = async (event: FormEvent) => {
     event.preventDefault()
     const body = draft.trim()
-    if (!active || !body) return
+    if (!active || !body || !user) return
+    const optimisticId = `pending-${crypto.randomUUID()}`
+    const optimistic: ChatMessage = {
+      id: optimisticId, conversationId: active.id, senderId: user.id, body,
+      createdAt: new Date().toISOString(), pending: true,
+      replyTo: replyingTo ? { id: replyingTo.id, body: replyingTo.body, senderId: replyingTo.senderId } : null,
+      reactions: [],
+    }
+    setDraft(''); setReplyingTo(null); setSending(true); setMessages((current) => [...current, optimistic])
     try {
-      const sent = await request<ChatMessage>(`/market/conversations/${active.id}/messages`, { method: 'POST', body: JSON.stringify({ body }) })
-      setMessages((current) => [...current, sent]); setDraft(''); await loadRooms()
-    } catch (reason) { setError((reason as Error).message) }
+      const sent = await request<ChatMessage>(`/market/conversations/${active.id}/messages`, {
+        method: 'POST', body: JSON.stringify({ body, replyToMessageId: optimistic.replyTo?.id ?? null }),
+      })
+      setMessages((current) => current.some((entry) => String(entry.id) === String(sent.id))
+        ? current.filter((entry) => entry.id !== optimisticId)
+        : current.map((entry) => entry.id === optimisticId ? { ...sent, replyTo: optimistic.replyTo } : entry))
+      void loadRooms()
+    } catch (reason) {
+      setMessages((current) => current.filter((entry) => entry.id !== optimisticId)); setDraft(body); setError((reason as Error).message)
+    } finally { setSending(false) }
+  }
+
+  const toggleReaction = async (message: ChatMessage, type: ChatReaction) => {
+    if (!active || message.pending || message.deletedAt) return
+    const previous = message.reactions ?? []
+    const selected = previous.find((item) => item.type === type)
+    const activeNext = !selected?.reactedByMe
+    const next = selected
+      ? previous.map((item) => item.type === type ? { ...item, count: Math.max(0, item.count + (activeNext ? 1 : -1)), reactedByMe: activeNext } : item).filter((item) => item.count > 0)
+      : [...previous, { type, count: 1, reactedByMe: true }]
+    setMessages((current) => current.map((entry) => String(entry.id) === String(message.id) ? { ...entry, reactions: next } : entry))
+    setReactionPicker(null)
+    try {
+      await request(`/market/conversations/${active.id}/messages/${message.id}/reactions`, {
+        method: activeNext ? 'PUT' : 'DELETE', body: JSON.stringify({ reaction: type }),
+      })
+    } catch (reason) {
+      setMessages((current) => current.map((entry) => String(entry.id) === String(message.id) ? { ...entry, reactions: previous } : entry))
+      setError((reason as Error).message)
+    }
+  }
+
+  const deleteChatMessage = async (message: ChatMessage) => {
+    if (!active || message.pending || !confirm('이 메시지를 삭제할까요?')) return
+    const previous = messages
+    setMessages((current) => current.map((entry) => String(entry.id) === String(message.id) ? { ...entry, body: '', deletedAt: new Date().toISOString(), reactions: [] } : entry))
+    try { await request(`/market/conversations/${active.id}/messages/${message.id}`, { method: 'DELETE' }) }
+    catch (reason) { setMessages(previous); setError((reason as Error).message) }
+  }
+
+  const leaveRoom = async () => {
+    if (!active || !confirm('이 채팅방에서 나갈까요? 내 채팅 목록에서 숨겨집니다.')) return
+    const leaving = active
+    setActive(null); setMessages([]); setReplyingTo(null); setRooms((current) => current.filter((room) => String(room.id) !== String(leaving.id)))
+    try { await request(`/market/conversations/${leaving.id}`, { method: 'DELETE' }) }
+    catch (reason) { setRooms((current) => [leaving, ...current]); setError((reason as Error).message) }
   }
 
   return <>
@@ -4943,11 +5097,28 @@ function MarketChatDock({ user, onLogin }: { user: User | null; onLogin: () => v
       <Send size={24} fill="currentColor" />{unread > 0 && <b>{unread > 99 ? '99+' : unread}</b>}
     </button>
     {open && user && <aside className="market-chat-inbox" aria-label="마켓 다이렉트 메시지">
-      <header><div><small>DIRECT MESSAGE</small><strong>{active ? active.peer?.nickname ?? '채팅' : '마켓 채팅'}</strong></div><button onClick={() => setOpen(false)} aria-label="채팅함 닫기"><X size={18} /></button></header>
+      <header><div><small>DIRECT MESSAGE</small><strong>{active ? active.peer?.nickname ?? '채팅' : '마켓 채팅'}</strong></div><span className="market-chat-head-actions">{active && <button onClick={leaveRoom} aria-label="채팅방 나가기" title="채팅방 나가기"><LogOut size={16} /></button>}<button onClick={() => setOpen(false)} aria-label="채팅함 닫기"><X size={18} /></button></span></header>
       {active ? <>
         <button className="market-chat-back" onClick={() => { setActive(null); setMessages([]) }}><ArrowLeft size={14} /> 모든 대화 <span>{active.item?.title}</span></button>
-        <div className="market-chat-inbox-messages">{messages.length ? messages.map((entry) => <div className={`chat-message${String(entry.senderId) === String(user.id) ? ' mine' : ''}`} key={entry.id}><p>{entry.body}</p><time>{new Date(entry.createdAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time></div>) : <p className="market-chat-empty">아직 메시지가 없습니다.</p>}</div>
-        <form onSubmit={sendMessage}><input maxLength={1000} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="메시지를 입력하세요" /><button disabled={!draft.trim()} aria-label="메시지 전송"><Send size={17} /></button></form>
+        <div className="market-chat-inbox-messages" ref={messageList}>{messages.length ? messages.map((entry) => {
+          const mine = String(entry.senderId) === String(user.id)
+          return <div className={`chat-message${mine ? ' mine' : ''}${entry.pending ? ' pending' : ''}${entry.deletedAt ? ' deleted' : ''}`} key={entry.id}>
+            <div className="chat-message-bubble">
+              {entry.replyTo && <button className="chat-reply-preview" onClick={() => document.getElementById(`chat-message-${entry.replyTo?.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}><strong>{String(entry.replyTo.senderId) === String(user.id) ? '내 메시지' : active.peer?.nickname ?? '상대방'}</strong><span>{entry.replyTo.body || '삭제된 메시지입니다.'}</span></button>}
+              <p id={`chat-message-${entry.id}`}>{entry.deletedAt ? '삭제된 메시지입니다.' : entry.body}</p>
+              {!entry.deletedAt && <div className="chat-message-actions">
+                <button onClick={() => setReplyingTo(entry)} aria-label="답장"><MessageCircle size={12} /> 답장</button>
+                <button onClick={() => setReactionPicker((current) => current === entry.id ? null : entry.id)} aria-label="반응 남기기">＋ 반응</button>
+                {mine && <button onClick={() => deleteChatMessage(entry)} aria-label="메시지 삭제"><Trash2 size={11} /></button>}
+              </div>}
+              {reactionPicker === entry.id && <div className="chat-reaction-picker">{CHAT_REACTIONS.map((reaction) => <button key={reaction.type} title={reaction.label} aria-label={reaction.label} onClick={() => toggleReaction(entry, reaction.type)}>{reaction.emoji}</button>)}</div>}
+              {!entry.deletedAt && !!entry.reactions?.length && <div className="chat-reaction-summary">{entry.reactions.map((reaction) => <button className={reaction.reactedByMe ? 'active' : ''} key={reaction.type} title={reactionMeta(reaction.type).label} onClick={() => toggleReaction(entry, reaction.type)}><span>{reactionMeta(reaction.type).emoji}</span>{reaction.count}</button>)}</div>}
+            </div>
+            <time>{entry.pending ? '전송 중…' : new Date(entry.createdAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time>
+          </div>
+        }) : <p className="market-chat-empty">아직 메시지가 없습니다.</p>}</div>
+        {replyingTo && <div className="market-chat-replying"><span><strong>{String(replyingTo.senderId) === String(user.id) ? '내 메시지' : active.peer?.nickname ?? '상대방'}에게 답장</strong>{replyingTo.body}</span><button onClick={() => setReplyingTo(null)} aria-label="답장 취소"><X size={14} /></button></div>}
+        <form onSubmit={sendMessage}><input maxLength={1000} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={replyingTo ? '답장을 입력하세요' : '메시지를 입력하세요'} /><button disabled={!draft.trim() || sending} aria-label="메시지 전송"><Send size={17} /></button></form>
       </> : <div className="market-chat-room-list">{rooms.length ? rooms.map((room) => <button key={room.id} onClick={() => selectRoom(room)}><span className={`market-chat-peer${room.peer?.profileImageUrl ? ' has-photo' : ''}`} style={room.peer?.profileImageUrl ? { backgroundImage: `url(${room.peer.profileImageUrl})` } : undefined} aria-label={`${room.peer?.nickname ?? '상대방'} 프로필 이미지`}>{room.peer?.profileImageUrl ? '' : room.peer?.nickname?.[0] ?? '?'}</span><span><strong>{room.peer?.nickname ?? '상대방'}</strong><small>{room.item?.title ?? '마켓 상품'}</small><p>{room.lastMessage?.body ?? '대화를 시작해 보세요.'}</p></span>{(room.unreadCount ?? 0) > 0 && <b>{room.unreadCount}</b>}</button>) : <p className="market-chat-empty">아직 시작한 마켓 대화가 없습니다.<br />상품에서 채팅하기를 눌러 시작해 보세요.</p>}</div>}
       {error && <p className="market-chat-error">{error}</p>}
     </aside>}
@@ -4962,6 +5133,16 @@ function App() {
   const [requiresConsent, setRequiresConsent] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const aiMission = useAiMission(user?.id ?? null, request);
+  const [aiVisitedUserId, setAiVisitedUserId] = useState<number | null>(() => cachedUser && readAiDockEnabled(cachedUser.id) ? cachedUser.id : null);
+  useEffect(() => {
+    if (path !== "/ai" || !user?.id) return;
+    writeAiDockEnabled(user.id, true);
+    setAiVisitedUserId(user.id);
+    aiMission.setDock("open");
+  }, [path, user?.id, aiMission.setDock]);
+  useEffect(() => {
+    if (authState === "anonymous") setAiVisitedUserId(null);
+  }, [authState]);
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -5022,6 +5203,9 @@ function App() {
     setAuthState("authenticated");
   }, [user]);
   useEffect(() => {
+    if (user?.passwordChangeRequired && path !== "/change-password") go("/change-password");
+  }, [user?.passwordChangeRequired, path]);
+  useEffect(() => {
     const updateProfile = (event: Event) => {
       const profileImageUrl = (event as CustomEvent<string | null>).detail;
       setUser((current) => (current?.blog ? { ...current, blog: { ...current.blog, profileImageUrl } } : current));
@@ -5032,9 +5216,10 @@ function App() {
   const onLogin = () => setLoginOpen(true);
   const authPending = authState === "loading" || authState === "degraded";
   const visibleUser = user ?? (authPending ? cachedUser : null);
-  const publicWhileAuthLoads = path === "/" || path === "/login" || path === "/signup" || path === "/interests/mockup" || path === "/notice/2702" || path === "/feed" || path === "/search" || path === "/skin" || path === "/market" || path === "/market/recent" || path === "/market/cart" || path === "/market/price-guide" || path === "/market/coupons" || /^\/market\/\d+$/.test(path) || /^\/post\/\d+$/.test(path) || (/^\/blog\/[^/]+$/.test(path) && path !== "/blog/new");
+  const publicWhileAuthLoads = path.startsWith("/adminpage") || path === "/" || path === "/login" || path === "/signup" || path === "/interests/mockup" || /^\/notice\/\d+$/.test(path) || path === "/feed" || path === "/search" || path === "/skin" || path === "/market" || path === "/market/recent" || path === "/market/cart" || path === "/market/price-guide" || path === "/market/coupons" || /^\/market\/\d+$/.test(path) || /^\/post\/\d+$/.test(path) || (/^\/blog\/[^/]+$/.test(path) && path !== "/blog/new");
   let content: React.ReactNode;
-  if ((authState === "loading" || authState === "degraded") && !publicWhileAuthLoads)
+  if (path.startsWith("/adminpage")) content = <AdminPage />;
+  else if ((authState === "loading" || authState === "degraded") && !publicWhileAuthLoads)
     content = (
       <Shell go={go} user={null} onLogin={onLogin}>
         <main id="main" className="page-main">
@@ -5068,6 +5253,8 @@ function App() {
         }}
       />
     );
+  else if (path === "/change-password")
+    content = user?.passwordChangeRequired ? <PasswordChange go={go} onDone={() => setUser((current) => current ? { ...current, passwordChangeRequired: false } : current)} /> : <Home go={go} user={visibleUser} onLogin={onLogin} />;
   else if (path === "/agreement/third-party-consent")
     content =
       user && requiresConsent ? (
@@ -5086,6 +5273,7 @@ function App() {
         />
       );
   else if (path === "/notice/2702") content = <NoticeArticle go={go} />;
+  else if (/^\/notice\/\d+$/.test(path)) content = <PostDetail id={path.split("/").pop()!} go={go} user={visibleUser} onLogin={onLogin} />;
   else if (path === "/blog/new")
     content = (
       <BlogSetup
@@ -5187,7 +5375,7 @@ function App() {
         }}
       />
     );
-  else if (path === "/blog/me/manage" || path.startsWith("/blog/me/manage/")) content = <Manage path={path} go={go} user={user} onLogin={onLogin} onUserChange={setUser} />;
+  else if (path === "/blog/me/manage" || path.startsWith("/blog/me/manage/")) content = <Manage path={path} go={go} user={user} onLogin={onLogin} onUserChange={setUser} onWithdraw={() => { setUser(null); setCachedUser(null); setAuthState("anonymous"); go("/"); }} />;
   else if (path.startsWith("/post/") && path.endsWith("/edit"))
     content = user ? (
       <Editor id={path.split("/")[2]} go={go} user={user} />
@@ -5209,8 +5397,17 @@ function App() {
     <AuthBootstrapContext.Provider value={{ pending: authPending, cachedUser }}>
       <div className={authPending ? "auth-verifying" : undefined} aria-busy={authPending}>
         {content}
-        <AiCompanionDock controller={aiMission} path={path} go={go} />
-        <MarketChatDock user={visibleUser} onLogin={onLogin} />
+        {!path.startsWith("/adminpage") && <AiCompanionDock
+          controller={aiMission}
+          path={path}
+          go={go}
+          enabled={Boolean(user?.id && aiVisitedUserId === user.id)}
+          onDismiss={() => {
+            if (user?.id) writeAiDockEnabled(user.id, false);
+            setAiVisitedUserId(null);
+          }}
+        />}
+        {!path.startsWith("/adminpage") && <MarketChatDock user={visibleUser} onLogin={onLogin} />}
       </div>
       {loginOpen && (
         <div className="modal-backdrop tistory-login-backdrop" role="dialog" aria-modal="true" aria-label="티스토리 로그인" onMouseDown={() => setLoginOpen(false)}>

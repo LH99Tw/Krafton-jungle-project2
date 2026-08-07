@@ -8,8 +8,9 @@ import { handleHomeRoute } from './home.ts'
 import { handleNotificationRoute } from './notifications.ts'
 import { handleAiRoute, recordAiMissionActivity } from './ai.ts'
 import { claimPostImages, handlePostImageRoute, purgePostImages, validateRichDocument } from './post-images.ts'
+import { handleAdminRoute } from './admin/admin.routes.ts'
 
-const reservedSlugs = new Set(['api', 'login', 'signup', 'feed', 'post', 'blog', 'me', 'new', 'manage', 'ai'])
+const reservedSlugs = new Set(['api', 'login', 'signup', 'feed', 'post', 'blog', 'me', 'new', 'manage', 'ai', 'admin', 'adminpage'])
 const slugPattern = /^(?!.*--)[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$/
 
 const blogJson = (blog: Record<string, any>, owner?: Record<string, any>) => ({
@@ -24,6 +25,7 @@ const blogJson = (blog: Record<string, any>, owner?: Record<string, any>) => ({
   ...(owner ? { owner: { id: owner.id, nickname: owner.nickname } } : {}),
   createdAt: blog.created_at,
   updatedAt: blog.updated_at,
+  isOfficial: blog.slug === 'admin',
 })
 
 const validateSlug = (raw: string | null) => {
@@ -134,7 +136,8 @@ const positiveInteger = (value: string | null, fallback: number, max?: number) =
 }
 
 const getPublicBlog = async (request: Request, slugValue: string, url: URL) => {
-  const { slug, valid } = validateSlug(decodeURIComponent(slugValue))
+  const decodedSlug = decodeURIComponent(slugValue).trim().toLowerCase()
+  const { slug, valid } = decodedSlug === 'admin' ? { slug: 'admin', valid: true } : validateSlug(decodedSlug)
   if (!valid) return apiError(404, 'NOT_FOUND', '블로그를 찾을 수 없습니다.')
   const page = positiveInteger(url.searchParams.get('page'), 1)
   const size = positiveInteger(url.searchParams.get('size'), 10, 50)
@@ -221,7 +224,7 @@ const listPosts = async (request: Request, url: URL) => {
   const interest = (url.searchParams.get('interest') ?? '').trim()
   const requestedStatus = url.searchParams.get('status')
   const deleted = url.searchParams.get('deleted') ?? 'exclude'
-  const categoryId = url.searchParams.get('categoryId')
+  const categoryId = (url.searchParams.get('categoryId') ?? '').trim() || null
   if (!['public', 'mine', 'following', 'bookmarked'].includes(scope) || !['latest', 'popular'].includes(sort) || !['exclude', 'only'].includes(deleted) || !page || !size) {
     return apiError(400, 'VALIDATION_ERROR', '목록 조건을 확인해 주세요.')
   }
@@ -497,6 +500,9 @@ Deno.serve(async (request) => {
 
   const authResponse = handleAuthRoute(request, path)
   if (authResponse) return authResponse
+
+  const adminResponse = handleAdminRoute(request, path, url)
+  if (adminResponse) return adminResponse
 
   const systemResponse = handleSystemRoute(request, path)
   if (systemResponse) return systemResponse

@@ -61,5 +61,17 @@
 - `DELETE /market/items/{id}/like`: 자신의 좋아요를 제거하며 중복 호출에도 `204`를 반환한다.
 - `GET /market/conversations`: 구매자·판매자 공용 채팅 목록과 상대방, 상품, 마지막 메시지, 안 읽은 개수를 반환한다.
 - `POST /market/conversations/{id}/read`: 상대방이 보낸 안 읽은 메시지를 읽음 처리한다.
+- `DELETE /market/conversations/{id}`: 현재 사용자의 채팅 목록에서 방을 나가고 숨긴다.
+- `POST /market/conversations/{id}/messages`: `body`와 선택적인 `replyToMessageId`로 일반 메시지 또는 답장을 보낸다.
+- `DELETE /market/conversations/{id}/messages/{messageId}`: 내가 보낸 메시지를 소프트 삭제한다.
+- `PUT|DELETE /market/conversations/{id}/messages/{messageId}/reactions`: `HEART`, `CHECK`, `THUMBS_UP`, `SAD`, `COOL`, `LAUGH` 반응을 추가하거나 취소한다.
 - 대화 목록과 메시지 조회는 service role 전용 `get_market_chat_conversations`, `get_market_chat_messages` RPC를 사용한다.
 - `market-chat` Broadcast와 `market_chat_versions`의 Postgres Changes는 데이터가 아닌 갱신 신호만 전달한다.
+
+## 관리자 콘솔
+
+- `/admin/auth/login`, `/admin/me`: `login_id` 기반 관리자 전용 세션. 일반 로그인과 회원가입에서는 ADMIN 계정을 허용하지 않는다.
+- `/admin/dashboard`, `/admin/dashboard/details`: 최근 30일 KST 기준 발행글·판매글·체결거래·신규회원·탈퇴회원 시계열과 선택 지표 상세 검색.
+- `/admin/posts`, `/admin/notices`, `/admin/market-items`: 전체 콘텐츠 및 공식 공지 CRUD, 통합 휴지통 복원·영구삭제.
+- `/admin/users`: 회원 정보와 활성/차단 상태 수정. 비밀번호 초기화, 목표 지갑 잔액 조정, 재인증 익명화 탈퇴를 하위 액션 API로 제공한다.
+- `/admin/audit-logs`: 관리자 변경 작업의 append-only 감사 기록 조회 API. 콘솔 메뉴에는 노출하지 않는다.
