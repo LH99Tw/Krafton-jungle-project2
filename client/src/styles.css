@@ -1143,7 +1143,8 @@ body:has(.home-main) .story-creator{position:relative}body:has(.home-main) .crea
   font-size: clamp(26px, 3.4vw, 36px) !important;
   line-height: 1.25 !important;
   letter-spacing: -0.5px !important;
-  font-weight: 700 !important;
+  font-weight: 400 !important;
+  -webkit-font-smoothing: antialiased !important;
 }
 
 .main-nav button {
