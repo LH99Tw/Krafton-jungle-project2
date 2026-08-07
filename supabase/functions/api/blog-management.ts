@@ -280,8 +280,24 @@ const dashboard = async (request: Request) => {
   } })
 }
 
+const homeStats = async (request: Request) => {
+  const ownership = await ownedBlog(request)
+  if (ownership.error) return ownership.error
+  const { data, error } = await supabase.rpc('get_blog_home_stats', { p_blog_id: ownership.blog.id })
+  if (error) {
+    console.error('Failed to read blog home stats', error)
+    return apiError(500, 'INTERNAL_SERVER_ERROR', '블로그 통계를 불러오지 못했습니다.')
+  }
+  const stats = Array.isArray(data) ? data[0] : data
+  return json({ data: {
+    totalPostViews: Number(stats?.total_post_views ?? 0),
+    totalVisitors: Number(stats?.total_visitors ?? 0),
+  } })
+}
+
 export const handleBlogManagementRoute = (request: Request, path: string) => {
   if (path === '/blogs/me/dashboard' && request.method === 'GET') return dashboard(request)
+  if (path === '/blogs/me/stats' && request.method === 'GET') return homeStats(request)
   if (path === '/blogs/me' && request.method === 'PATCH') return updateBlog(request)
   if (path === '/blogs/me/profile-image' && request.method === 'POST') return uploadProfileImage(request)
   if (path === '/blogs/me/profile-image' && request.method === 'DELETE') return deleteProfileImage(request)

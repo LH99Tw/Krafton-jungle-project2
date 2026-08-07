@@ -87,6 +87,7 @@ export const openApiDocument = {
       delete: { summary: 'Reset profile image', responses: { '204': { description: 'Profile image removed' } } },
     },
     '/blogs/me/dashboard': { get: { summary: 'Get blog management dashboard', responses: { '200': { description: 'Counts and recent content' } } } },
+    '/blogs/me/stats': { get: { summary: 'Get total published post views and unique blog visitors', responses: { '200': { description: 'Home account panel statistics' } } } },
     '/blogs/me/categories': {
       get: { summary: 'List selectable blog categories and post counts', description: 'The post editor reads this list but never creates categories.', responses: { '200': { description: 'Category list' } } },
       post: { summary: 'Create a blog category from blog management', responses: { '201': { description: 'Category created' }, '409': { description: 'Duplicate or category limit' } } },
