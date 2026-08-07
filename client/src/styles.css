@@ -415,6 +415,8 @@ body:has(.home-main) .best-popularity .best-row>b:after{content:'.';font-size:20
 body:has(.home-main) .best-copy{align-self:center;min-width:0}
 body:has(.home-main) .best-copy>button{display:block;color:#999;font-size:10px}
 body:has(.home-main) .best-copy h3{margin:7px 0 0;font-size:13px;line-height:1.35;font-weight:500}
+body:has(.home-main) .best-copy h3{height:18px;overflow:hidden}
+body:has(.home-main) .best-copy h3 button{display:block;width:100%;overflow:hidden;text-align:left;text-overflow:ellipsis;white-space:nowrap}
 body:has(.home-main) .best-popularity .post-thumb{width:65px;height:65px;border-radius:3px}
 body:has(.home-main) .best-popularity .post-thumb{justify-self:end}
 
@@ -445,12 +447,17 @@ body:has(.home-main) .editorial-heading span{display:block;color:#999;font-size:
 body:has(.home-main) .editorial-list{border-top:1px solid #eee}
 body:has(.home-main) .editorial-list article{position:relative;min-height:193.5px;padding:29px 180px 22px 0;border-bottom:1px solid #eee}
 body:has(.home-main) .editorial-list article>span{color:#777;font-size:10px}
-body:has(.home-main) .editorial-list h3{margin:11px 0 9px;font-size:15px;line-height:21px;font-weight:700;letter-spacing:-.5px}
-body:has(.home-main) .editorial-list article>p{margin:0;overflow:hidden;color:#777;font-size:11px;line-height:17px;white-space:nowrap;text-overflow:ellipsis}
+body:has(.home-main) .editorial-list h3{display:-webkit-box;height:42px;margin:11px 0 9px;overflow:hidden;font-size:15px;line-height:21px;font-weight:700;letter-spacing:-.5px;word-break:keep-all;overflow-wrap:anywhere;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+body:has(.home-main) .editorial-list h3 button{display:block;width:100%;overflow:hidden;text-align:left}
+body:has(.home-main) .editorial-list article>p{display:-webkit-box;height:34px;margin:0;overflow:hidden;color:#777;font-size:11px;line-height:17px;white-space:normal;word-break:keep-all;overflow-wrap:anywhere;-webkit-box-orient:vertical;-webkit-line-clamp:2}
 body:has(.home-main) .editorial-list small{margin-top:13px;color:#bbb;font-size:9px}
 body:has(.home-main) .editorial-thumb{top:30px;right:0;width:134px;height:134px;border-radius:5px;filter:saturate(.75)}
 body:has(.home-main) .editorial-thumb{left:auto;justify-self:end}
 body:has(.home-main) .home-market-thumb{width:134px;height:134px}
+body:has(.home-main) .home-editorial:not(.home-market-editorial) .editorial-list article{height:214px;min-height:214px;overflow:hidden}
+body:has(.home-main) .home-market-editorial .editorial-list article{height:224px;min-height:224px;overflow:hidden}
+body:has(.home-main) .home-market-editorial .editorial-list h3{height:21px;white-space:nowrap;-webkit-line-clamp:1}
+body:has(.home-main) .home-market-editorial .editorial-list article>p{height:17px;white-space:nowrap;-webkit-line-clamp:1}
 
 body:has(.home-main) .my-jungletory{height:95px;margin:0;padding:0;background:#fff}
 body:has(.home-main) .my-jungletory p{height:29px;margin:0;color:#666;font-size:11px;line-height:18px;white-space:nowrap}
