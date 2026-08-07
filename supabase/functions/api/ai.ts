@@ -80,14 +80,19 @@ const nextKstReset = () => {
   return new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 15)).toISOString()
 }
 
-const messageJson = (row: Record<string, any>) => ({
-  id: row.id,
-  sender: row.role === 'USER' ? 'user' : 'ai',
-  body: row.body,
-  createdAt: row.created_at,
-  emotion: row.emotion ?? undefined,
-  source: row.status === 'FALLBACK' ? 'fallback' : row.role === 'SYSTEM' ? 'template' : 'model',
-})
+const messageJson = (row: Record<string, any>) => {
+  const sender = row.role === 'USER' ? 'user' : 'ai'
+  const suggestedAction = sender === 'ai' ? fallbackKnowledgeAction(selectServiceKnowledge(row.body, null)) : null
+  return {
+    id: row.id,
+    sender,
+    body: row.body,
+    createdAt: row.created_at,
+    emotion: row.emotion ?? undefined,
+    source: row.status === 'FALLBACK' ? 'fallback' : row.role === 'SYSTEM' ? 'template' : 'model',
+    suggestedAction,
+  }
+}
 
 const missionJson = (mission: Record<string, any>, progress?: Record<string, any>) => ({
   id: mission.id,
