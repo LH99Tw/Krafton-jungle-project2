@@ -2053,12 +2053,12 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
         <div className="creator-blog-shell">
           {error && <p className="creator-blog-error">{error}</p>}
           <div className="creator-blog-top">
-            <aside className="creator-profile-panel">
-              <div className={`creator-profile-image${data?.blog.profileImageUrl ? " has-photo" : ""}`} style={data?.blog.profileImageUrl ? { backgroundImage: `url(${data.blog.profileImageUrl})` } : undefined} aria-label={`${ownerName} 프로필 이미지`} />
-              <p className="creator-kicker">CREATOR JOURNAL</p>
-              <h1 className="font-jua">{data?.blog.name ?? slug}</h1>
-              <span className="creator-handle">@{data?.blog.slug ?? slug}</span>
-              <p className="creator-description">{data?.blog.description || blankPlaceholder}</p>
+            <aside className={`creator-profile-panel${official ? " official-profile-panel" : ""}`}>
+              {!official && <div className={`creator-profile-image${data?.blog.profileImageUrl ? " has-photo" : ""}`} style={data?.blog.profileImageUrl ? { backgroundImage: `url(${data.blog.profileImageUrl})` } : undefined} aria-label={`${ownerName} 프로필 이미지`} />}
+              {!official && <p className="creator-kicker">CREATOR JOURNAL</p>}
+              <h1 className="font-jua">{official ? "관리자" : data?.blog.name ?? slug}</h1>
+              {!official && <span className="creator-handle">@{data?.blog.slug ?? slug}</span>}
+              <p className="creator-description">{official ? "서비스 소식과 주요 안내를 전하는 공식 공지 블로그입니다." : data?.blog.description || blankPlaceholder}</p>
               {!official && <dl className="creator-stats">
                 <div>
                   <dt className="font-jua">{data?.posts.pagination.totalItems ?? posts.length}</dt>
@@ -2073,7 +2073,7 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
                   <dd className="font-jua">상품</dd>
                 </div>
               </dl>}
-              {official ? <span className="creator-subscribe font-jua">공식 운영 블로그</span> : mine ? (
+              {official ? <span className="official-blog-badge"><i aria-hidden="true">T</i><span><b>공식 운영 블로그</b><small>Official notice channel</small></span></span> : mine ? (
                 <button className="creator-subscribe font-jua" onClick={() => go("/blog/me/manage")}>
                   블로그 관리
                 </button>
@@ -2086,8 +2086,8 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
             <section className="creator-editorial">
               <header className="creator-section-head">
                 <div>
-                  <p className="creator-kicker">LATEST STORIES</p>
-                  <h2 className="font-jua">요즘의 기록</h2>
+                  {!official && <p className="creator-kicker">LATEST STORIES</p>}
+                  <h2 className="font-jua">{official ? "공지사항" : "요즘의 기록"}</h2>
                 </div>
                 {mine && (
                   <div className="creator-section-actions">
@@ -2102,7 +2102,7 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
                 <div className="creator-editorial-grid">
                   <div className="creator-story-list">
                     {posts.slice(0, 3).map((post, index) => (
-                      <button className="creator-story" key={post.id} onClick={() => go(`/post/${post.id}`)}>
+                      <button className="creator-story" key={post.id} onClick={() => go(official ? `/notice/${post.id}` : `/post/${post.id}`)}>
                         <small>{index === 0 ? "LATEST" : "STORY 0" + (index + 1)}</small>
                         <h3 className="font-jua">{post.title}</h3>
                         <time>
@@ -2114,7 +2114,7 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
                   </div>
                   <div className="creator-gallery" aria-label="최근 글 갤러리">
                     {posts.slice(0, 9).map((post, index) => (
-                      <button className={`creator-gallery-tile creator-tone-${index % 9}${post.thumbnailUrl ? " has-image" : ""}`} key={post.id} onClick={() => go(`/post/${post.id}`)}>
+                      <button className={`creator-gallery-tile creator-tone-${index % 9}${post.thumbnailUrl ? " has-image" : ""}`} key={post.id} onClick={() => go(official ? `/notice/${post.id}` : `/post/${post.id}`)}>
                         {post.thumbnailUrl ? <ProgressiveImage src={post.thumbnailUrl} alt="" /> : <i />}
                         <span className="font-jua">{post.title}</span>
                       </button>
@@ -2993,7 +2993,7 @@ function MarketImageCropModal({ file, remaining, onCancel, onDone }: { file: Fil
   );
 }
 
-function Manage({ path, go, user, onLogin, onUserChange }: { path: string; go: (to: string) => void; user: User | null; onLogin: () => void; onUserChange: (user: User) => void }) {
+function Manage({ path, go, user, onLogin, onUserChange, onWithdraw }: { path: string; go: (to: string) => void; user: User | null; onLogin: () => void; onUserChange: (user: User) => void; onWithdraw: () => void }) {
   const [blog, setBlog] = useState<Blog | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -3057,7 +3057,7 @@ function Manage({ path, go, user, onLogin, onUserChange }: { path: string; go: (
           </header>
           {error && <p className="manage-error">{error}</p>}
           {section === "overview" && <ManageOverview go={go} />}
-          {section === "settings" && blog && <ManageSettings blog={blog} setBlog={setBlog} user={user} onUserChange={onUserChange} />}
+          {section === "settings" && blog && <ManageSettings blog={blog} setBlog={setBlog} user={user} onUserChange={onUserChange} onWithdraw={onWithdraw} />}
           {section === "interests" && <ManageInterests user={user} onUserChange={onUserChange} />}
           {section === "categories" && <ManageCategories go={go} />}
           {section === "posts" && <ManagePosts go={go} />}
@@ -3148,7 +3148,7 @@ function ManageOverview({ go }: { go: (to: string) => void }) {
   );
 }
 
-function ManageSettings({ blog, setBlog, user, onUserChange }: { blog: Blog; setBlog: (blog: Blog) => void; user: User; onUserChange: (user: User) => void }) {
+function ManageSettings({ blog, setBlog, user, onUserChange, onWithdraw }: { blog: Blog; setBlog: (blog: Blog) => void; user: User; onUserChange: (user: User) => void; onWithdraw: () => void }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState(blog.name);
   const [description, setDescription] = useState(blog.description);
@@ -3161,6 +3161,11 @@ function ManageSettings({ blog, setBlog, user, onUserChange }: { blog: Blog; set
   const [interests, setInterests] = useState<string[]>(user.interests ?? []);
   const [savedInterests, setSavedInterests] = useState<string[]>(user.interests ?? []);
   const [interestBusy, setInterestBusy] = useState(false);
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [withdrawPassword, setWithdrawPassword] = useState("");
+  const [withdrawConfirmation, setWithdrawConfirmation] = useState("");
+  const [withdrawBusy, setWithdrawBusy] = useState(false);
+  const [withdrawError, setWithdrawError] = useState("");
   const interestDirty = interests.join("|") !== savedInterests.join("|");
   const toggleInterest = (interest: string) => setInterests((current) => (current.includes(interest) ? current.filter((item) => item !== interest) : current.length < 8 ? [...current, interest] : current));
   const saveInterests = async () => {
@@ -3255,6 +3260,21 @@ function ManageSettings({ blog, setBlog, user, onUserChange }: { blog: Blog; set
       setMessage((e as Error).message);
     } finally {
       setBusy(false);
+    }
+  };
+  const withdraw = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!withdrawPassword || withdrawConfirmation !== "회원탈퇴") return;
+    setWithdrawBusy(true);
+    setWithdrawError("");
+    try {
+      await request("/me", { method: "DELETE", body: JSON.stringify({ password: withdrawPassword, confirmation: withdrawConfirmation }) });
+      queryClient.clear();
+      clearClientAuthState();
+      onWithdraw();
+    } catch (e) {
+      setWithdrawError((e as Error).message);
+      setWithdrawBusy(false);
     }
   };
   return (
@@ -3355,7 +3375,27 @@ function ManageSettings({ blog, setBlog, user, onUserChange }: { blog: Blog; set
           {busy ? "저장 중…" : "변경사항 저장"}
         </button>
       </section>
+      <section className="manage-withdraw-section" aria-labelledby="withdraw-heading">
+        <div>
+          <h2 className="font-jua" id="withdraw-heading">회원 탈퇴</h2>
+          <p>계정과 개인정보는 익명화되며 작성한 글과 상품은 공개 화면에서 숨겨집니다. 콘텐츠는 운영 확인을 위해 관리자 휴지통에 보관됩니다.</p>
+        </div>
+        <button className="manage-withdraw-button font-jua" type="button" onClick={() => { setWithdrawError(""); setWithdrawOpen(true); }}>회원 탈퇴</button>
+      </section>
       {cropSource && <CropModal source={cropSource} onClose={() => setCropSource("")} onDone={upload} />}
+      {withdrawOpen && <div className="manage-modal" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !withdrawBusy) setWithdrawOpen(false); }}>
+        <form className="withdraw-dialog" role="dialog" aria-modal="true" aria-labelledby="withdraw-dialog-title" onSubmit={withdraw}>
+          <header>
+            <div><p>ACCOUNT WITHDRAWAL</p><h2 className="font-jua" id="withdraw-dialog-title">정말 탈퇴하시겠습니까?</h2></div>
+            <button type="button" disabled={withdrawBusy} onClick={() => setWithdrawOpen(false)} aria-label="회원 탈퇴 창 닫기"><X size={18} /></button>
+          </header>
+          <div className="withdraw-warning"><strong>탈퇴 후에는 다시 로그인할 수 없습니다.</strong><span>작성 글과 마켓 상품은 즉시 비공개 처리되며 관리자 휴지통에 보관됩니다.</span></div>
+          <label className="font-jua">현재 비밀번호<input autoFocus type="password" autoComplete="current-password" value={withdrawPassword} onChange={(event) => setWithdrawPassword(event.target.value)} placeholder="현재 비밀번호" /></label>
+          <label className="font-jua">확인 문구<input value={withdrawConfirmation} onChange={(event) => setWithdrawConfirmation(event.target.value)} placeholder="회원탈퇴 입력" /><small>계속하려면 <b>회원탈퇴</b>를 정확히 입력하세요.</small></label>
+          {withdrawError && <p className="form-error" role="alert">{withdrawError}</p>}
+          <footer><button type="button" disabled={withdrawBusy} onClick={() => setWithdrawOpen(false)}>취소</button><button type="submit" disabled={withdrawBusy || !withdrawPassword || withdrawConfirmation !== "회원탈퇴"}>{withdrawBusy ? "탈퇴 처리 중…" : "계정 영구 탈퇴"}</button></footer>
+        </form>
+      </div>}
     </div>
   );
 }
@@ -5176,7 +5216,7 @@ function App() {
   const onLogin = () => setLoginOpen(true);
   const authPending = authState === "loading" || authState === "degraded";
   const visibleUser = user ?? (authPending ? cachedUser : null);
-  const publicWhileAuthLoads = path.startsWith("/adminpage") || path === "/" || path === "/login" || path === "/signup" || path === "/interests/mockup" || path === "/notice/2702" || path === "/feed" || path === "/search" || path === "/skin" || path === "/market" || path === "/market/recent" || path === "/market/cart" || path === "/market/price-guide" || path === "/market/coupons" || /^\/market\/\d+$/.test(path) || /^\/post\/\d+$/.test(path) || (/^\/blog\/[^/]+$/.test(path) && path !== "/blog/new");
+  const publicWhileAuthLoads = path.startsWith("/adminpage") || path === "/" || path === "/login" || path === "/signup" || path === "/interests/mockup" || /^\/notice\/\d+$/.test(path) || path === "/feed" || path === "/search" || path === "/skin" || path === "/market" || path === "/market/recent" || path === "/market/cart" || path === "/market/price-guide" || path === "/market/coupons" || /^\/market\/\d+$/.test(path) || /^\/post\/\d+$/.test(path) || (/^\/blog\/[^/]+$/.test(path) && path !== "/blog/new");
   let content: React.ReactNode;
   if (path.startsWith("/adminpage")) content = <AdminPage />;
   else if ((authState === "loading" || authState === "degraded") && !publicWhileAuthLoads)
@@ -5233,6 +5273,7 @@ function App() {
         />
       );
   else if (path === "/notice/2702") content = <NoticeArticle go={go} />;
+  else if (/^\/notice\/\d+$/.test(path)) content = <PostDetail id={path.split("/").pop()!} go={go} user={visibleUser} onLogin={onLogin} />;
   else if (path === "/blog/new")
     content = (
       <BlogSetup
@@ -5334,7 +5375,7 @@ function App() {
         }}
       />
     );
-  else if (path === "/blog/me/manage" || path.startsWith("/blog/me/manage/")) content = <Manage path={path} go={go} user={user} onLogin={onLogin} onUserChange={setUser} />;
+  else if (path === "/blog/me/manage" || path.startsWith("/blog/me/manage/")) content = <Manage path={path} go={go} user={user} onLogin={onLogin} onUserChange={setUser} onWithdraw={() => { setUser(null); setCachedUser(null); setAuthState("anonymous"); go("/"); }} />;
   else if (path.startsWith("/post/") && path.endsWith("/edit"))
     content = user ? (
       <Editor id={path.split("/")[2]} go={go} user={user} />

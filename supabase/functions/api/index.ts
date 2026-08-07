@@ -136,7 +136,8 @@ const positiveInteger = (value: string | null, fallback: number, max?: number) =
 }
 
 const getPublicBlog = async (request: Request, slugValue: string, url: URL) => {
-  const { slug, valid } = validateSlug(decodeURIComponent(slugValue))
+  const decodedSlug = decodeURIComponent(slugValue).trim().toLowerCase()
+  const { slug, valid } = decodedSlug === 'admin' ? { slug: 'admin', valid: true } : validateSlug(decodedSlug)
   if (!valid) return apiError(404, 'NOT_FOUND', '블로그를 찾을 수 없습니다.')
   const page = positiveInteger(url.searchParams.get('page'), 1)
   const size = positiveInteger(url.searchParams.get('size'), 10, 50)

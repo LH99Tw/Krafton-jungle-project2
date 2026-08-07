@@ -120,6 +120,29 @@ export const changePassword = async (request: Request) => {
   return error ? apiError(500, 'INTERNAL_SERVER_ERROR', '비밀번호를 변경하지 못했습니다.') : json({ data: { passwordChangeRequired: false } })
 }
 
+export const withdrawAccount = async (request: Request) => {
+  const session = await requireCsrfSession(request, true)
+  if (!session?.user_id) return apiError(session ? 401 : 403, session ? 'UNAUTHENTICATED' : 'CSRF_TOKEN_INVALID', session ? '로그인이 필요합니다.' : 'CSRF 토큰이 유효하지 않습니다.')
+  const body = await request.json().catch(() => null) as Record<string, unknown> | null
+  const password = typeof body?.password === 'string' ? body.password : ''
+  const confirmation = typeof body?.confirmation === 'string' ? body.confirmation.trim() : ''
+  if (!password || confirmation !== '회원탈퇴') return apiError(400, 'VALIDATION_ERROR', '비밀번호와 확인 문구를 정확히 입력해 주세요.')
+  const { data: user } = await supabase.from('users').select('id,password_hash,role,account_status').eq('id', session.user_id).maybeSingle()
+  if (!user || user.role === 'ADMIN' || user.account_status !== 'ACTIVE' || !(await bcrypt.compare(password, user.password_hash))) {
+    return apiError(401, 'INVALID_CREDENTIALS', '현재 비밀번호가 올바르지 않습니다.')
+  }
+  const { error } = await supabase.rpc('withdraw_own_account', {
+    p_user_id: user.id,
+    p_replacement_password_hash: await bcrypt.hash(randomToken(), 12),
+  })
+  if (error) {
+    console.error('Failed to withdraw account', error)
+    if (error.message?.includes('ACCOUNT_NOT_ACTIVE')) return apiError(409, 'ACCOUNT_NOT_ACTIVE', '탈퇴할 수 없는 계정 상태입니다.')
+    return apiError(500, 'INTERNAL_SERVER_ERROR', '회원 탈퇴를 처리하지 못했습니다.')
+  }
+  return new Response(null, { status: 204, headers: { ...corsHeaders, 'Set-Cookie': expiredSessionCookie() } })
+}
+
 export const decideThirdPartyConsent = async (request: Request) => {
   const session = await requireCsrfSession(request)
   if (!session?.user_id) return apiError(session ? 401 : 403, session ? 'UNAUTHENTICATED' : 'CSRF_TOKEN_INVALID', session ? '로그인이 필요합니다.' : 'CSRF 토큰이 유효하지 않습니다.')

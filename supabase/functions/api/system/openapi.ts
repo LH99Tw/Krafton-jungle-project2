@@ -36,7 +36,10 @@ export const openApiDocument = {
         } } },
       } },
     } },
-    '/me': { get: { summary: 'Get the current user and blog', responses: { '200': { description: 'Current user' }, '401': { description: 'Unauthenticated' } } } },
+    '/me': {
+      get: { summary: 'Get the current user and blog', responses: { '200': { description: 'Current user' }, '401': { description: 'Unauthenticated' } } },
+      delete: { summary: 'Reauthenticate and withdraw the current account while retaining posts and market items in the administrator trash', responses: { '204': { description: 'Account withdrawn and content hidden' } } },
+    },
     '/ai/state': { get: { summary: 'Get companion, conversation, mission and daily AI quota state', responses: { '200': { description: 'AI companion state' }, '401': { description: 'Login required' } } } },
     '/ai/companion': { patch: { summary: 'Select an AI character and record AI processing consent', responses: { '200': { description: 'Updated AI state' }, '400': { description: 'Character or consent missing' } } } },
     '/ai/messages': { post: {

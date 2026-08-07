@@ -3,7 +3,7 @@ import {
   apiError, corsHeaders, getSession, json, randomToken, requireCsrfSession, sessionCookie, sha256, supabase, supabaseUrl,
 } from '../shared.ts'
 import { rotateUserSession } from '../auth/auth.repository.ts'
-import { purgePostImages, validateRichDocument } from '../post-images.ts'
+import { claimPostImages, purgePostImages, validateRichDocument } from '../post-images.ts'
 
 type AdminContext = { id: number; passwordHash: string; sessionHash: string }
 const metrics = ['PUBLISHED_POSTS', 'MARKET_LISTINGS', 'COMPLETED_TRADES', 'NEW_USERS', 'WITHDRAWN_USERS'] as const
@@ -36,6 +36,17 @@ const audit = async (adminId: number, action: string, targetType: string, target
 const verifyAdminPassword = async (admin: AdminContext, body: Record<string, unknown>) => {
   const password = typeof body.adminPassword === 'string' ? body.adminPassword : ''
   return password && await bcrypt.compare(password, admin.passwordHash)
+}
+
+const syncNoticeEvent = async (postId: number) => {
+  const { data: post } = await supabase.from('post_details').select('id,title,content,status,published_at,deleted_at,blog_slug,is_event,event_title,event_description,event_cta_label').eq('id', postId).maybeSingle()
+  if (!post || post.blog_slug !== 'admin' || post.status !== 'PUBLISHED' || post.deleted_at || !post.is_event) {
+    await supabase.from('home_banners').delete().eq('post_id', postId)
+    return
+  }
+  const values = { post_id: post.id, eyebrow: 'NOTICE · EVENT', title: post.event_title || post.title, description: post.event_description || String(post.content ?? '').replace(/\s+/g, ' ').slice(0, 240), cta_label: post.event_cta_label || '자세히 보기', cta_url: `/notice/${post.id}`, starts_at: post.published_at ?? new Date().toISOString(), ends_at: null, position: 0, is_active: true, updated_at: new Date().toISOString() }
+  const { error } = await supabase.from('home_banners').upsert(values, { onConflict: 'post_id' })
+  if (error) throw error
 }
 
 const adminLogin = async (request: Request) => {
@@ -142,14 +153,25 @@ const listPosts = async (request: Request, url: URL, notices = false) => {
 const createNotice = async (request: Request) => {
   const auth = await requireAdmin(request, true); if (auth.error) return auth.error
   const body = await request.json().catch(() => null) as Record<string, unknown> | null
-  const title = typeof body?.title === 'string' ? body.title.trim() : ''; const content = typeof body?.content === 'string' ? body.content.trim() : ''
+  const title = typeof body?.title === 'string' ? body.title.trim() : ''; const content = typeof body?.contentText === 'string' ? body.contentText.trim() : typeof body?.content === 'string' ? body.content.trim() : ''
   const status = body?.status === 'PUBLISHED' ? 'PUBLISHED' : 'DRAFT'
+  const isEvent = body?.isEvent === true
+  const eventTitle = typeof body?.eventTitle === 'string' ? body.eventTitle.trim() : ''
+  const eventDescription = typeof body?.eventDescription === 'string' ? body.eventDescription.trim() : ''
+  const eventCtaLabel = typeof body?.eventCtaLabel === 'string' ? body.eventCtaLabel.trim() : ''
   if (!title || title.length > 100 || !content || content.length > 20000) return apiError(400, 'VALIDATION_ERROR', '제목과 본문을 확인해 주세요.')
+  if (isEvent && (!eventTitle || eventTitle.length > 120 || !eventDescription || eventDescription.length > 300 || !eventCtaLabel || eventCtaLabel.length > 40)) return apiError(400, 'VALIDATION_ERROR', '이벤트 제목, 설명, 버튼 문구를 확인해 주세요.')
+  const document = validateRichDocument(body?.contentDocument)
+  if (!document.valid) return apiError(400, 'VALIDATION_ERROR', '본문 문서 형식을 확인해 주세요.')
+  const draftKey = typeof body?.draftKey === 'string' && /^[0-9a-f-]{36}$/i.test(body.draftKey) ? body.draftKey : ''
+  if (document.imageIds.length && !draftKey) return apiError(400, 'VALIDATION_ERROR', '이미지 초안 정보를 확인해 주세요.')
   const { data: blog } = await supabase.from('blogs').select('id').eq('slug', 'admin').maybeSingle()
   if (!blog) return apiError(500, 'ADMIN_BLOG_MISSING', '관리자 블로그가 준비되지 않았습니다.')
   const { data: category } = await supabase.from('blog_categories').select('id').eq('blog_id', blog.id).eq('is_default', true).maybeSingle()
-  const { data, error } = await supabase.from('posts').insert({ blog_id: blog.id, category_id: category?.id ?? null, title, content, content_document: body?.contentDocument ?? null, status, published_at: status === 'PUBLISHED' ? new Date().toISOString() : null }).select('*').single()
+  const { data, error } = await supabase.from('posts').insert({ blog_id: blog.id, category_id: category?.id ?? null, title, content, content_document: body?.contentDocument ?? null, is_event: isEvent, event_title: isEvent ? eventTitle : null, event_description: isEvent ? eventDescription : null, event_cta_label: isEvent ? eventCtaLabel : null, status, published_at: status === 'PUBLISHED' ? new Date().toISOString() : null }).select('*').single()
   if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '공지 글을 저장하지 못했습니다.')
+  if (document.imageIds.length) { const claimed = await claimPostImages(auth.admin!.id, data.id, draftKey, document.imageIds); if (claimed.error) { await supabase.from('posts').delete().eq('id', data.id); return apiError(400, 'VALIDATION_ERROR', claimed.error) } }
+  try { await syncNoticeEvent(data.id) } catch (error) { console.error('Failed to sync notice event', error); return apiError(500, 'INTERNAL_SERVER_ERROR', '이벤트 배너를 연결하지 못했습니다.') }
   await audit(auth.admin!.id, 'CREATE_NOTICE', 'post', data.id, null, data)
   return json({ data }, 201)
 }
@@ -181,15 +203,21 @@ const updatePost = async (request: Request, id: number, noticeOnly = false) => {
   const body = await request.json().catch(() => null) as Record<string, unknown> | null; if (!body) return apiError(400, 'VALIDATION_ERROR', '수정 값을 입력해 주세요.')
   const values: Record<string, unknown> = { updated_at: new Date().toISOString() }
   if ('title' in body) { const title = typeof body.title === 'string' ? body.title.trim() : ''; if (!title || title.length > 100) return apiError(400, 'VALIDATION_ERROR', '제목을 확인해 주세요.'); values.title = title }
-  if ('content' in body) { const content = typeof body.content === 'string' ? body.content.trim() : ''; if (!content || content.length > 20000) return apiError(400, 'VALIDATION_ERROR', '본문을 확인해 주세요.'); values.content = content }
+  if ('contentText' in body || 'content' in body) { const raw = 'contentText' in body ? body.contentText : body.content; const content = typeof raw === 'string' ? raw.trim() : ''; if (!content || content.length > 20000) return apiError(400, 'VALIDATION_ERROR', '본문을 확인해 주세요.'); values.content = content }
   if ('contentDocument' in body) {
     const document = validateRichDocument(body.contentDocument)
     if (!document.valid) return apiError(400, 'VALIDATION_ERROR', '본문 문서 형식을 확인해 주세요.')
-    if (document.imageIds.length) {
-      const { data: images } = await supabase.from('post_images').select('id').eq('post_id', id).in('id', document.imageIds)
-      if ((images ?? []).length !== document.imageIds.length) return apiError(400, 'VALIDATION_ERROR', '현재 글에 연결된 이미지만 사용할 수 있습니다.')
-    }
+    if (document.imageIds.length && noticeOnly) { const draftKey = typeof body.draftKey === 'string' ? body.draftKey : ''; const claimed = await claimPostImages(before.owner_id, id, draftKey, document.imageIds); if (claimed.error) return apiError(400, 'VALIDATION_ERROR', claimed.error) }
+    else if (document.imageIds.length) { const { data: images } = await supabase.from('post_images').select('id').eq('post_id', id).in('id', document.imageIds); if ((images ?? []).length !== document.imageIds.length) return apiError(400, 'VALIDATION_ERROR', '현재 글에 연결된 이미지만 사용할 수 있습니다.') }
     values.content_document = body.contentDocument
+  }
+  if (noticeOnly && 'isEvent' in body) {
+    const isEvent = body.isEvent === true; values.is_event = isEvent
+    if (isEvent) {
+      const eventTitle = typeof body.eventTitle === 'string' ? body.eventTitle.trim() : ''; const eventDescription = typeof body.eventDescription === 'string' ? body.eventDescription.trim() : ''; const eventCtaLabel = typeof body.eventCtaLabel === 'string' ? body.eventCtaLabel.trim() : ''
+      if (!eventTitle || eventTitle.length > 120 || !eventDescription || eventDescription.length > 300 || !eventCtaLabel || eventCtaLabel.length > 40) return apiError(400, 'VALIDATION_ERROR', '이벤트 제목, 설명, 버튼 문구를 확인해 주세요.')
+      values.event_title = eventTitle; values.event_description = eventDescription; values.event_cta_label = eventCtaLabel
+    } else { values.event_title = null; values.event_description = null; values.event_cta_label = null }
   }
   if ('categoryId' in body) {
     if (body.categoryId !== null && (!Number.isSafeInteger(body.categoryId) || Number(body.categoryId) < 1)) return apiError(400, 'VALIDATION_ERROR', '카테고리를 확인해 주세요.')
@@ -220,6 +248,7 @@ const updatePost = async (request: Request, id: number, noticeOnly = false) => {
     if (classificationIds.length) await supabase.from('post_classifications').insert(classificationIds.map((classificationId, position) => ({ post_id: id, classification_id: classificationId, position })))
   }
   await audit(auth.admin!.id, noticeOnly ? 'UPDATE_NOTICE' : 'UPDATE_POST', 'post', id, before, data)
+  if (noticeOnly) { try { await syncNoticeEvent(id) } catch (error) { console.error('Failed to sync notice event', error); return apiError(500, 'INTERNAL_SERVER_ERROR', '이벤트 배너를 연결하지 못했습니다.') } }
   return json({ data })
 }
 
@@ -228,6 +257,7 @@ const trashPost = async (request: Request, id: number) => {
   const { data: before } = await supabase.from('posts').select('*').eq('id', id).maybeSingle(); if (!before) return apiError(404, 'NOT_FOUND', '글을 찾을 수 없습니다.')
   const now = new Date(); const after = { deleted_at: now.toISOString(), purge_after: new Date(now.getTime() + 30 * 86400000).toISOString(), updated_at: now.toISOString() }
   const { error } = await supabase.from('posts').update(after).eq('id', id); if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '글을 휴지통으로 이동하지 못했습니다.')
+  await supabase.from('home_banners').delete().eq('post_id', id)
   await audit(auth.admin!.id, 'TRASH_POST', 'post', id, before, { ...before, ...after }); return new Response(null, { status: 204, headers: corsHeaders })
 }
 
@@ -235,7 +265,7 @@ const restorePost = async (request: Request, id: number) => {
   const auth = await requireAdmin(request, true); if (auth.error) return auth.error
   const { data: before } = await supabase.from('posts').select('*').eq('id', id).not('deleted_at', 'is', null).maybeSingle(); if (!before) return apiError(409, 'NOT_IN_TRASH', '휴지통 글이 아닙니다.')
   const { data, error } = await supabase.from('posts').update({ deleted_at: null, purge_after: null, updated_at: new Date().toISOString() }).eq('id', id).select('*').single()
-  if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '글을 복원하지 못했습니다.'); await audit(auth.admin!.id, 'RESTORE_POST', 'post', id, before, data); return json({ data })
+  if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '글을 복원하지 못했습니다.'); try { await syncNoticeEvent(id) } catch (eventError) { console.error('Failed to restore notice event', eventError) }; await audit(auth.admin!.id, 'RESTORE_POST', 'post', id, before, data); return json({ data })
 }
 
 const purgePost = async (request: Request, id: number) => {
@@ -337,9 +367,7 @@ const withdrawUser = async (request: Request, id: number) => {
   const auth = await requireAdmin(request, true); if (auth.error) return auth.error
   const body = await request.json().catch(() => ({})) as Record<string, unknown>; if (!(await verifyAdminPassword(auth.admin!, body))) return apiError(401, 'ADMIN_REAUTH_FAILED', '관리자 비밀번호가 올바르지 않습니다.')
   const { data: before } = await supabase.from('users').select('*').eq('id', id).neq('role', 'ADMIN').maybeSingle(); if (!before) return apiError(404, 'NOT_FOUND', '회원을 찾을 수 없습니다.'); if (before.account_status === 'WITHDRAWN') return apiError(409, 'ALREADY_WITHDRAWN', '이미 탈퇴 처리된 회원입니다.')
-  const now = new Date().toISOString(); const anonymized = { email: `withdrawn+${id}@deleted.invalid`, nickname: `탈퇴한 사용자 ${id}`, login_id: null, interests: [], password_hash: await bcrypt.hash(randomToken(), 12), account_status: 'WITHDRAWN', withdrawn_at: now, password_change_required: false, updated_at: now }
-  const { error } = await supabase.from('users').update(anonymized).eq('id', id); if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '회원 탈퇴를 처리하지 못했습니다.')
-  await supabase.from('sessions').delete().eq('user_id', id); await supabase.from('blogs').update({ name: '탈퇴한 사용자의 블로그', description: '', profile_image_path: null, shop_name: '탈퇴한 사용자의 상점', shop_description: '', updated_at: now }).eq('owner_id', id); await supabase.from('market_items').update({ status: 'RESERVED', updated_at: now }).eq('seller_id', id).eq('status', 'SELLING')
+  const { error } = await supabase.rpc('withdraw_own_account', { p_user_id: id, p_replacement_password_hash: await bcrypt.hash(randomToken(), 12) }); if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '회원 탈퇴를 처리하지 못했습니다.')
   await audit(auth.admin!.id, 'WITHDRAW_USER', 'user', id, { id: before.id, email: before.email, nickname: before.nickname }, { id, accountStatus: 'WITHDRAWN' }); return new Response(null, { status: 204, headers: corsHeaders })
 }
 
