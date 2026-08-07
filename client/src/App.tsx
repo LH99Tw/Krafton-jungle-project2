@@ -1032,7 +1032,16 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
     { id:-5,eyebrow:"JUNGLETORY · PICK",title:"오늘 발견한 취향을\n나만의 방식으로 기록해요",description:"사진과 글로 완성된 다채로운 팬 기록을 만나보세요.",imageUrl:null,ctaLabel:"추천 기록 보기",ctaUrl:"/",startsAt:"",position:4,isActive:true },
   ];
   const connectedBanners = (home?.banners ?? []).slice(0,5);
-  const bannerSlides = [...connectedBanners, ...bannerPlaceholders.slice(connectedBanners.length)].slice(0,5);
+  const bannerImages = [
+    "/assets/events/event-chiikawa.png",
+    "/assets/events/event-kitty.png",
+    "/assets/events/event-usagi.png",
+    "/assets/events/event-zanmang-loopy.png",
+    "/assets/events/event-onepiece-luffy.png",
+  ];
+  const bannerSlides = [...connectedBanners, ...bannerPlaceholders.slice(connectedBanners.length)]
+    .slice(0,5)
+    .map((slide,index)=>({ ...slide, imageUrl: bannerImages[index] }));
   useEffect(()=>{ if(bannerHover)return; const timer=window.setInterval(()=>setBannerPage((page)=>(page+1)%5),3000); return()=>window.clearInterval(timer) },[bannerHover]);
   useEffect(()=>{ if(bannerPage>=bannerSlides.length)setBannerPage(0) },[bannerPage,bannerSlides.length]);
   const openPost = (post: Post) => (post.id > 0 ? go(`/post/${post.id}`) : go("/feed"));
@@ -1059,7 +1068,7 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
                   style={
                     slide.imageUrl
                       ? {
-                          backgroundImage: `linear-gradient(90deg,rgba(16,19,24,.75),rgba(16,19,24,.08)),url(${slide.imageUrl})`,
+                          backgroundImage: `linear-gradient(90deg,rgba(16,19,24,.1),rgba(16,19,24,0)),url(${slide.imageUrl})`,
                         }
                       : { backgroundColor: solidColor(index) }
                   }
@@ -1131,7 +1140,7 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
               </div>
               <div className="category-grid">
                 {categoryPagePosts.length ? (
-                  categoryPagePosts.slice(0, 2).map((post, index) => (
+                  categoryPagePosts.slice(0, 3).map((post, index) => (
                     <article key={post.id}>
                       <div>
                         {tags(post)}
@@ -1579,7 +1588,7 @@ function Auth({ mode, go, onSuccess }: { mode: "login" | "signup"; go: (to: stri
             JUNGLETORY
           </button>
           <p className="credential-title">이메일로 로그인</p>
-          <p className="login-description">회원가입할 때 등록한 이메일과 비밀번호를 입력하세요.</p>
+          <p className="login-description">회원가입할 때 등록한<br />이메일과 비밀번호를 입력하세요.</p>
           <form className="credential-form" onSubmit={submit}>
             <label>
               <span>이메일</span>
@@ -2191,6 +2200,7 @@ function Editor({ id, go, user }: { id?: string; go: (to: string) => void; user:
   const [classificationError, setClassificationError] = useState("");
   const [classificationBusy, setClassificationBusy] = useState(false);
   const [newClassification, setNewClassification] = useState("");
+  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const interests = user.interests?.length ? user.interests : interestCatalog;
   const loadTaxonomy = () =>
@@ -2343,23 +2353,61 @@ function Editor({ id, go, user }: { id?: string; go: (to: string) => void; user:
         </div>
       </div>
       <div className="editor-body">
-        <section className="editor-taxonomy-bar">
-          <label className="editor-taxonomy-category">
+        <section className={`editor-taxonomy-bar${pickerOpen || categoryPickerOpen ? " is-picker-open" : ""}`}>
+          <div className="editor-taxonomy-category">
             <span>카테고리</span>
-            <select value={categoryId ?? ""} onChange={(event) => setCategoryId(event.target.value ? Number(event.target.value) : null)}>
-              <option value="">카테고리 없음</option>
-              {categories.map((item) => (
-                <option value={item.id} key={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </label>
+            <button
+              type="button"
+              className="editor-category-trigger"
+              aria-expanded={categoryPickerOpen}
+              onClick={() => {
+                setCategoryPickerOpen((open) => !open);
+                setPickerOpen(false);
+              }}
+            >
+              {categories.find((item) => item.id === categoryId)?.name ?? "카테고리 없음"}
+              <ChevronDown size={14} />
+            </button>
+            {categoryPickerOpen && (
+              <div className="editor-category-popover simple category-options">
+                <div className="editor-category-list" role="listbox" aria-label="카테고리 선택">
+                  <p>카테고리 선택</p>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={categoryId === null}
+                    onClick={() => {
+                      setCategoryId(null);
+                      setCategoryPickerOpen(false);
+                    }}
+                  >
+                    카테고리 없음
+                    {categoryId === null && <Check size={13} />}
+                  </button>
+                  {categories.map((item) => (
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={categoryId === item.id}
+                      onClick={() => {
+                        setCategoryId(item.id);
+                        setCategoryPickerOpen(false);
+                      }}
+                      key={item.id}
+                    >
+                      {item.name}
+                      {categoryId === item.id && <Check size={13} />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
           <div className="editor-taxonomy-classification">
             <span>
               분류 <small>{classificationIds.length}/5</small>
             </span>
-            <button type="button" className="editor-category-trigger" aria-expanded={pickerOpen} onClick={() => setPickerOpen(!pickerOpen)}>
+            <button type="button" className="editor-category-trigger" aria-expanded={pickerOpen} onClick={() => { setPickerOpen(!pickerOpen); setCategoryPickerOpen(false); }}>
               {classificationIds.length
                 ? classifications
                     .filter((item) => classificationIds.includes(item.id))
@@ -3909,8 +3957,8 @@ const conditionLabel: Record<MarketItem["condition"], string> = {
 function MarketRow({ item, go }: { item: MarketItem; go: (to: string) => void }) {
   return (
     <article className="feed-row market-row">
-      {item.thumbnailUrl && <button className="market-row-thumbnail has-image" style={{ backgroundImage: `url(${item.thumbnailUrl})` }} onClick={() => go(`/market/${item.id}`)} aria-label={`${item.title} 이미지`} />}
-      <div>
+      <button className={`market-row-thumbnail${item.thumbnailUrl ? " has-image" : ""}`} style={item.thumbnailUrl ? { backgroundImage: `url(${item.thumbnailUrl})` } : undefined} onClick={() => go(`/market/${item.id}`)} aria-label={`${item.title} 이미지`} />
+      <div className="market-row-content">
         <p className="post-blog">
           {item.category} · {conditionLabel[item.condition]}
         </p>
@@ -3929,7 +3977,7 @@ function MarketRow({ item, go }: { item: MarketItem; go: (to: string) => void })
           {item.seller.nickname} · {item.status === "SELLING" ? "판매 중" : item.status}
         </small>
       </div>
-      <div className="row-stat">
+      <div className="row-stat market-row-price">
         <strong>{item.pricePoints.toLocaleString()} P</strong>
       </div>
     </article>
