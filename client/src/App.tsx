@@ -466,6 +466,20 @@ if (typeof document !== "undefined") {
 }
 
 let csrfToken = "";
+const visitorIdStorageKey = "jungletory:visitor-id";
+let volatileVisitorId = "";
+function getVisitorId() {
+  if (volatileVisitorId) return volatileVisitorId;
+  try {
+    const stored = window.localStorage.getItem(visitorIdStorageKey);
+    if (stored) return (volatileVisitorId = stored);
+    volatileVisitorId = crypto.randomUUID();
+    window.localStorage.setItem(visitorIdStorageKey, volatileVisitorId);
+    return volatileVisitorId;
+  } catch {
+    return (volatileVisitorId = crypto.randomUUID());
+  }
+}
 class ApiRequestError extends Error {
   status: number;
   code: string;
@@ -764,6 +778,14 @@ function Header({ go, user, onLogin }: { go: (to: string) => void; user: User | 
 
 function AccountPanel({ user, go }: { user: User; go: (to: string) => void }) {
   const publicBlogPath = user.blog ? `/blog/${user.blog.slug}` : "/blog/new";
+  const statsQuery = useQuery({
+    queryKey: ["blog-home-stats", user.blog?.id],
+    queryFn: () => request<{ totalPostViews: number; totalVisitors: number }>("/blogs/me/stats"),
+    enabled: Boolean(user.blog),
+    refetchInterval: 30_000,
+    retry: false,
+  });
+  const stats = statsQuery.data;
   return (
     <section className="account-dashboard">
       <div className="account-dashboard-head">
@@ -789,14 +811,14 @@ function AccountPanel({ user, go }: { user: User; go: (to: string) => void }) {
         <div>
           <dt className="font-jua">조회수</dt>
           <dd>
-            <b className="font-jua">1회</b>
+            <b className="font-jua">{stats ? `${stats.totalPostViews.toLocaleString()}회` : "—"}</b>
             <ChevronRight size={18} />
           </dd>
         </div>
         <div>
           <dt className="font-jua">방문자</dt>
           <dd>
-            <b className="font-jua">1명</b>
+            <b className="font-jua">{stats ? `${stats.totalVisitors.toLocaleString()}명` : "—"}</b>
             <ChevronRight size={18} />
           </dd>
         </div>
@@ -2029,7 +2051,9 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
   const queryKey = ["blog", slug] as const;
   const blogQuery = useQuery({
     queryKey,
-    queryFn: () => request<BlogData>(`/blogs/${slug}?page=1&size=9`),
+    queryFn: () => request<BlogData>(`/blogs/${slug}?page=1&size=9`, {
+      headers: { "X-Visitor-Id": getVisitorId() },
+    }),
     refetchInterval: 30_000,
   });
   const data = blogQuery.data ?? null;
@@ -2188,6 +2212,7 @@ function Editor({ id, go, user }: { id?: string; go: (to: string) => void; user:
   const [contentDocument, setContentDocument] = useState<RichDocument | null>(null);
   const contentRef = useRef("");
   const contentDocumentRef = useRef<RichDocument | null>(null);
+  const getCurrentDocumentRef = useRef<(() => RichDocument) | null>(null);
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const [classificationIds, setClassificationIds] = useState<number[]>([]);
   const [categories, setCategories] = useState<BlogCategory[]>([]);
@@ -2312,10 +2337,11 @@ function Editor({ id, go, user }: { id?: string; go: (to: string) => void; user:
     setBusy(true);
     setError("");
     try {
+      const latestDocument = getCurrentDocumentRef.current?.() ?? contentDocumentRef.current;
       const body = JSON.stringify({
         title,
         contentText: contentRef.current,
-        contentDocument: contentDocumentRef.current,
+        contentDocument: latestDocument,
         draftKey,
         status,
         categoryId,
@@ -2352,7 +2378,13 @@ function Editor({ id, go, user }: { id?: string; go: (to: string) => void; user:
           </button>
         </div>
       </div>
-      <div className="editor-body">
+      <div
+        className="editor-body"
+        onPointerDownCapture={(event) => {
+          if (!(event.target as Element).closest(".editor-taxonomy-category")) setCategoryPickerOpen(false);
+          if (!(event.target as Element).closest(".editor-taxonomy-classification")) setPickerOpen(false);
+        }}
+      >
         <section className={`editor-taxonomy-bar${pickerOpen || categoryPickerOpen ? " is-picker-open" : ""}`}>
           <div className="editor-taxonomy-category">
             <span>카테고리</span>
@@ -2479,6 +2511,9 @@ function Editor({ id, go, user }: { id?: string; go: (to: string) => void; user:
             onUpload={uploadImage}
             onDelete={deleteImage}
             onUploading={setUploading}
+            onDocumentReady={(getDocument) => {
+              getCurrentDocumentRef.current = getDocument;
+            }}
           />
         ) : (
           <div className="editor-loading" aria-live="polite">본문을 불러오는 중…</div>
@@ -3221,6 +3256,8 @@ function ManageSettings({ blog, setBlog, user, onUserChange, onWithdraw }: { blo
   const [preview, setPreview] = useState(blog.profileImageUrl ?? "");
   const [shopName, setShopName] = useState(blog.shopName ?? "취향을 나누는 상점");
   const [shopDescription, setShopDescription] = useState(blog.shopDescription ?? "직접 모으고 아껴온 물건을 다음 주인에게 건넵니다.");
+  const [nickname, setNickname] = useState(user.nickname);
+  const [nicknameBusy, setNicknameBusy] = useState(false);
   const [interests, setInterests] = useState<string[]>(user.interests ?? []);
   const [savedInterests, setSavedInterests] = useState<string[]>(user.interests ?? []);
   const [interestBusy, setInterestBusy] = useState(false);
@@ -3229,6 +3266,7 @@ function ManageSettings({ blog, setBlog, user, onUserChange, onWithdraw }: { blo
   const [withdrawConfirmation, setWithdrawConfirmation] = useState("");
   const [withdrawBusy, setWithdrawBusy] = useState(false);
   const [withdrawError, setWithdrawError] = useState("");
+  const nicknameDirty = nickname.trim() !== user.nickname;
   const interestDirty = interests.join("|") !== savedInterests.join("|");
   const toggleInterest = (interest: string) => setInterests((current) => (current.includes(interest) ? current.filter((item) => item !== interest) : current.length < 8 ? [...current, interest] : current));
   const saveInterests = async () => {
@@ -3249,6 +3287,22 @@ function ManageSettings({ blog, setBlog, user, onUserChange, onWithdraw }: { blo
       setMessage((e as Error).message);
     } finally {
       setInterestBusy(false);
+    }
+  };
+  const saveNickname = async () => {
+    const nextNickname = nickname.trim();
+    if (nextNickname.length < 2 || nextNickname.length > 30) return setMessage("댓글 표시 이름은 2~30자로 입력해 주세요.");
+    setNicknameBusy(true);
+    setMessage("");
+    try {
+      const result = await request<{ user: User }>("/auth/profile", { method: "PATCH", body: JSON.stringify({ nickname: nextNickname }) });
+      onUserChange({ ...user, ...result.user });
+      setNickname(result.user.nickname);
+      setMessage("댓글 표시 이름을 저장했습니다.");
+    } catch (e) {
+      setMessage((e as Error).message);
+    } finally {
+      setNicknameBusy(false);
     }
   };
   const dirty = name.trim() !== blog.name || description.trim() !== blog.description || shopName.trim() !== (blog.shopName ?? "취향을 나누는 상점") || shopDescription.trim() !== (blog.shopDescription ?? "직접 모으고 아껴온 물건을 다음 주인에게 건넵니다.");
@@ -3364,8 +3418,16 @@ function ManageSettings({ blog, setBlog, user, onUserChange, onWithdraw }: { blo
       <section className="manage-form-section">
         <header>
           <h2 className="font-jua">기본 정보</h2>
-          <p>블로그 이름과 소개를 수정합니다.</p>
+          <p>댓글에 표시되는 이름과 블로그 정보를 수정합니다.</p>
         </header>
+        <label className="font-jua">
+          댓글 표시 이름
+          <input minLength={2} maxLength={30} value={nickname} onChange={(e) => setNickname(e.target.value)} />
+          <small>{nickname.length}/30 · 댓글 작성자 이름으로 표시됩니다.</small>
+        </label>
+        <button className="manage-primary" disabled={!nicknameDirty || nicknameBusy || nickname.trim().length < 2} onClick={saveNickname}>
+          {nicknameBusy ? "저장 중…" : "댓글 표시 이름 저장"}
+        </button>
         <label className="font-jua">
           블로그 주소
           <div className="manage-readonly">

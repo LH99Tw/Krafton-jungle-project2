@@ -17,7 +17,7 @@ export function getCorsHeaders(request?: Request): Record<string, string> {
   return {
     'Access-Control-Allow-Origin': allowed,
     'Access-Control-Allow-Credentials': 'true',
-    'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info, x-csrf-token',
+    'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info, x-csrf-token, x-visitor-id',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
     Vary: 'Origin',
   }

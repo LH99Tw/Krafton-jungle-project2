@@ -186,6 +186,7 @@ type Props = {
   ) => Promise<UploadedPostImage>;
   onDelete: (id: string) => Promise<void>;
   onUploading: (value: boolean) => void;
+  onDocumentReady?: (getDocument: () => RichDocument) => void;
 };
 
 export function RichTextEditor({
@@ -195,8 +196,10 @@ export function RichTextEditor({
   onUpload,
   onDelete,
   onUploading,
+  onDocumentReady,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const lastEmittedDocumentRef = useRef("");
   const [error, setError] = useState("");
   const [uploadCount, setUploadCount] = useState(0);
   const editor = useEditor({
@@ -221,22 +224,33 @@ export function RichTextEditor({
         return true;
       },
     },
-    onCreate: ({ editor: next }) =>
-      onChange(next.getJSON(), next.getText({ blockSeparator: "\n\n" })),
-    onUpdate: ({ editor: next }) =>
-      onChange(next.getJSON(), next.getText({ blockSeparator: "\n\n" })),
+    onCreate: ({ editor: next }) => {
+      const document = next.getJSON();
+      lastEmittedDocumentRef.current = JSON.stringify(document);
+      onChange(document, next.getText({ blockSeparator: "\n\n" }));
+    },
+    onUpdate: ({ editor: next }) => {
+      const document = next.getJSON();
+      lastEmittedDocumentRef.current = JSON.stringify(document);
+      onChange(document, next.getText({ blockSeparator: "\n\n" }));
+    },
   });
 
   useEffect(() => {
-    if (
-      editor &&
-      value &&
-      JSON.stringify(editor.getJSON()) !== JSON.stringify(value)
-    ) {
+    if (editor && value) {
+      const incomingDocument = JSON.stringify(value);
+      if (incomingDocument === lastEmittedDocumentRef.current) return;
+      if (JSON.stringify(editor.getJSON()) === incomingDocument) return;
       editor.commands.setContent(value, false);
-      onChange(editor.getJSON(), editor.getText({ blockSeparator: "\n\n" }));
+      const document = editor.getJSON();
+      lastEmittedDocumentRef.current = JSON.stringify(document);
+      onChange(document, editor.getText({ blockSeparator: "\n\n" }));
     }
   }, [editor, value]);
+  useEffect(() => {
+    if (editor) onDocumentReady?.(() => editor.getJSON());
+  }, [editor, onDocumentReady]);
+
   if (!editor) return null;
 
   async function addFiles(files: File[]) {
@@ -393,7 +407,18 @@ export function RichTextEditor({
       aria-pressed={active}
       disabled={disabled}
       className={active ? "active" : ""}
-      onClick={onClick}
+      onPointerDown={(event) => {
+        event.preventDefault();
+        const button = event.currentTarget;
+        button.dataset.pointerHandled = "true";
+        onClick();
+        window.setTimeout(() => {
+          delete button.dataset.pointerHandled;
+        }, 0);
+      }}
+      onClick={(event) => {
+        if (!event.currentTarget.dataset.pointerHandled) onClick();
+      }}
     >
       {children}
     </button>

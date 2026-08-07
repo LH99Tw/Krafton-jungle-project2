@@ -187,3 +187,14 @@ export const updateInterests = async (request: Request) => {
   if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '관심분야를 저장하지 못했습니다.')
   return json({ data: { interests: data.interests } })
 }
+
+export const updateNickname = async (request: Request) => {
+  const session = await requireCsrfSession(request)
+  if (!session?.user_id) return apiError(session ? 401 : 403, session ? 'UNAUTHENTICATED' : 'CSRF_TOKEN_INVALID', session ? '로그인이 필요합니다.' : 'CSRF 토큰이 유효하지 않습니다.')
+  const body = await request.json().catch(() => null) as Record<string, unknown> | null
+  const nickname = typeof body?.nickname === 'string' ? body.nickname.trim() : ''
+  if (nickname.length < 2 || nickname.length > 30) return apiError(400, 'VALIDATION_ERROR', '댓글 표시 이름은 2~30자로 입력해 주세요.')
+  const { data, error } = await supabase.from('users').update({ nickname, updated_at: new Date().toISOString() }).eq('id', session.user_id).eq('account_status', 'ACTIVE').neq('role', 'ADMIN').select('id,email,nickname,interests,account_status,password_change_required').single()
+  if (error || !data) return apiError(500, 'INTERNAL_SERVER_ERROR', '댓글 표시 이름을 저장하지 못했습니다.')
+  return json({ data: { user: { id: data.id, email: data.email, nickname: data.nickname, interests: data.interests ?? [], accountStatus: data.account_status, passwordChangeRequired: data.password_change_required === true } } })
+}
