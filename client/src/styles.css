@@ -1387,3 +1387,27 @@ body:has(.home-main) .account-dashboard-actions button {
 .hero-inner h1{white-space:pre-line}
 .official-profile-panel{position:sticky;top:120px;padding:28px 24px 26px;border-top:3px solid #1b1b1a;background:#f7f7f6}.official-profile-panel h1{font-family:'DM Serif Display',serif;font-size:42px}.official-profile-panel .creator-description{margin:18px 0 28px;color:#777;line-height:1.8}.official-blog-badge{display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid #dededb;border-bottom:1px solid #dededb}.official-blog-badge>i{display:grid;width:34px;height:34px;place-items:center;background:#ef6254;color:#fff;font-family:'DM Serif Display',serif;font-size:18px;font-style:normal}.official-blog-badge>span{display:grid;gap:2px}.official-blog-badge b{font-size:11px}.official-blog-badge small{color:#999;font-size:8px;letter-spacing:.08em;text-transform:uppercase}
 @media(max-width:680px){.official-profile-panel{position:static;display:block;padding:24px 20px}.official-profile-panel .creator-description{margin:14px 0 22px}.official-blog-badge{grid-column:auto}}
+
+body:has(.home-main) .today-tistory{position:relative}
+body:has(.home-main) .today-card{position:absolute;top:0;left:0;z-index:0;opacity:0;pointer-events:none;transition:opacity .9s ease;will-change:opacity}
+body:has(.home-main) .today-card.active{z-index:1;opacity:1;pointer-events:auto}
+body:has(.home-main) .today-goo-defs{position:absolute;width:0;height:0;pointer-events:none}
+body:has(.home-main) .today-nav{--nav-size:30px;position:absolute;z-index:4;top:146px;display:grid;width:var(--nav-size);height:var(--nav-size);place-items:center;border-radius:50%;background:transparent;color:#202020;pointer-events:none;isolation:isolate}
+body:has(.home-main) .today-nav-prev{--wall-start:-42px;--wall-mid:-27px;--wall-near:-6px;--wall-over:2px;left:-8px}body:has(.home-main) .today-nav-next{--wall-start:42px;--wall-mid:27px;--wall-near:6px;--wall-over:-2px;right:-8px}
+body:has(.home-main) .today-tistory:hover .today-nav,body:has(.home-main) .today-nav:focus-visible{pointer-events:auto}
+body:has(.home-main) .today-nav>span{position:absolute;z-index:0;inset:-40px;overflow:visible;pointer-events:none;opacity:0;filter:url(#today-goo);transition:opacity .08s ease .02s;will-change:filter,opacity}
+body:has(.home-main) .today-nav>span:before,body:has(.home-main) .today-nav>span:after{content:"";position:absolute;background:#fff;will-change:transform}
+body:has(.home-main) .today-nav>span:before{top:21px;width:44px;height:72px;border-radius:50%}
+body:has(.home-main) .today-nav-prev>span:before{right:62px}body:has(.home-main) .today-nav-next>span:before{left:62px}
+body:has(.home-main) .today-nav>span:after{top:40px;left:40px;width:var(--nav-size);height:var(--nav-size);border-radius:50%;transform:translateX(var(--wall-start)) scale(.08,.48);transition:transform .46s cubic-bezier(.22,.9,.3,1);transform-origin:center}
+body:has(.home-main) .today-nav:after{content:"";position:absolute;z-index:1;inset:0;border-radius:50%;background:#fff;box-shadow:none;transform:translateX(var(--wall-start)) scale(.08,.48);transition:transform .46s cubic-bezier(.22,.9,.3,1);transform-origin:center}
+body:has(.home-main) .today-nav svg{position:relative;z-index:2;width:12px;height:12px;opacity:0;transform:translateX(var(--wall-mid)) scale(.2);transition:opacity .12s ease,transform .38s cubic-bezier(.22,.9,.3,1)}
+body:has(.home-main) .today-tistory:hover .today-nav>span,body:has(.home-main) .today-nav:focus-visible>span{opacity:1;transition:opacity .06s ease 0s}
+body:has(.home-main) .today-tistory:hover .today-nav>span:after,body:has(.home-main) .today-nav:focus-visible>span:after,body:has(.home-main) .today-tistory:hover .today-nav:after,body:has(.home-main) .today-nav:focus-visible:after{transform:translateX(0) scale(1)}
+body:has(.home-main) .today-tistory:hover .today-nav svg,body:has(.home-main) .today-nav:focus-visible svg{opacity:1;transform:translateX(0) scale(1);transition-delay:.08s}
+body:has(.home-main) .today-dots{position:absolute;z-index:5;right:0;bottom:0;left:0;display:flex;align-items:center;justify-content:center;gap:9px}
+body:has(.home-main) .today-dots button{display:block;width:6px;height:6px;padding:0;border:0;border-radius:50%;background:#d5d5d5;transition:width .25s ease,background .25s ease}
+body:has(.home-main) .today-dots button.active{width:20px;border-radius:4px;background:#222}
+body:has(.home-main) .home-frame>.tistory-right{position:relative;z-index:5}
+@media(max-width:700px){body:has(.home-main) .today-nav{--nav-size:28px;top:120px}body:has(.home-main) .today-nav-prev{left:-7px}body:has(.home-main) .today-nav-next{right:-7px}}
+@media(prefers-reduced-motion:reduce){body:has(.home-main) .today-card,body:has(.home-main) .today-nav>span:after,body:has(.home-main) .today-nav:after,body:has(.home-main) .today-nav svg{transition:none}}

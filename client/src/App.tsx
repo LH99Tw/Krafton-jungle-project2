@@ -1,6 +1,6 @@
 import { createContext, FormEvent, PointerEvent as ReactPointerEvent, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bell, BookOpen, Bookmark, Check, ChevronDown, ChevronRight, Clipboard, Clock3, Compass, Eye, FileText, Heart, Image, Layers3, LayoutDashboard, LineChart, Lock, LogOut, Menu, MessageCircle, Package, Palette, Pencil, PenLine, RotateCcw, Search, Send, Settings, ShoppingCart, Sparkles, Tags, TicketPercent, Trash2, Upload, Volume2, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bell, BookOpen, Bookmark, Check, ChevronDown, ChevronLeft, ChevronRight, Clipboard, Clock3, Compass, Eye, FileText, Heart, Image, Layers3, LayoutDashboard, LineChart, Lock, LogOut, Menu, MessageCircle, Package, Palette, Pencil, PenLine, RotateCcw, Search, Send, Settings, ShoppingCart, Sparkles, Tags, TicketPercent, Trash2, Upload, Volume2, X } from "lucide-react";
 import { AiCompanionDock, AiMissionPage, emitAiActivity, useAiMission } from "./AiMission";
 import { assetUrl } from "./assets";
 import { ProgressiveImage } from "./ProgressiveImage";
@@ -1009,6 +1009,8 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
   const [category, setCategory] = useState("전체");
   const [categoryPage, setCategoryPage] = useState(1);
   const [tipPage, setTipPage] = useState(1);
+  const [bannerPage, setBannerPage] = useState(0);
+  const [bannerHover, setBannerHover] = useState(false);
   const { data: home = null } = useQuery({
     queryKey: ["home"],
     queryFn: () => request<HomeData>("/home"),
@@ -1022,18 +1024,17 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
   const latestPosts = fillPostSlots(home?.latestPosts, fallbackLatest, 5);
   const popularMarketItems = fillMarketSlots(home?.marketItems, 5);
   const shownTips = tipPage === 1 ? sidebarTips : [...sidebarTips].reverse();
-  const banner: HomeBanner = home?.banners[0] ?? {
-    id: 0,
-    eyebrow: "NOTICE · EVENT",
-    title: "최애를 기록하고\n취향을 나누는 새로운 공간",
-    description: "팬들이 함께 만드는 굿즈 이야기와 새로운 이벤트를 만나보세요.",
-    imageUrl: null,
-    ctaLabel: "이벤트 자세히 보기",
-    ctaUrl: "/notice/2702",
-    startsAt: "",
-    position: 0,
-    isActive: true,
-  };
+  const bannerPlaceholders: HomeBanner[] = [
+    { id:-1,eyebrow:"NOTICE · EVENT",title:"최애를 기록하고\n취향을 나누는 새로운 공간",description:"팬들이 함께 만드는 굿즈 이야기와 새로운 이벤트를 만나보세요.",imageUrl:null,ctaLabel:"이벤트 자세히 보기",ctaUrl:"/blog/admin",startsAt:"",position:0,isActive:true },
+    { id:-2,eyebrow:"FANDOM · STORY",title:"좋아하는 마음이\n한 편의 기록이 되는 곳",description:"팬들의 새로운 이야기와 취향을 천천히 둘러보세요.",imageUrl:null,ctaLabel:"새로운 글 둘러보기",ctaUrl:"/feed",startsAt:"",position:1,isActive:true },
+    { id:-3,eyebrow:"GOODS · MARKET",title:"소중히 간직한 굿즈의\n다음 주인을 찾아요",description:"취향이 맞는 팬과 안전하게 굿즈를 나눠보세요.",imageUrl:null,ctaLabel:"마켓 둘러보기",ctaUrl:"/market",startsAt:"",position:2,isActive:true },
+    { id:-4,eyebrow:"FAN · COMMUNITY",title:"같은 장면을 좋아하는\n사람들과 만나는 순간",description:"오늘의 감상과 오래 간직한 이야기를 함께 나눠보세요.",imageUrl:null,ctaLabel:"팬 이야기 만나기",ctaUrl:"/feed",startsAt:"",position:3,isActive:true },
+    { id:-5,eyebrow:"TISTORY · PICK",title:"오늘 발견한 취향을\n나만의 방식으로 기록해요",description:"사진과 글로 완성된 다채로운 팬 기록을 만나보세요.",imageUrl:null,ctaLabel:"추천 기록 보기",ctaUrl:"/",startsAt:"",position:4,isActive:true },
+  ];
+  const connectedBanners = (home?.banners ?? []).slice(0,5);
+  const bannerSlides = [...connectedBanners, ...bannerPlaceholders.slice(connectedBanners.length)].slice(0,5);
+  useEffect(()=>{ if(bannerHover)return; const timer=window.setInterval(()=>setBannerPage((page)=>(page+1)%5),3000); return()=>window.clearInterval(timer) },[bannerHover]);
+  useEffect(()=>{ if(bannerPage>=bannerSlides.length)setBannerPage(0) },[bannerPage,bannerSlides.length]);
   const openPost = (post: Post) => (post.id > 0 ? go(`/post/${post.id}`) : go("/feed"));
   const tags = (post: Post) => (
     <span className="home-post-tags">
@@ -1049,30 +1050,44 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
       <main id="main" className="home-main">
         <div className="home-frame">
           <div className="home-content">
-            <section className="today-tistory">
-              <div
-                className={`today-card${banner.imageUrl ? " has-image" : ""}`}
-                style={
-                  banner.imageUrl
-                    ? {
-                        backgroundImage: `linear-gradient(90deg,rgba(16,19,24,.75),rgba(16,19,24,.08)),url(${banner.imageUrl})`,
-                      }
-                    : { backgroundColor: solidColor(0) }
-                }
-              >
-                <div>
-                  <p>{banner.eyebrow}</p>
-                  <h1>{banner.title}</h1>
-                  <span>{banner.description}</span>
-                  <button onClick={() => go(banner.ctaUrl)}>{banner.ctaLabel}</button>
+            <section className="today-tistory" aria-roledescription="carousel" aria-label="이벤트 및 주요 소식" onMouseEnter={()=>setBannerHover(true)} onMouseLeave={()=>setBannerHover(false)}>
+              {bannerSlides.map((slide,index)=>(
+                <div
+                  aria-hidden={bannerPage!==index}
+                  className={`today-card today-slide-${index}${slide.imageUrl ? " has-image" : ""}${bannerPage===index ? " active" : ""}`}
+                  key={slide.id}
+                  style={
+                    slide.imageUrl
+                      ? {
+                          backgroundImage: `linear-gradient(90deg,rgba(16,19,24,.75),rgba(16,19,24,.08)),url(${slide.imageUrl})`,
+                        }
+                      : { backgroundColor: solidColor(index) }
+                  }
+                >
+                  <div>
+                    <p>{slide.eyebrow}</p>
+                    <h1>{slide.title}</h1>
+                    <span>{slide.description}</span>
+                    <button tabIndex={bannerPage===index ? 0 : -1} onClick={() => go(slide.ctaUrl)}>{slide.ctaLabel}</button>
+                  </div>
                 </div>
-              </div>
-              <div className="today-dots">
-                <i />
-                <i />
-                <b />
-                <i />
-              </div>
+              ))}
+              <svg className="today-goo-defs" aria-hidden="true" focusable="false">
+                <defs>
+                  <filter id="today-goo" x="-200%" y="-200%" width="500%" height="500%" colorInterpolationFilters="sRGB">
+                    <feGaussianBlur in="SourceGraphic" stdDeviation="11" result="blur" />
+                    <feColorMatrix
+                      in="blur"
+                      mode="matrix"
+                      values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 32 -11"
+                      result="goo"
+                    />
+                  </filter>
+                </defs>
+              </svg>
+              <button className="today-nav today-nav-prev" aria-label="이전 이벤트" onClick={()=>setBannerPage((page)=>(page+4)%5)}><span/><ChevronLeft size={22}/></button>
+              <button className="today-nav today-nav-next" aria-label="다음 이벤트" onClick={()=>setBannerPage((page)=>(page+1)%5)}><span/><ChevronRight size={22}/></button>
+              <div className="today-dots" role="tablist" aria-label="이벤트 페이지 선택">{bannerSlides.map((slide,index)=><button key={slide.id} role="tab" aria-selected={bannerPage===index} aria-label={`${index+1}번 이벤트`} className={bannerPage===index?"active":""} onClick={()=>setBannerPage(index)}/>)}</div>
             </section>
 
             <section className="best-popularity" aria-label="추천글">
@@ -2089,7 +2104,7 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
                   {!official && <p className="creator-kicker">LATEST STORIES</p>}
                   <h2 className="font-jua">{official ? "공지사항" : "요즘의 기록"}</h2>
                 </div>
-                {mine && (
+                {mine && !official && (
                   <div className="creator-section-actions">
                     <button className="font-jua" onClick={() => go("/market/new")}>새 상품 등록 ↗</button>
                     <button className="font-jua" onClick={() => go("/write")}>새 글 쓰기 ↗</button>

@@ -171,7 +171,7 @@ const createNotice = async (request: Request) => {
   const { data, error } = await supabase.from('posts').insert({ blog_id: blog.id, category_id: category?.id ?? null, title, content, content_document: body?.contentDocument ?? null, is_event: isEvent, event_title: isEvent ? eventTitle : null, event_description: isEvent ? eventDescription : null, event_cta_label: isEvent ? eventCtaLabel : null, status, published_at: status === 'PUBLISHED' ? new Date().toISOString() : null }).select('*').single()
   if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '공지 글을 저장하지 못했습니다.')
   if (document.imageIds.length) { const claimed = await claimPostImages(auth.admin!.id, data.id, draftKey, document.imageIds); if (claimed.error) { await supabase.from('posts').delete().eq('id', data.id); return apiError(400, 'VALIDATION_ERROR', claimed.error) } }
-  try { await syncNoticeEvent(data.id) } catch (error) { console.error('Failed to sync notice event', error); return apiError(500, 'INTERNAL_SERVER_ERROR', '이벤트 배너를 연결하지 못했습니다.') }
+  try { await syncNoticeEvent(data.id) } catch (error) { console.error('Failed to sync notice event', error); await purgePostImages(data.id); await supabase.from('posts').delete().eq('id', data.id); return apiError(500, 'INTERNAL_SERVER_ERROR', '이벤트 배너를 연결하지 못했습니다.') }
   await audit(auth.admin!.id, 'CREATE_NOTICE', 'post', data.id, null, data)
   return json({ data }, 201)
 }
