@@ -1,5 +1,5 @@
 import { apiError, getSession, json, requireCsrfSession, supabase } from './shared.ts'
-import { fallbackKnowledgeAction, fallbackKnowledgeFact, normalizeAiPath, resolveSuggestedAction, selectServiceKnowledge, serviceKnowledgePrompt } from './ai-knowledge.ts'
+import { explicitNavigationAction, fallbackKnowledgeAction, fallbackKnowledgeFact, normalizeAiPath, resolveSuggestedAction, selectServiceKnowledge, serviceKnowledgePrompt } from './ai-knowledge.ts'
 
 export type CharacterId = 'chiikawa' | 'hachiware' | 'usagi'
 
@@ -121,13 +121,24 @@ const state = async (request: Request) => {
   const session = await getSession(request)
   if (!session?.user_id) return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
   const userId = session.user_id
-  const [{ data: profile, error: profileError }, { data: missions, error: missionError }, { data: progress, error: progressError }, { data: active }] = await Promise.all([
+  const [{ data: profile, error: profileError }, { data: missions, error: missionError }, { data: progress, error: progressError }, { data: initialActive }] = await Promise.all([
     supabase.from('ai_companion_profiles').select('*').eq('user_id', userId).maybeSingle(),
     supabase.from('ai_missions').select('*').eq('active', true).order('position'),
     supabase.from('ai_mission_progress').select('*').eq('user_id', userId),
     supabase.from('ai_conversations').select('*').eq('user_id', userId).eq('status', 'ACTIVE').maybeSingle(),
   ])
   if (profileError || missionError || progressError) return apiError(500, 'INTERNAL_SERVER_ERROR', 'AI 동반자 상태를 불러오지 못했습니다.')
+  let active = initialActive
+  if (!active && isCharacterId(profile?.character_id) && profile?.consented_at) {
+    const { data: latest } = await supabase.from('ai_conversations').select('*').eq('user_id', userId).order('updated_at', { ascending: false }).limit(1).maybeSingle()
+    if (latest) {
+      const { data: restored } = await supabase.from('ai_conversations').update({ character_id: profile.character_id, mode: 'GENERAL', mission_id: null, status: 'ACTIVE', updated_at: new Date().toISOString() }).eq('id', latest.id).select('*').single()
+      active = restored ?? null
+    } else {
+      const { data: created } = await supabase.from('ai_conversations').insert({ user_id: userId, character_id: profile.character_id, mode: 'GENERAL' }).select('*').single()
+      active = created ?? null
+    }
+  }
   let messages: Record<string, any>[] = []
   if (active) {
     const result = await supabase.from('ai_messages').select('*').eq('conversation_id', active.id).in('status', ['COMPLETED', 'FALLBACK']).order('created_at', { ascending: false }).limit(40)
@@ -172,20 +183,21 @@ const startMission = async (request: Request, missionId: string) => {
   const session = await requireCsrfSession(request)
   if (!session?.user_id) return apiError(session ? 401 : 403, session ? 'UNAUTHENTICATED' : 'CSRF_TOKEN_INVALID', session ? '로그인이 필요합니다.' : 'CSRF 토큰이 유효하지 않습니다.')
   const userId = session.user_id
-  const [{ data: profile }, { data: mission }] = await Promise.all([
+  const [{ data: profile }, { data: mission }, { data: active }] = await Promise.all([
     supabase.from('ai_companion_profiles').select('*').eq('user_id', userId).maybeSingle(),
     supabase.from('ai_missions').select('*').eq('id', missionId).eq('active', true).maybeSingle(),
+    supabase.from('ai_conversations').select('*').eq('user_id', userId).eq('status', 'ACTIVE').maybeSingle(),
   ])
   if (!profile?.character_id || !profile.consented_at) return apiError(409, 'AI_COMPANION_REQUIRED', '먼저 AI 캐릭터를 선택해 주세요.')
   if (!mission) return apiError(404, 'AI_MISSION_NOT_FOUND', '미션을 찾을 수 없습니다.')
   const { data: completed } = await supabase.from('ai_mission_progress').select('status').eq('user_id', userId).eq('mission_id', missionId).maybeSingle()
   if (completed?.status === 'COMPLETED') return apiError(409, 'AI_MISSION_COMPLETED', '이미 완료한 미션입니다.')
   const now = new Date().toISOString()
-  await Promise.all([
-    supabase.from('ai_conversations').update({ status: 'PAUSED', updated_at: now }).eq('user_id', userId).eq('status', 'ACTIVE'),
-    supabase.from('ai_mission_progress').update({ status: 'PAUSED', updated_at: now }).eq('user_id', userId).eq('status', 'ACTIVE'),
-  ])
-  const { data: conversation, error } = await supabase.from('ai_conversations').insert({ user_id: userId, character_id: profile.character_id, mode: 'MISSION', mission_id: missionId }).select('*').single()
+  await supabase.from('ai_mission_progress').update({ status: 'PAUSED', updated_at: now }).eq('user_id', userId).eq('status', 'ACTIVE')
+  const conversationResult = active
+    ? await supabase.from('ai_conversations').update({ character_id: profile.character_id, mode: 'MISSION', mission_id: missionId, updated_at: now }).eq('id', active.id).select('*').single()
+    : await supabase.from('ai_conversations').insert({ user_id: userId, character_id: profile.character_id, mode: 'MISSION', mission_id: missionId }).select('*').single()
+  const { data: conversation, error } = conversationResult
   if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '미션을 시작하지 못했습니다.')
   await supabase.from('ai_mission_progress').upsert({ user_id: userId, mission_id: missionId, conversation_id: conversation.id, status: 'ACTIVE', reward_points: mission.reward_points, started_at: now, completed_at: null, updated_at: now }, { onConflict: 'user_id,mission_id' })
   await supabase.from('ai_messages').insert({ conversation_id: conversation.id, user_id: userId, role: 'SYSTEM', body: characters[profile.character_id as CharacterId].missionStart(mission.title, mission.description), status: 'COMPLETED', completed_at: now })
@@ -196,14 +208,16 @@ const pauseMission = async (request: Request, missionId: string) => {
   const session = await requireCsrfSession(request)
   if (!session?.user_id) return apiError(session ? 401 : 403, session ? 'UNAUTHENTICATED' : 'CSRF_TOKEN_INVALID', session ? '로그인이 필요합니다.' : 'CSRF 토큰이 유효하지 않습니다.')
   const userId = session.user_id
-  const { data: profile } = await supabase.from('ai_companion_profiles').select('character_id').eq('user_id', userId).maybeSingle()
+  const [{ data: profile }, { data: active }] = await Promise.all([
+    supabase.from('ai_companion_profiles').select('character_id').eq('user_id', userId).maybeSingle(),
+    supabase.from('ai_conversations').select('*').eq('user_id', userId).eq('status', 'ACTIVE').maybeSingle(),
+  ])
   if (!profile?.character_id) return apiError(409, 'AI_COMPANION_REQUIRED', '먼저 AI 캐릭터를 선택해 주세요.')
   const now = new Date().toISOString()
-  await Promise.all([
-    supabase.from('ai_mission_progress').update({ status: 'PAUSED', updated_at: now }).eq('user_id', userId).eq('mission_id', missionId).eq('status', 'ACTIVE'),
-    supabase.from('ai_conversations').update({ status: 'PAUSED', updated_at: now }).eq('user_id', userId).eq('mission_id', missionId).eq('status', 'ACTIVE'),
-  ])
-  const { data: conversation } = await supabase.from('ai_conversations').insert({ user_id: userId, character_id: profile.character_id, mode: 'GENERAL' }).select('id').single()
+  await supabase.from('ai_mission_progress').update({ status: 'PAUSED', updated_at: now }).eq('user_id', userId).eq('mission_id', missionId).eq('status', 'ACTIVE')
+  const { data: conversation } = active
+    ? await supabase.from('ai_conversations').update({ mode: 'GENERAL', mission_id: null, updated_at: now }).eq('id', active.id).select('id').single()
+    : await supabase.from('ai_conversations').insert({ user_id: userId, character_id: profile.character_id, mode: 'GENERAL' }).select('id').single()
   if (conversation) await supabase.from('ai_messages').insert({ conversation_id: conversation.id, user_id: userId, role: 'SYSTEM', body: characters[profile.character_id as CharacterId].missionPause, status: 'COMPLETED', completed_at: now })
   return state(request)
 }
@@ -245,6 +259,20 @@ const personaFallback = (characterId: CharacterId, fact: ReturnType<typeof fallb
   return `야하—! ${core} ‘${fact.action.label}’로 바로 출발이다!`
 }
 
+const completedMissionReply = (characterId: CharacterId, completed: number) => {
+  if (characterId === 'chiikawa') return `와앗… 서버에서 확인했어! 준비된 미션 ${completed}개를 전부 완료했어. 정말 대단해…! 이제 편하게 이야기하거나 다음 활동을 즐기면 돼.`
+  if (characterId === 'hachiware') return `서버에서 확인했어! 준비된 미션 ${completed}개를 모두 완료했어. 하나씩 끝까지 해낸 거 정말 멋지다! 이제 편하게 이야기하거나 다른 활동을 둘러보자.`
+  return `우라라—! 서버 확인 완료! 준비된 미션 ${completed}개 전부 클리어다! 이제 자유 대화나 다음 모험으로 출발한다—!`
+}
+
+const navigationReply = (characterId: CharacterId, label: string) => {
+  if (characterId === 'chiikawa') return `응…! 기존 서비스의 ‘${label}’ 화면으로 연결해 줄게. 아래 버튼을 누르면 바로 이동할 수 있어…!`
+  if (characterId === 'hachiware') return `좋아! 기존 서비스의 ‘${label}’ 화면을 찾았어. 아래 버튼으로 바로 이동하면 돼!`
+  return `야하—! ‘${label}’ 화면 발견! 아래 버튼으로 바로 출발한다—!`
+}
+
+const asksMissionStatus = (text: string) => /(미션|mission).*(다\s*했|전부|모두|완료|끝|남았|상태)|(?:다\s*했|전부|모두|완료|끝).*(미션|mission)/i.test(text)
+
 const personaPrompt = (character: Character) => `정체성: ${character.identity}
 가치관: ${character.values}
 사용자와의 관계: ${character.relationship}
@@ -263,9 +291,11 @@ const sendAiMessage = async (request: Request) => {
   const pathname = normalizeAiPath(body?.context?.pathname)
   if (!text || text.length > 300 || !key) return apiError(400, 'VALIDATION_ERROR', '메시지는 1~300자로 입력해 주세요.')
   const userId = session.user_id
-  const [{ data: profile }, { data: conversation }] = await Promise.all([
+  const [{ data: profile }, { data: conversation }, { data: missions }, { data: progress }] = await Promise.all([
     supabase.from('ai_companion_profiles').select('*').eq('user_id', userId).maybeSingle(),
     supabase.from('ai_conversations').select('*').eq('user_id', userId).eq('status', 'ACTIVE').maybeSingle(),
+    supabase.from('ai_missions').select('id,title').eq('active', true).order('position'),
+    supabase.from('ai_mission_progress').select('mission_id,status').eq('user_id', userId),
   ])
   if (!profile?.character_id || !profile.consented_at || !conversation) return apiError(409, 'AI_COMPANION_REQUIRED', '먼저 AI 캐릭터를 선택해 주세요.')
   const { data: reservation, error: reservationError } = await supabase.rpc('reserve_ai_turn', { p_user_id: userId, p_conversation_id: conversation.id, p_body: text, p_idempotency_key: key })
@@ -277,6 +307,12 @@ const sendAiMessage = async (request: Request) => {
   if (reservation?.status !== 'RESERVED') return apiError(400, 'VALIDATION_ERROR', '대화를 시작할 수 없습니다.')
 
   const character = characters[profile.character_id as CharacterId]
+  const completedMissionIds = new Set((progress ?? []).filter((item: Record<string, any>) => item.status === 'COMPLETED').map((item: Record<string, any>) => item.mission_id))
+  const completedMissionCount = (missions ?? []).filter((mission: Record<string, any>) => completedMissionIds.has(mission.id)).length
+  const allMissionsCompleted = Boolean(missions?.length) && completedMissionCount === missions!.length
+  const missionStatusContext = allMissionsCompleted
+    ? `서버 확인 결과: 활성 미션 ${missions!.length}개 중 ${completedMissionCount}개 완료. 모든 미션 완료 상태.`
+    : `서버 확인 결과: 활성 미션 ${missions?.length ?? 0}개 중 ${completedMissionCount}개 완료. 남은 미션 ${(missions?.length ?? 0) - completedMissionCount}개.`
   const { data: recentRows } = await supabase.from('ai_messages').select('role,body').eq('conversation_id', conversation.id).neq('status', 'FAILED').order('created_at', { ascending: false }).limit(9)
   const recent = (recentRows ?? []).reverse().filter((entry: Record<string, any>) => entry.role !== 'SYSTEM').slice(-8).map((entry: Record<string, any>) => ({ ...entry, body: String(entry.body).slice(0, 160) }))
   let missionContext = '일반 대화 모드'
@@ -286,7 +322,9 @@ const sendAiMessage = async (request: Request) => {
   }
   const knowledgeMatches = selectServiceKnowledge(text, pathname, conversation.mission_id)
   const explicitKnowledgeMatches = knowledgeMatches.filter((match) => match.keywordHits > 0)
-  const allowedActionIds = explicitKnowledgeMatches.map(({ entry }) => entry.action.id)
+  const allowedActionIds = explicitKnowledgeMatches.map(({ entry }) => entry.action.id).filter((id) => !(allMissionsCompleted && id === 'ai-missions'))
+  const requestedNavigation = explicitNavigationAction(text, explicitKnowledgeMatches)
+  const navigationAction = requestedNavigation && allowedActionIds.includes(requestedNavigation.id) ? requestedNavigation : null
   const systemPrompt = `너는 ${character.name}, ${character.role}다. 아래 지시의 우선순위를 지켜라.
 [공통 안전·사실 규칙]
 - 사용자가 실제로 저장·발행·구매·미션 완료했다고 서버가 확인하지 않았다면 완료했다고 말하지 않는다.
@@ -305,6 +343,8 @@ ${serviceKnowledgePrompt(knowledgeMatches)}
 
 [대화 모드]
 ${missionContext}
+${missionStatusContext}
+- 위 서버 확인 결과가 미션 완료 여부의 유일한 기준이다. 모든 미션 완료 상태라면 불확실하다고 말하거나 미션 화면을 다시 확인하라고 안내하지 않는다.
 
 [중립적 사용자 기억]
 ${String(profile.memory_summary || '없음').slice(0, 500)}
@@ -315,7 +355,13 @@ ${String(profile.memory_summary || '없음').slice(0, 500)}
 사용자가 서비스 기능을 직접 물었을 때만 suggestedActionId를 ${allowedActionIds.length ? allowedActionIds.join(', ') : '허용된 값 없음'} 중 하나로 설정하고, 그 외에는 null로 둔다.`
   const groqKey = Deno.env.get('GROQ_API_KEY') ?? ''
   const model = Deno.env.get('GROQ_MODEL') ?? 'llama-3.1-8b-instant'
-  let generated: { reply: string; emotion: string; memorySummary: string; suggestedActionId: string | null } | null = null
+  const completionTemplate = allMissionsCompleted && asksMissionStatus(text)
+  const serverTemplate = completionTemplate || Boolean(navigationAction)
+  let generated: { reply: string; emotion: string; memorySummary: string; suggestedActionId: string | null } | null = serverTemplate
+    ? completionTemplate
+      ? { reply: completedMissionReply(profile.character_id as CharacterId, completedMissionCount), emotion: 'happy', memorySummary: profile.memory_summary ?? '', suggestedActionId: null }
+      : { reply: navigationReply(profile.character_id as CharacterId, navigationAction!.label), emotion: 'focused', memorySummary: profile.memory_summary ?? '', suggestedActionId: navigationAction!.id }
+    : null
   let usage = { prompt_tokens: 0, completion_tokens: 0 }
   if (groqKey) {
     for (let attempt = 0; attempt < 2 && !generated; attempt++) {
@@ -340,10 +386,10 @@ ${String(profile.memory_summary || '없음').slice(0, 500)}
   }
   const fallbackFact = fallbackKnowledgeFact(knowledgeMatches)
   const reply = generated ?? { reply: personaFallback(profile.character_id as CharacterId, fallbackFact), emotion: 'focused', memorySummary: profile.memory_summary ?? '', suggestedActionId: fallbackKnowledgeAction(knowledgeMatches)?.id ?? null }
-  const suggestedAction = resolveSuggestedAction(reply.suggestedActionId, explicitKnowledgeMatches)
+  const suggestedAction = allMissionsCompleted ? null : resolveSuggestedAction(reply.suggestedActionId, explicitKnowledgeMatches)
   const { error: finishError } = await supabase.rpc('finish_ai_turn', {
     p_user_id: userId, p_message_id: reservation.messageId, p_reply: reply.reply, p_emotion: reply.emotion,
-    p_memory_summary: reply.memorySummary, p_model: generated ? model : 'local-fallback',
+    p_memory_summary: reply.memorySummary, p_model: serverTemplate ? 'server-state' : generated ? model : 'local-fallback',
     p_input_tokens: Number(usage.prompt_tokens ?? 0), p_output_tokens: Number(usage.completion_tokens ?? 0), p_fallback: !generated,
   })
   if (finishError) {
@@ -351,7 +397,7 @@ ${String(profile.memory_summary || '없음').slice(0, 500)}
     return apiError(500, 'INTERNAL_SERVER_ERROR', 'AI 대화를 저장하지 못했습니다.')
   }
   const usageAfter = await usageState(userId)
-  return json({ data: { reply: reply.reply, emotion: reply.emotion, memorySummary: reply.memorySummary, suggestedAction, ...usageAfter, source: generated ? 'model' : 'fallback' } }, 201)
+  return json({ data: { reply: reply.reply, emotion: reply.emotion, memorySummary: reply.memorySummary, suggestedAction, ...usageAfter, source: serverTemplate ? 'template' : generated ? 'model' : 'fallback' } }, 201)
 }
 
 export const recordAiMissionActivity = async (userId: number, eventType: 'POST_SAVED' | 'MARKET_DETAIL_VIEWED', evidence: Record<string, unknown> = {}) => {

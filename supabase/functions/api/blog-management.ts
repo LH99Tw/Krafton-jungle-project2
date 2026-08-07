@@ -197,6 +197,14 @@ const createClassification = async (request: Request) => {
     const allowed = Array.isArray(owner?.interests) && owner.interests.some((interest: unknown) => typeof interest === 'string' && categoryName(interest).normalized === parsed.normalized)
     if (!allowed) return apiError(400, 'VALIDATION_ERROR', '현재 관심분야에 포함된 항목만 관심분야 분류로 만들 수 있습니다.')
   }
+  const { data: existing, error: existingError } = await supabase.from('blog_classifications').select('*').eq('blog_id', ownership.blog.id).eq('normalized_name', parsed.normalized).maybeSingle()
+  if (existingError) return apiError(500, 'INTERNAL_SERVER_ERROR', '분류를 확인하지 못했습니다.')
+  if (existing) {
+    if (source !== 'INTEREST' || existing.source === 'INTEREST') return apiError(409, 'CLASSIFICATION_ALREADY_EXISTS', '같은 이름의 분류가 이미 있습니다.')
+    const { data, error } = await supabase.from('blog_classifications').update({ source: 'INTEREST', updated_at: new Date().toISOString() }).eq('id', existing.id).eq('blog_id', ownership.blog.id).select('*').single()
+    if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '관심분야 분류를 연결하지 못했습니다.')
+    return json({ data: { id: data.id, name: data.name, position: data.position, source: data.source, activePostCount: 0, trashPostCount: 0 } })
+  }
   const { count } = await supabase.from('blog_classifications').select('id', { count: 'exact', head: true }).eq('blog_id', ownership.blog.id)
   if ((count ?? 0) >= 30) return apiError(409, 'CLASSIFICATION_LIMIT_REACHED', '분류는 최대 30개까지 만들 수 있습니다.')
   const { data, error } = await supabase.from('blog_classifications').insert({ blog_id: ownership.blog.id, name: parsed.name, normalized_name: parsed.normalized, position: count ?? 0, source }).select('*').single()
