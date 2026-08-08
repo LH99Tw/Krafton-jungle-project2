@@ -1859,7 +1859,6 @@ function BlogSetup({ go, onDone }: { go: (to: string) => void; onDone: (blog: Bl
   const [form, setForm] = useState({ name: "", slug: "", description: "" });
   const [checkedSlug, setCheckedSlug] = useState("");
   const [available, setAvailable] = useState<boolean | null>(null);
-  const [publicUrl, setPublicUrl] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const check = async () => {
@@ -1872,11 +1871,9 @@ function BlogSetup({ go, onDone }: { go: (to: string) => void; onDone: (blog: Bl
       }>(`/blogs/check-slug?slug=${encodeURIComponent(form.slug)}`);
       setForm((current) => ({ ...current, slug: data.slug }));
       setCheckedSlug(data.slug);
-      setPublicUrl(data.url);
       setAvailable(data.available);
     } catch (e) {
       setCheckedSlug("");
-      setPublicUrl("");
       setAvailable(null);
       setError((e as Error).message);
     }
@@ -1933,7 +1930,6 @@ function BlogSetup({ go, onDone }: { go: (to: string) => void; onDone: (blog: Bl
                     slug: e.target.value.trim().toLowerCase(),
                   });
                   setCheckedSlug("");
-                  setPublicUrl("");
                   setAvailable(null);
                   setError("");
                 }}
@@ -1944,7 +1940,11 @@ function BlogSetup({ go, onDone }: { go: (to: string) => void; onDone: (blog: Bl
                 중복 확인
               </button>
             </div>
-            {available !== null && <small className={available ? "available" : "unavailable"}>{available ? `사용할 수 있는 주소입니다: ${window.location.origin}${publicUrl}` : "이미 사용 중인 주소입니다."}</small>}
+            {available !== null && (
+              <small className={available ? "available" : "unavailable"}>
+                {available ? "사용 가능한 주소입니다." : "이미 사용 중인 주소입니다."}
+              </small>
+            )}
           </label>
           <label>
             블로그 소개 <span className="counter">{form.description.length}/160</span>

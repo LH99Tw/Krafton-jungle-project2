@@ -422,12 +422,13 @@ export function RichTextEditor({
         const button = event.currentTarget;
         button.dataset.pointerHandled = "true";
         onClick();
-        window.setTimeout(() => {
-          delete button.dataset.pointerHandled;
-        }, 0);
       }}
       onClick={(event) => {
-        if (!event.currentTarget.dataset.pointerHandled) onClick();
+        if (event.currentTarget.dataset.pointerHandled) {
+          delete event.currentTarget.dataset.pointerHandled;
+          return;
+        }
+        onClick();
       }}
     >
       {children}
