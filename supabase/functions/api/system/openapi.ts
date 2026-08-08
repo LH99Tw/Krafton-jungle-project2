@@ -233,7 +233,14 @@ export const openApiDocument = {
     '/market/wallet/charge': { post: { summary: 'Charge my wallet with a supported point amount', responses: { '201': { description: 'Wallet charged' }, '400': { description: 'Unsupported charge amount' } } } },
     '/market/orders': { get: { summary: 'List my buyer or seller orders', parameters: [{ name: 'role', in: 'query', schema: { type: 'string', enum: ['buyer', 'seller'], default: 'buyer' } }], responses: { '200': { description: 'Order list' } } } },
     '/market/orders/{id}/complete': { post: { summary: 'Complete a paid order as its buyer', responses: { '200': { description: 'Order completed' }, '403': { description: 'Buyer permission required' }, '409': { description: 'Order cannot be completed' } } } },
-    '/market/conversations': { get: { summary: 'List my market conversations through the participant-scoped chat RPC', responses: { '200': { description: 'Conversation list' } } } },
+    '/market/conversations': {
+      get: { summary: 'List my pinned-first market conversations through the participant-scoped chat RPC', responses: { '200': { description: 'Conversation list' } } },
+      delete: { summary: 'Hide up to 100 selected conversations for the current participant', responses: { '200': { description: 'Selected conversations hidden' } } },
+    },
+    '/market/conversations/{id}/pin': {
+      put: { summary: 'Pin a conversation for the current participant', responses: { '204': { description: 'Conversation pinned' } } },
+      delete: { summary: 'Unpin a conversation for the current participant', responses: { '204': { description: 'Conversation unpinned' } } },
+    },
     '/market/conversations/{id}/messages': {
       get: { summary: 'List conversation messages', responses: { '200': { description: 'Message list' } } },
       post: { summary: 'Send a conversation message', responses: { '201': { description: 'Message sent' } } },

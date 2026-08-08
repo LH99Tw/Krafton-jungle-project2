@@ -66,9 +66,11 @@
 - 목록·상세·홈의 상품 응답은 같은 DTO를 사용하며 `likeCount`, 현재 사용자 기준 `isLiked`를 포함한다. 비로그인은 `isLiked=false`다.
 - `POST /market/items/{id}/like`: 삭제되지 않은 `SELLING` 상품에 좋아요를 추가한다. 복합 키와 upsert로 중복 요청을 안전하게 처리한다.
 - `DELETE /market/items/{id}/like`: 자신의 좋아요를 제거하며 중복 호출에도 `204`를 반환한다.
-- `GET /market/conversations`: 구매자·판매자 공용 채팅 목록과 상대방, 상품, 마지막 메시지, 안 읽은 개수를 반환한다.
+- `GET /market/conversations`: 구매자·판매자 공용 채팅 목록과 상대방, 상품, 마지막 메시지, 안 읽은 개수, 사용자별 고정 시각을 반환한다. 고정된 방이 먼저 정렬된다.
+- `DELETE /market/conversations`: `conversationIds` 배열로 선택한 채팅방을 현재 사용자의 목록에서 한꺼번에 숨긴다. 최대 100개를 처리한다.
+- `PUT|DELETE /market/conversations/{id}/pin`: 현재 사용자 기준으로 채팅방을 고정하거나 고정을 해제한다.
 - `POST /market/conversations/{id}/read`: 상대방이 보낸 안 읽은 메시지를 읽음 처리한다.
-- `DELETE /market/conversations/{id}`: 현재 사용자의 채팅 목록에서 방을 나가고 숨긴다.
+- `DELETE /market/conversations/{id}`: 현재 사용자의 채팅 목록에서 방을 나가고 숨긴다. 상대방이 새 메시지를 보내면 다시 나타난다.
 - `POST /market/conversations/{id}/messages`: `body`와 선택적인 `replyToMessageId`로 일반 메시지 또는 답장을 보낸다.
 - `DELETE /market/conversations/{id}/messages/{messageId}`: 내가 보낸 메시지를 소프트 삭제한다.
 - `PUT|DELETE /market/conversations/{id}/messages/{messageId}/reactions`: `HEART`, `CHECK`, `THUMBS_UP`, `SAD`, `COOL`, `LAUGH` 반응을 추가하거나 취소한다.

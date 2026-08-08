@@ -1,6 +1,6 @@
 import { createContext, FormEvent, PointerEvent as ReactPointerEvent, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bell, BookOpen, Bookmark, Check, ChevronDown, ChevronLeft, ChevronRight, Clipboard, Clock3, Compass, Eye, FileText, Heart, Image, Layers3, LayoutDashboard, LineChart, Lock, LogOut, Menu, MessageCircle, Package, Palette, Pencil, PenLine, RotateCcw, Search, Send, Settings, ShoppingCart, Sparkles, Tags, TicketPercent, Trash2, Upload, Volume2, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bell, BookOpen, Bookmark, Check, ChevronDown, ChevronLeft, ChevronRight, Clipboard, Clock3, Compass, Eye, FileText, Heart, Image, Layers3, LayoutDashboard, LineChart, Lock, LogOut, Menu, MessageCircle, MoreHorizontal, Package, Palette, Pencil, PenLine, Pin, RotateCcw, Search, Send, Settings, ShoppingCart, Sparkles, Tags, TicketPercent, Trash2, Upload, Volume2, X } from "lucide-react";
 import { AiCompanionDock, AiMissionPage, emitAiActivity, useAiMission } from "./AiMission";
 import { assetUrl } from "./assets";
 import { ProgressiveImage } from "./ProgressiveImage";
@@ -102,10 +102,12 @@ type Conversation = {
   itemId: number | string;
   buyerId?: number;
   sellerId?: number;
+  updatedAt?: string;
   item?: { id: number; title: string } | null;
   peer?: { id: number; nickname: string; profileImageUrl?: string | null } | null;
   lastMessage?: { id: number; body: string; senderId: number; createdAt: string } | null;
   unreadCount?: number;
+  pinnedAt?: string | null;
 };
 type ChatMessage = {
   id: number | string;
@@ -5077,6 +5079,10 @@ function MarketChatDock({ user, onLogin }: { user: User | null; onLogin: () => v
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null)
   const [reactionPicker, setReactionPicker] = useState<number | string | null>(null)
   const [sending, setSending] = useState(false)
+  const [managing, setManaging] = useState(false)
+  const [selectedRooms, setSelectedRooms] = useState<Set<string>>(new Set())
+  const [roomMenu, setRoomMenu] = useState<number | string | null>(null)
+  const [headerMenu, setHeaderMenu] = useState(false)
   const [error, setError] = useState('')
   const [position, setPosition] = useState(() => {
     try { return clampChatBall(JSON.parse(localStorage.getItem(CHAT_BALL_POSITION_KEY) ?? 'null') ?? { x: window.innerWidth - 88, y: window.innerHeight - 104 }) }
@@ -5156,6 +5162,33 @@ function MarketChatDock({ user, onLogin }: { user: User | null; onLogin: () => v
     void loadRooms()
   }
   const selectRoom = (room: Conversation) => { setActive(room); setReplyingTo(null); setReactionPicker(null); void loadMessages(room) }
+  const toggleSelectedRoom = (roomId: number | string) => {
+    const key = String(roomId)
+    setSelectedRooms((current) => {
+      const next = new Set(current)
+      if (next.has(key)) next.delete(key); else next.add(key)
+      return next
+    })
+  }
+  const finishManaging = () => { setManaging(false); setSelectedRooms(new Set()); setHeaderMenu(false) }
+  const togglePinnedRoom = async (room: Conversation) => {
+    const previous = rooms
+    const pinnedAt = room.pinnedAt ? null : new Date().toISOString()
+    setRooms((current) => current.map((entry) => String(entry.id) === String(room.id) ? { ...entry, pinnedAt } : entry)
+      .sort((a, b) => Number(Boolean(b.pinnedAt)) - Number(Boolean(a.pinnedAt)) || String(b.updatedAt).localeCompare(String(a.updatedAt))))
+    setRoomMenu(null)
+    try { await request(`/market/conversations/${room.id}/pin`, { method: room.pinnedAt ? 'DELETE' : 'PUT' }) }
+    catch (reason) { setRooms(previous); setError((reason as Error).message) }
+  }
+  const deleteSelectedRooms = async () => {
+    const conversationIds = [...selectedRooms].map(Number).filter(Number.isSafeInteger)
+    if (!conversationIds.length || !confirm(`선택한 채팅방 ${conversationIds.length}개를 삭제할까요?\n상대방이 새 메시지를 보내면 다시 나타납니다.`)) return
+    const previous = rooms
+    setRooms((current) => current.filter((room) => !selectedRooms.has(String(room.id))))
+    finishManaging()
+    try { await request('/market/conversations', { method: 'DELETE', body: JSON.stringify({ conversationIds }) }) }
+    catch (reason) { setRooms(previous); setError((reason as Error).message) }
+  }
   const sendMessage = async (event: FormEvent) => {
     event.preventDefault()
     const body = draft.trim()
@@ -5222,7 +5255,7 @@ function MarketChatDock({ user, onLogin }: { user: User | null; onLogin: () => v
       <Send size={24} fill="currentColor" />{unread > 0 && <b>{unread > 99 ? '99+' : unread}</b>}
     </button>
     {open && user && <aside className="market-chat-inbox" aria-label="마켓 다이렉트 메시지">
-      <header><div><small>DIRECT MESSAGE</small><strong>{active ? active.peer?.nickname ?? '채팅' : '마켓 채팅'}</strong></div><span className="market-chat-head-actions">{active && <button onClick={leaveRoom} aria-label="채팅방 나가기" title="채팅방 나가기"><LogOut size={16} /></button>}<button onClick={() => setOpen(false)} aria-label="채팅함 닫기"><X size={18} /></button></span></header>
+      <header><div><small>DIRECT MESSAGE</small><strong>{active ? active.peer?.nickname ?? '채팅' : managing ? `${selectedRooms.size}개 선택` : '마켓 채팅'}</strong></div><span className="market-chat-head-actions">{active && <button onClick={leaveRoom} aria-label="채팅방 나가기" title="채팅방 나가기"><LogOut size={16} /></button>}{!active && !!rooms.length && <span className="market-chat-header-menu"><button onClick={() => setHeaderMenu((value) => !value)} aria-label="채팅함 메뉴"><MoreHorizontal size={19} /></button>{headerMenu && <span><button onClick={() => { setManaging(true); setHeaderMenu(false) }}>채팅방 선택</button></span>}</span>}{managing && <button className="market-chat-manage-close" onClick={finishManaging}>완료</button>}<button onClick={() => { setOpen(false); finishManaging() }} aria-label="채팅함 닫기"><X size={18} /></button></span></header>
       {active ? <>
         <button className="market-chat-back" onClick={() => { setActive(null); setMessages([]) }}><ArrowLeft size={14} /> 모든 대화 <span>{active.item?.title}</span></button>
         <div className="market-chat-inbox-messages" ref={messageList}>{messages.length ? messages.map((entry) => {
@@ -5244,7 +5277,7 @@ function MarketChatDock({ user, onLogin }: { user: User | null; onLogin: () => v
         }) : <p className="market-chat-empty">아직 메시지가 없습니다.</p>}</div>
         {replyingTo && <div className="market-chat-replying"><span><strong>{String(replyingTo.senderId) === String(user.id) ? '내 메시지' : active.peer?.nickname ?? '상대방'}에게 답장</strong>{replyingTo.body}</span><button onClick={() => setReplyingTo(null)} aria-label="답장 취소"><X size={14} /></button></div>}
         <form onSubmit={sendMessage}><input maxLength={1000} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={replyingTo ? '답장을 입력하세요' : '메시지를 입력하세요'} /><button disabled={!draft.trim() || sending} aria-label="메시지 전송"><Send size={17} /></button></form>
-      </> : <div className="market-chat-room-list">{rooms.length ? rooms.map((room) => <button key={room.id} onClick={() => selectRoom(room)}><span className={`market-chat-peer${room.peer?.profileImageUrl ? ' has-photo' : ''}`} style={room.peer?.profileImageUrl ? { backgroundImage: `url(${room.peer.profileImageUrl})` } : undefined} aria-label={`${room.peer?.nickname ?? '상대방'} 프로필 이미지`}>{room.peer?.profileImageUrl ? '' : room.peer?.nickname?.[0] ?? '?'}</span><span><strong>{room.peer?.nickname ?? '상대방'}</strong><small>{room.item?.title ?? '마켓 상품'}</small><p>{room.lastMessage?.body ?? '대화를 시작해 보세요.'}</p></span>{(room.unreadCount ?? 0) > 0 && <b>{room.unreadCount}</b>}</button>) : <p className="market-chat-empty">아직 시작한 마켓 대화가 없습니다.<br />상품에서 채팅하기를 눌러 시작해 보세요.</p>}</div>}
+      </> : <><div className={`market-chat-room-list${rooms.length ? '' : ' empty'}`}>{rooms.length ? rooms.map((room) => <div className={`market-chat-room${selectedRooms.has(String(room.id)) ? ' selected' : ''}`} key={room.id}>{managing && <button className="market-chat-room-check" onClick={() => toggleSelectedRoom(room.id)} aria-label={`${room.peer?.nickname ?? '상대방'} 채팅방 선택`}>{selectedRooms.has(String(room.id)) && <Check size={13} />}</button>}<button className="market-chat-room-main" onClick={() => managing ? toggleSelectedRoom(room.id) : selectRoom(room)}><span className={`market-chat-peer${room.peer?.profileImageUrl ? ' has-photo' : ''}`} style={room.peer?.profileImageUrl ? { backgroundImage: `url(${room.peer.profileImageUrl})` } : undefined} aria-label={`${room.peer?.nickname ?? '상대방'} 프로필 이미지`}>{room.peer?.profileImageUrl ? '' : room.peer?.nickname?.[0] ?? '?'}</span><span><strong>{room.pinnedAt && <Pin size={11} fill="currentColor" />} {room.peer?.nickname ?? '상대방'}</strong><small>{room.item?.title ?? '마켓 상품'}</small><p>{room.lastMessage?.body ?? '대화를 시작해 보세요.'}</p></span>{(room.unreadCount ?? 0) > 0 && <b>{room.unreadCount}</b>}</button>{!managing && <span className="market-chat-room-menu"><button onClick={() => setRoomMenu((current) => current === room.id ? null : room.id)} aria-label="채팅방 메뉴"><MoreHorizontal size={17} /></button>{roomMenu === room.id && <span><button onClick={() => togglePinnedRoom(room)}><Pin size={12} />{room.pinnedAt ? '고정 해제' : '채팅방 고정'}</button><button onClick={() => { setManaging(true); setSelectedRooms(new Set([String(room.id)])); setRoomMenu(null) }}><Trash2 size={12} />삭제 선택</button></span>}</span>}</div>) : <p className="market-chat-empty"><MessageCircle size={28} /><strong>아직 시작한 대화가 없어요</strong><span>상품 상세에서 채팅하기를 눌러<br />판매자와 대화를 시작해 보세요.</span></p>}</div>{managing && <div className="market-chat-bulk-actions"><button onClick={() => setSelectedRooms(new Set(rooms.map((room) => String(room.id))))}>전체 선택</button><span>{selectedRooms.size}개 선택됨</span><button className="danger" disabled={!selectedRooms.size} onClick={deleteSelectedRooms}><Trash2 size={14} /> 삭제</button></div>}</>}
       {error && <p className="market-chat-error">{error}</p>}
     </aside>}
   </>
