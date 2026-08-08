@@ -1,15 +1,18 @@
 import { createContext, FormEvent, PointerEvent as ReactPointerEvent, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bell, BookOpen, Bookmark, Check, ChevronDown, ChevronRight, Clipboard, Clock3, Compass, Eye, FileText, Heart, Image, Layers3, LayoutDashboard, LineChart, Lock, LogOut, Menu, MessageCircle, MoreHorizontal, Package, Palette, Pencil, PenLine, Pin, RotateCcw, Search, Send, Settings, ShoppingCart, Sparkles, Tags, TicketPercent, Trash2, Upload, Volume2, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bell, BookOpen, Bookmark, Check, ChevronDown, ChevronLeft, ChevronRight, Clipboard, Clock3, Compass, Eye, FileText, Heart, Image, Layers3, LayoutDashboard, LineChart, Lock, LogOut, Menu, MessageCircle, MoreHorizontal, Package, Palette, Pencil, PenLine, Pin, RotateCcw, Search, Send, Settings, ShoppingCart, Sparkles, Tags, TicketPercent, Trash2, Upload, Volume2, X } from "lucide-react";
 import { AiCompanionDock, AiMissionPage, emitAiActivity, useAiMission } from "./AiMission";
 import { assetUrl } from "./assets";
 import { ProgressiveImage } from "./ProgressiveImage";
 import { clearUserQueryState, subscribeMarketChatChanges } from "./query-client";
 import { RichContent, RichTextEditor, type RichDocument, type UploadedPostImage } from "./RichTextEditor";
+import AdminPage from "./AdminPage";
 type User = {
   id: number;
   email: string;
   nickname: string;
+  accountStatus?: "ACTIVE" | "BLOCKED" | "WITHDRAWN";
+  passwordChangeRequired?: boolean;
   interests?: string[];
   blog?: {
     id: number;
@@ -31,6 +34,7 @@ type Blog = {
   owner?: { id: number; nickname: string };
   isSubscribed?: boolean;
   subscriberCount?: number;
+  isOfficial?: boolean;
 };
 type BlogCategory = {
   id: number;
@@ -203,8 +207,8 @@ type NotificationData = {
   pagination: Page;
 };
 
-const AUTH_SNAPSHOT_KEY = "tistory.auth-display.v1";
-const AI_DOCK_STATE_KEY = "tistory.ai-dock-state.v1";
+const AUTH_SNAPSHOT_KEY = "jungletory.auth-display.v1";
+const AI_DOCK_STATE_KEY = "jungletory.ai-dock-state.v1";
 const AuthBootstrapContext = createContext<{
   pending: boolean;
   cachedUser: User | null;
@@ -397,7 +401,7 @@ const popularCharacters = [
   ["스누피", "스누피", assetUrl("characters/snoopy.webp"), "#e7e4dc"],
 ];
 
-const RECENT_MARKET_KEY = "tistory.recent-market-items";
+const RECENT_MARKET_KEY = "jungletory.recent-market-items";
 const readRecentMarketItems = () => {
   try {
     return (JSON.parse(localStorage.getItem(RECENT_MARKET_KEY) ?? "[]") as MarketItem[]).slice(0, 20);
@@ -464,6 +468,20 @@ if (typeof document !== "undefined") {
 }
 
 let csrfToken = "";
+const visitorIdStorageKey = "jungletory:visitor-id";
+let volatileVisitorId = "";
+function getVisitorId() {
+  if (volatileVisitorId) return volatileVisitorId;
+  try {
+    const stored = window.localStorage.getItem(visitorIdStorageKey);
+    if (stored) return (volatileVisitorId = stored);
+    volatileVisitorId = crypto.randomUUID();
+    window.localStorage.setItem(visitorIdStorageKey, volatileVisitorId);
+    return volatileVisitorId;
+  } catch {
+    return (volatileVisitorId = crypto.randomUUID());
+  }
+}
 class ApiRequestError extends Error {
   status: number;
   code: string;
@@ -600,7 +618,7 @@ function Header({ go, user, onLogin }: { go: (to: string) => void; user: User | 
       <header className={fixed ? "site-header is-fixed" : "site-header"} data-od-id="site-header">
         <div className="header-inner">
           <button className="brand" data-od-id="brand" onClick={() => navigate("/")}>
-            티스토리
+            정글토리
           </button>
           <nav className={mobile ? "main-nav open" : "main-nav"} aria-label="주요 메뉴">
             {[
@@ -762,6 +780,14 @@ function Header({ go, user, onLogin }: { go: (to: string) => void; user: User | 
 
 function AccountPanel({ user, go }: { user: User; go: (to: string) => void }) {
   const publicBlogPath = user.blog ? `/blog/${user.blog.slug}` : "/blog/new";
+  const statsQuery = useQuery({
+    queryKey: ["blog-home-stats", user.blog?.id],
+    queryFn: () => request<{ totalPostViews: number; totalVisitors: number }>("/blogs/me/stats"),
+    enabled: Boolean(user.blog),
+    refetchInterval: 30_000,
+    retry: false,
+  });
+  const stats = statsQuery.data;
   return (
     <section className="account-dashboard">
       <div className="account-dashboard-head">
@@ -787,14 +813,14 @@ function AccountPanel({ user, go }: { user: User; go: (to: string) => void }) {
         <div>
           <dt className="font-jua">조회수</dt>
           <dd>
-            <b className="font-jua">1회</b>
+            <b className="font-jua">{stats ? `${stats.totalPostViews.toLocaleString()}회` : "—"}</b>
             <ChevronRight size={18} />
           </dd>
         </div>
         <div>
           <dt className="font-jua">방문자</dt>
           <dd>
-            <b className="font-jua">1명</b>
+            <b className="font-jua">{stats ? `${stats.totalVisitors.toLocaleString()}명` : "—"}</b>
             <ChevronRight size={18} />
           </dd>
         </div>
@@ -866,9 +892,9 @@ function Footer({ go }: { go: (to: string) => void }) {
     <footer className="site-footer">
       <div className="footer-inner">
         <div className="footer-brand">
-          <strong>TISTORY</strong>
+          <strong>JUNGLETORY</strong>
           <p>
-            티스토리는 Daum에서 <ProgressiveImage src={assetUrl("tistory/heart.png")} alt="사랑" /> 을 담아 만듭니다.
+            정글토리는 Daum에서 <ProgressiveImage src={assetUrl("jungletory/heart.png")} alt="사랑" /> 을 담아 만듭니다.
           </p>
           <small>© Daum Corp.</small>
         </div>
@@ -903,7 +929,7 @@ function FooterGroup({ title, links, go }: { title: string; links: string[][]; g
 function Pager({ page, total, onChange, label }: { page: number; total: number; onChange: (page: number) => void; label: string }) {
   const move = (delta: number) => onChange(((page - 1 + delta + total) % total) + 1);
   return (
-    <div className="tistory-pager" aria-label={label}>
+    <div className="jungletory-pager" aria-label={label}>
       <button onClick={() => move(-1)} aria-label="이전 페이지">
         <ChevronDown size={14} />
       </button>
@@ -1007,6 +1033,8 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
   const [category, setCategory] = useState("전체");
   const [categoryPage, setCategoryPage] = useState(1);
   const [tipPage, setTipPage] = useState(1);
+  const [bannerPage, setBannerPage] = useState(0);
+  const [bannerHover, setBannerHover] = useState(false);
   const { data: home = null } = useQuery({
     queryKey: ["home"],
     queryFn: () => request<HomeData>("/home"),
@@ -1020,18 +1048,26 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
   const latestPosts = fillPostSlots(home?.latestPosts, fallbackLatest, 5);
   const popularMarketItems = fillMarketSlots(home?.marketItems, 5);
   const shownTips = tipPage === 1 ? sidebarTips : [...sidebarTips].reverse();
-  const banner: HomeBanner = home?.banners[0] ?? {
-    id: 0,
-    eyebrow: "NOTICE · EVENT",
-    title: "최애를 기록하고\n취향을 나누는 새로운 공간",
-    description: "팬들이 함께 만드는 굿즈 이야기와 새로운 이벤트를 만나보세요.",
-    imageUrl: null,
-    ctaLabel: "이벤트 자세히 보기",
-    ctaUrl: "/notice/2702",
-    startsAt: "",
-    position: 0,
-    isActive: true,
-  };
+  const bannerPlaceholders: HomeBanner[] = [
+    { id:-1,eyebrow:"NOTICE · EVENT",title:"최애를 기록하고\n취향을 나누는 새로운 공간",description:"팬들이 함께 만드는 굿즈 이야기와 새로운 이벤트를 만나보세요.",imageUrl:null,ctaLabel:"이벤트 자세히 보기",ctaUrl:"/blog/admin",startsAt:"",position:0,isActive:true },
+    { id:-2,eyebrow:"FANDOM · STORY",title:"좋아하는 마음이\n한 편의 기록이 되는 곳",description:"팬들의 새로운 이야기와 취향을 천천히 둘러보세요.",imageUrl:null,ctaLabel:"새로운 글 둘러보기",ctaUrl:"/feed",startsAt:"",position:1,isActive:true },
+    { id:-3,eyebrow:"GOODS · MARKET",title:"소중히 간직한 굿즈의\n다음 주인을 찾아요",description:"취향이 맞는 팬과 안전하게 굿즈를 나눠보세요.",imageUrl:null,ctaLabel:"마켓 둘러보기",ctaUrl:"/market",startsAt:"",position:2,isActive:true },
+    { id:-4,eyebrow:"FAN · COMMUNITY",title:"같은 장면을 좋아하는\n사람들과 만나는 순간",description:"오늘의 감상과 오래 간직한 이야기를 함께 나눠보세요.",imageUrl:null,ctaLabel:"팬 이야기 만나기",ctaUrl:"/feed",startsAt:"",position:3,isActive:true },
+    { id:-5,eyebrow:"JUNGLETORY · PICK",title:"오늘 발견한 취향을\n나만의 방식으로 기록해요",description:"사진과 글로 완성된 다채로운 팬 기록을 만나보세요.",imageUrl:null,ctaLabel:"추천 기록 보기",ctaUrl:"/",startsAt:"",position:4,isActive:true },
+  ];
+  const connectedBanners = (home?.banners ?? []).slice(0,5);
+  const bannerImages = [
+    "/assets/events/event-chiikawa.png",
+    "/assets/events/event-kitty.png",
+    "/assets/events/event-usagi.png",
+    "/assets/events/event-zanmang-loopy.png",
+    "/assets/events/event-onepiece-luffy.png",
+  ];
+  const bannerSlides = [...connectedBanners, ...bannerPlaceholders.slice(connectedBanners.length)]
+    .slice(0,5)
+    .map((slide,index)=>({ ...slide, imageUrl: bannerImages[index] }));
+  useEffect(()=>{ if(bannerHover)return; const timer=window.setInterval(()=>setBannerPage((page)=>(page+1)%5),3000); return()=>window.clearInterval(timer) },[bannerHover]);
+  useEffect(()=>{ if(bannerPage>=bannerSlides.length)setBannerPage(0) },[bannerPage,bannerSlides.length]);
   const openPost = (post: Post) => (post.id > 0 ? go(`/post/${post.id}`) : go("/feed"));
   const tags = (post: Post) => (
     <span className="home-post-tags">
@@ -1047,30 +1083,44 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
       <main id="main" className="home-main">
         <div className="home-frame">
           <div className="home-content">
-            <section className="today-tistory">
-              <div
-                className={`today-card${banner.imageUrl ? " has-image" : ""}`}
-                style={
-                  banner.imageUrl
-                    ? {
-                        backgroundImage: `linear-gradient(90deg,rgba(16,19,24,.75),rgba(16,19,24,.08)),url(${banner.imageUrl})`,
-                      }
-                    : { backgroundColor: solidColor(0) }
-                }
-              >
-                <div>
-                  <p>{banner.eyebrow}</p>
-                  <h1>{banner.title}</h1>
-                  <span>{banner.description}</span>
-                  <button onClick={() => go(banner.ctaUrl)}>{banner.ctaLabel}</button>
+            <section className="today-jungletory" aria-roledescription="carousel" aria-label="이벤트 및 주요 소식" onMouseEnter={()=>setBannerHover(true)} onMouseLeave={()=>setBannerHover(false)}>
+              {bannerSlides.map((slide,index)=>(
+                <div
+                  aria-hidden={bannerPage!==index}
+                  className={`today-card today-slide-${index}${slide.imageUrl ? " has-image" : ""}${bannerPage===index ? " active" : ""}`}
+                  key={slide.id}
+                  style={
+                    slide.imageUrl
+                      ? {
+                          backgroundImage: `linear-gradient(90deg,rgba(16,19,24,.1),rgba(16,19,24,0)),url(${slide.imageUrl})`,
+                        }
+                      : { backgroundColor: solidColor(index) }
+                  }
+                >
+                  <div>
+                    <p>{slide.eyebrow}</p>
+                    <h1>{slide.title}</h1>
+                    <span>{slide.description}</span>
+                    <button tabIndex={bannerPage===index ? 0 : -1} onClick={() => go(slide.ctaUrl)}>{slide.ctaLabel}</button>
+                  </div>
                 </div>
-              </div>
-              <div className="today-dots">
-                <i />
-                <i />
-                <b />
-                <i />
-              </div>
+              ))}
+              <svg className="today-goo-defs" aria-hidden="true" focusable="false">
+                <defs>
+                  <filter id="today-goo" x="-200%" y="-200%" width="500%" height="500%" colorInterpolationFilters="sRGB">
+                    <feGaussianBlur in="SourceGraphic" stdDeviation="11" result="blur" />
+                    <feColorMatrix
+                      in="blur"
+                      mode="matrix"
+                      values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 32 -11"
+                      result="goo"
+                    />
+                  </filter>
+                </defs>
+              </svg>
+              <button className="today-nav today-nav-prev" aria-label="이전 이벤트" onClick={()=>setBannerPage((page)=>(page+4)%5)}><span/><ChevronLeft size={22}/></button>
+              <button className="today-nav today-nav-next" aria-label="다음 이벤트" onClick={()=>setBannerPage((page)=>(page+1)%5)}><span/><ChevronRight size={22}/></button>
+              <div className="today-dots" role="tablist" aria-label="이벤트 페이지 선택">{bannerSlides.map((slide,index)=><button key={slide.id} role="tab" aria-selected={bannerPage===index} aria-label={`${index+1}번 이벤트`} className={bannerPage===index?"active":""} onClick={()=>setBannerPage(index)}/>)}</div>
             </section>
 
             <section className="best-popularity" aria-label="추천글">
@@ -1114,7 +1164,7 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
               </div>
               <div className="category-grid">
                 {categoryPagePosts.length ? (
-                  categoryPagePosts.slice(0, 2).map((post, index) => (
+                  categoryPagePosts.slice(0, 3).map((post, index) => (
                     <article key={post.id}>
                       <div>
                         {tags(post)}
@@ -1147,12 +1197,12 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
             <HomeEditorial title="최애 이야기를 나눠요" description="구매 후기부터 전시와 보관까지 팬들의 기록을 만나보세요." posts={latestPosts} go={go} />
           </div>
 
-          <aside className="tistory-right">
+          <aside className="jungletory-right">
             {user ? (
               <AccountPanel user={user} go={go} />
             ) : (
-              <section className="my-tistory">
-                <p>티스토리에 로그인하시고 더 많은 기능을 이용해보세요!</p>
+              <section className="my-jungletory">
+                <p>정글토리에 로그인하시고 더 많은 기능을 이용해보세요!</p>
                 <button onClick={onLogin}>✉　이메일로 시작하기</button>
               </section>
             )}
@@ -1288,7 +1338,7 @@ function Feed({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
       <main id="main" className="page-main">
         <div className="section-inner">
           <div className="page-intro">
-            <p className="eyebrow">TISTORY FEED</p>
+            <p className="eyebrow">JUNGLETORY FEED</p>
             <h1>
               {user ? (
                 <>
@@ -1553,16 +1603,16 @@ function Auth({ mode, go, onSuccess }: { mode: "login" | "signup"; go: (to: stri
 
   if (!signup)
     return (
-      <main id="main" className="tistory-auth-page">
+      <main id="main" className="jungletory-auth-page">
         <button className="standalone-close" onClick={() => go("/")} aria-label="로그인 닫기">
           <X size={24} />
         </button>
-        <section className="tistory-auth-card credentials">
+        <section className="jungletory-auth-card credentials">
           <button className="login-wordmark" onClick={() => go("/")}>
-            TISTORY
+            JUNGLETORY
           </button>
           <p className="credential-title">이메일로 로그인</p>
-          <p className="login-description">회원가입할 때 등록한 이메일과 비밀번호를 입력하세요.</p>
+          <p className="login-description">회원가입할 때 등록한<br />이메일과 비밀번호를 입력하세요.</p>
           <form className="credential-form" onSubmit={submit}>
             <label>
               <span>이메일</span>
@@ -1615,7 +1665,7 @@ function Auth({ mode, go, onSuccess }: { mode: "login" | "signup"; go: (to: stri
         >
           <header className="interest-step-top">
             <button type="button" className="auth-brand" onClick={() => go("/")}>
-              티스토리
+              정글토리
             </button>
             <span>관심분야 설정</span>
           </header>
@@ -1690,7 +1740,7 @@ function Auth({ mode, go, onSuccess }: { mode: "login" | "signup"; go: (to: stri
     <main id="main" className="auth-page">
       <div className="auth-panel">
         <button className="auth-brand" onClick={() => go("/")}>
-          티스토리
+          정글토리
         </button>
         <p className="eyebrow">CREATE YOUR SPACE · STEP 01</p>
         <h1>
@@ -1754,7 +1804,7 @@ function Agreement({ go, onDecided }: { go: (to: string) => void; onDecided: () 
   return (
     <main id="main" className="agreement-page">
       <section className="agreement-panel">
-        <h1>[선택] 티스토리 개인정보 제 3자 제공동의</h1>
+        <h1>[선택] 정글토리 개인정보 제 3자 제공동의</h1>
         <table>
           <tbody>
             <tr>
@@ -1767,7 +1817,7 @@ function Agreement({ go, onDecided }: { go: (to: string) => void; onDecided: () 
             </tr>
             <tr>
               <th>제공 항목</th>
-              <td>블로그 방문, 활동 기록 등 티스토리 서비스 이용내역</td>
+              <td>블로그 방문, 활동 기록 등 정글토리 서비스 이용내역</td>
             </tr>
             <tr>
               <th>보유 및 이용 기간</th>
@@ -1778,7 +1828,7 @@ function Agreement({ go, onDecided }: { go: (to: string) => void; onDecided: () 
           </tbody>
         </table>
         <p>
-          개인정보 제공에 대한 동의를 거부할 권리가 있으며, 동의를 거부하더라도 티스토리 서비스를 이용할 수 있습니다.
+          개인정보 제공에 대한 동의를 거부할 권리가 있으며, 동의를 거부하더라도 정글토리 서비스를 이용할 수 있습니다.
           <br />
           자세한 내용은 <button>개인정보처리방침</button>을 확인해주세요.
         </p>
@@ -1800,6 +1850,13 @@ function Agreement({ go, onDecided }: { go: (to: string) => void; onDecided: () 
   );
 }
 
+function PasswordChange({ go, onDone }: { go: (to: string) => void; onDone: () => void }) {
+  const [form, setForm] = useState({ currentPassword: "", password: "", passwordConfirm: "" });
+  const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
+  const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); setError(""); try { await request("/auth/change-password", { method: "POST", body: JSON.stringify(form) }); onDone(); go("/"); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } };
+  return <main className="jungletory-auth-page"><section className="jungletory-auth-card credentials"><strong className="login-wordmark">JUNGLETORY</strong><p className="credential-title">새 비밀번호 설정</p><p className="login-description">관리자가 발급한 임시 비밀번호를 변경해야 서비스를 계속 이용할 수 있습니다.</p><form className="credential-form" onSubmit={submit}><label><span>임시 비밀번호</span><input autoFocus required type="password" value={form.currentPassword} onChange={(e)=>setForm({...form,currentPassword:e.target.value})}/></label><label><span>새 비밀번호</span><input required minLength={8} type="password" value={form.password} onChange={(e)=>setForm({...form,password:e.target.value})}/></label><label><span>새 비밀번호 확인</span><input required minLength={8} type="password" value={form.passwordConfirm} onChange={(e)=>setForm({...form,passwordConfirm:e.target.value})}/></label>{error&&<p className="form-error">{error}</p>}<button className="credential-submit" disabled={busy}>{busy?"변경 중…":"비밀번호 변경"}</button></form></section></main>;
+}
+
 function NoticeArticle({ go }: { go: (to: string) => void }) {
   return (
     <div className="notice-blog-page">
@@ -1807,7 +1864,7 @@ function NoticeArticle({ go }: { go: (to: string) => void }) {
         본문 바로가기
       </a>
       <header className="notice-blog-header">
-        <button onClick={() => go("/")}>TISTORY</button>
+        <button onClick={() => go("/")}>JUNGLETORY</button>
         <button className="notice-menu" aria-label="메뉴">
           <Menu size={22} />
         </button>
@@ -1818,12 +1875,12 @@ function NoticeArticle({ go }: { go: (to: string) => void }) {
             <span className="notice-category">운영 정책 안내</span>
             <h1>[안내] 불법촬영물 유통 방지 조치 대상 확대 안내</h1>
             <p>
-              <strong>TISTORY</strong>
+              <strong>JUNGLETORY</strong>
               <time>2026. 6. 25. 11:08</time>
             </p>
           </div>
           <article className="notice-body">
-            <p>안녕하세요. 티스토리입니다.</p>
+            <p>안녕하세요. 정글토리입니다.</p>
             <p>관련 법령에 따라 불법촬영물 등의 유통을 방지하고 이용자를 보호하기 위한 기술적·관리적 조치를 시행하고 있습니다.</p>
             <p>불법촬영물 유통 방지 조치의 적용 대상이 기존 동영상 파일에서 이미지 파일까지 확대됩니다. 새로운 의무가 추가되는 것이 아니라 기존 조치의 적용 범위가 이미지까지 넓어지는 변경입니다.</p>
             <p>정보통신망에서 불법촬영물을 유통하면 게시물 삭제와 검색 제한 등 필요한 조치가 적용되며 관련 법률에 따라 처벌될 수 있으니 서비스 이용 시 유의해 주세요.</p>
@@ -1872,9 +1929,9 @@ function NoticeArticle({ go }: { go: (to: string) => void }) {
         </div>
       </main>
       <footer className="notice-blog-footer">
-        <strong>TISTORY</strong>
-        <span>티스토리의 새로운 소식을 전합니다.</span>
-        <button onClick={() => go("/")}>티스토리 홈으로</button>
+        <strong>JUNGLETORY</strong>
+        <span>정글토리의 새로운 소식을 전합니다.</span>
+        <button onClick={() => go("/")}>정글토리 홈으로</button>
       </footer>
     </div>
   );
@@ -1964,7 +2021,7 @@ function BlogSetup({ go, onDone }: { go: (to: string) => void; onDone: (blog: Bl
                 }}
                 placeholder="jungle-dev"
               />
-              <span>.tistory.com</span>
+              <span>.jungletory.com</span>
               <button type="button" onClick={check}>
                 중복 확인
               </button>
@@ -1996,7 +2053,9 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
   const queryKey = ["blog", slug] as const;
   const blogQuery = useQuery({
     queryKey,
-    queryFn: () => request<BlogData>(`/blogs/${slug}?page=1&size=9`),
+    queryFn: () => request<BlogData>(`/blogs/${slug}?page=1&size=9`, {
+      headers: { "X-Visitor-Id": getVisitorId() },
+    }),
     refetchInterval: 30_000,
   });
   const data = blogQuery.data ?? null;
@@ -2031,6 +2090,7 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
   };
   const posts = data?.posts.items ?? [];
   const market = data?.market.items ?? [];
+  const official = slug === "admin" || data?.blog.isOfficial === true;
   const ownerName = data?.blog.owner?.nickname ?? slug;
   const statusLabel: Record<MarketItem["status"], string> = {
     SELLING: "판매 중",
@@ -2043,13 +2103,13 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
         <div className="creator-blog-shell">
           {error && <p className="creator-blog-error">{error}</p>}
           <div className="creator-blog-top">
-            <aside className="creator-profile-panel">
-              <div className={`creator-profile-image${data?.blog.profileImageUrl ? " has-photo" : ""}`} style={data?.blog.profileImageUrl ? { backgroundImage: `url(${data.blog.profileImageUrl})` } : undefined} aria-label={`${ownerName} 프로필 이미지`} />
-              <p className="creator-kicker">CREATOR JOURNAL</p>
-              <h1 className="font-jua">{data?.blog.name ?? slug}</h1>
-              <span className="creator-handle">@{data?.blog.slug ?? slug}</span>
-              <p className="creator-description">{data?.blog.description || blankPlaceholder}</p>
-              <dl className="creator-stats">
+            <aside className={`creator-profile-panel${official ? " official-profile-panel" : ""}`}>
+              {!official && <div className={`creator-profile-image${data?.blog.profileImageUrl ? " has-photo" : ""}`} style={data?.blog.profileImageUrl ? { backgroundImage: `url(${data.blog.profileImageUrl})` } : undefined} aria-label={`${ownerName} 프로필 이미지`} />}
+              {!official && <p className="creator-kicker">CREATOR JOURNAL</p>}
+              <h1 className="font-jua">{official ? "관리자" : data?.blog.name ?? slug}</h1>
+              {!official && <span className="creator-handle">@{data?.blog.slug ?? slug}</span>}
+              <p className="creator-description">{official ? "서비스 소식과 주요 안내를 전하는 공식 공지 블로그입니다." : data?.blog.description || blankPlaceholder}</p>
+              {!official && <dl className="creator-stats">
                 <div>
                   <dt className="font-jua">{data?.posts.pagination.totalItems ?? posts.length}</dt>
                   <dd className="font-jua">글</dd>
@@ -2062,8 +2122,8 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
                   <dt className="font-jua">{data?.market.pagination.totalItems ?? market.length}</dt>
                   <dd className="font-jua">상품</dd>
                 </div>
-              </dl>
-              {mine ? (
+              </dl>}
+              {official ? <span className="official-blog-badge"><i aria-hidden="true">T</i><span><b>공식 운영 블로그</b><small>Official notice channel</small></span></span> : mine ? (
                 <button className="creator-subscribe font-jua" onClick={() => go("/blog/me/manage")}>
                   블로그 관리
                 </button>
@@ -2076,10 +2136,10 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
             <section className="creator-editorial">
               <header className="creator-section-head">
                 <div>
-                  <p className="creator-kicker">LATEST STORIES</p>
-                  <h2 className="font-jua">요즘의 기록</h2>
+                  {!official && <p className="creator-kicker">LATEST STORIES</p>}
+                  <h2 className="font-jua">{official ? "공지사항" : "요즘의 기록"}</h2>
                 </div>
-                {mine && (
+                {mine && !official && (
                   <div className="creator-section-actions">
                     <button className="font-jua" onClick={() => go("/market/new")}>새 상품 등록 ↗</button>
                     <button className="font-jua" onClick={() => go("/write")}>새 글 쓰기 ↗</button>
@@ -2092,7 +2152,7 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
                 <div className="creator-editorial-grid">
                   <div className="creator-story-list">
                     {posts.slice(0, 3).map((post, index) => (
-                      <button className="creator-story" key={post.id} onClick={() => go(`/post/${post.id}`)}>
+                      <button className="creator-story" key={post.id} onClick={() => go(official ? `/notice/${post.id}` : `/post/${post.id}`)}>
                         <small>{index === 0 ? "LATEST" : "STORY 0" + (index + 1)}</small>
                         <h3 className="font-jua">{post.title}</h3>
                         <time>
@@ -2104,7 +2164,7 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
                   </div>
                   <div className="creator-gallery" aria-label="최근 글 갤러리">
                     {posts.slice(0, 9).map((post, index) => (
-                      <button className={`creator-gallery-tile creator-tone-${index % 9}${post.thumbnailUrl ? " has-image" : ""}`} key={post.id} onClick={() => go(`/post/${post.id}`)}>
+                      <button className={`creator-gallery-tile creator-tone-${index % 9}${post.thumbnailUrl ? " has-image" : ""}`} key={post.id} onClick={() => go(official ? `/notice/${post.id}` : `/post/${post.id}`)}>
                         {post.thumbnailUrl ? <ProgressiveImage src={post.thumbnailUrl} alt="" /> : <i />}
                         <span className="font-jua">{post.title}</span>
                       </button>
@@ -2116,7 +2176,7 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
               )}
             </section>
           </div>
-          <section className="creator-shop">
+          {!official && <section className="creator-shop">
             <header className="creator-section-head">
               <div>
                 <p className="creator-kicker">CURATOR'S SHOP</p>
@@ -2141,7 +2201,7 @@ function BlogPage({ slug, go, user, onLogin }: { slug: string; go: (to: string) 
             ) : (
               <Empty text="아직 등록된 상품이 없습니다." detail={mine ? "상품을 등록하면 내 블로그 상점에도 자동으로 표시됩니다." : undefined} />
             )}
-          </section>
+          </section>}
         </div>
       </main>
     </Shell>
@@ -2154,6 +2214,7 @@ function Editor({ id, go, user }: { id?: string; go: (to: string) => void; user:
   const [contentDocument, setContentDocument] = useState<RichDocument | null>(null);
   const contentRef = useRef("");
   const contentDocumentRef = useRef<RichDocument | null>(null);
+  const getCurrentDocumentRef = useRef<(() => RichDocument) | null>(null);
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const [classificationIds, setClassificationIds] = useState<number[]>([]);
   const [categories, setCategories] = useState<BlogCategory[]>([]);
@@ -2166,6 +2227,7 @@ function Editor({ id, go, user }: { id?: string; go: (to: string) => void; user:
   const [classificationError, setClassificationError] = useState("");
   const [classificationBusy, setClassificationBusy] = useState(false);
   const [newClassification, setNewClassification] = useState("");
+  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const interests = user.interests?.length ? user.interests : interestCatalog;
   const loadTaxonomy = () =>
@@ -2277,10 +2339,11 @@ function Editor({ id, go, user }: { id?: string; go: (to: string) => void; user:
     setBusy(true);
     setError("");
     try {
+      const latestDocument = getCurrentDocumentRef.current?.() ?? contentDocumentRef.current;
       const body = JSON.stringify({
         title,
         contentText: contentRef.current,
-        contentDocument: contentDocumentRef.current,
+        contentDocument: latestDocument,
         draftKey,
         status,
         categoryId,
@@ -2317,24 +2380,68 @@ function Editor({ id, go, user }: { id?: string; go: (to: string) => void; user:
           </button>
         </div>
       </div>
-      <div className="editor-body">
-        <section className="editor-taxonomy-bar">
-          <label className="editor-taxonomy-category">
+      <div
+        className="editor-body"
+        onPointerDownCapture={(event) => {
+          if (!(event.target as Element).closest(".editor-taxonomy-category")) setCategoryPickerOpen(false);
+          if (!(event.target as Element).closest(".editor-taxonomy-classification")) setPickerOpen(false);
+        }}
+      >
+        <section className={`editor-taxonomy-bar${pickerOpen || categoryPickerOpen ? " is-picker-open" : ""}`}>
+          <div className="editor-taxonomy-category">
             <span>카테고리</span>
-            <select value={categoryId ?? ""} onChange={(event) => setCategoryId(event.target.value ? Number(event.target.value) : null)}>
-              <option value="">카테고리 없음</option>
-              {categories.map((item) => (
-                <option value={item.id} key={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </label>
+            <button
+              type="button"
+              className="editor-category-trigger"
+              aria-expanded={categoryPickerOpen}
+              onClick={() => {
+                setCategoryPickerOpen((open) => !open);
+                setPickerOpen(false);
+              }}
+            >
+              {categories.find((item) => item.id === categoryId)?.name ?? "카테고리 없음"}
+              <ChevronDown size={14} />
+            </button>
+            {categoryPickerOpen && (
+              <div className="editor-category-popover simple category-options">
+                <div className="editor-category-list" role="listbox" aria-label="카테고리 선택">
+                  <p>카테고리 선택</p>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={categoryId === null}
+                    onClick={() => {
+                      setCategoryId(null);
+                      setCategoryPickerOpen(false);
+                    }}
+                  >
+                    카테고리 없음
+                    {categoryId === null && <Check size={13} />}
+                  </button>
+                  {categories.map((item) => (
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={categoryId === item.id}
+                      onClick={() => {
+                        setCategoryId(item.id);
+                        setCategoryPickerOpen(false);
+                      }}
+                      key={item.id}
+                    >
+                      {item.name}
+                      {categoryId === item.id && <Check size={13} />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
           <div className="editor-taxonomy-classification">
             <span>
               분류 <small>{classificationIds.length}/5</small>
             </span>
-            <button type="button" className="editor-category-trigger" aria-expanded={pickerOpen} onClick={() => setPickerOpen(!pickerOpen)}>
+            <button type="button" className="editor-category-trigger" aria-expanded={pickerOpen} onClick={() => { setPickerOpen(!pickerOpen); setCategoryPickerOpen(false); }}>
               {classificationIds.length
                 ? classifications
                     .filter((item) => classificationIds.includes(item.id))
@@ -2406,6 +2513,9 @@ function Editor({ id, go, user }: { id?: string; go: (to: string) => void; user:
             onUpload={uploadImage}
             onDelete={deleteImage}
             onUploading={setUploading}
+            onDocumentReady={(getDocument) => {
+              getCurrentDocumentRef.current = getDocument;
+            }}
           />
         ) : (
           <div className="editor-loading" aria-live="polite">본문을 불러오는 중…</div>
@@ -2983,7 +3093,7 @@ function MarketImageCropModal({ file, remaining, onCancel, onDone }: { file: Fil
   );
 }
 
-function Manage({ path, go, user, onLogin, onUserChange }: { path: string; go: (to: string) => void; user: User | null; onLogin: () => void; onUserChange: (user: User) => void }) {
+function Manage({ path, go, user, onLogin, onUserChange, onWithdraw }: { path: string; go: (to: string) => void; user: User | null; onLogin: () => void; onUserChange: (user: User) => void; onWithdraw: () => void }) {
   const [blog, setBlog] = useState<Blog | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -3029,7 +3139,7 @@ function Manage({ path, go, user, onLogin, onUserChange }: { path: string; go: (
         <section className="manage-workspace">
           <header className="manage-console-head">
             <div>
-              <p className="eyebrow">MY TISTORY</p>
+              <p className="eyebrow">MY JUNGLETORY</p>
               <h1 className="font-jua">{nav.find(([key]) => key === section)?.[1] ?? "블로그 관리"}</h1>
               <span>{blog?.name ?? "블로그 정보를 불러오는 중입니다."}</span>
             </div>
@@ -3047,7 +3157,7 @@ function Manage({ path, go, user, onLogin, onUserChange }: { path: string; go: (
           </header>
           {error && <p className="manage-error">{error}</p>}
           {section === "overview" && <ManageOverview go={go} />}
-          {section === "settings" && blog && <ManageSettings blog={blog} setBlog={setBlog} user={user} onUserChange={onUserChange} />}
+          {section === "settings" && blog && <ManageSettings blog={blog} setBlog={setBlog} user={user} onUserChange={onUserChange} onWithdraw={onWithdraw} />}
           {section === "interests" && <ManageInterests user={user} onUserChange={onUserChange} />}
           {section === "categories" && <ManageCategories go={go} />}
           {section === "posts" && <ManagePosts go={go} />}
@@ -3138,7 +3248,7 @@ function ManageOverview({ go }: { go: (to: string) => void }) {
   );
 }
 
-function ManageSettings({ blog, setBlog, user, onUserChange }: { blog: Blog; setBlog: (blog: Blog) => void; user: User; onUserChange: (user: User) => void }) {
+function ManageSettings({ blog, setBlog, user, onUserChange, onWithdraw }: { blog: Blog; setBlog: (blog: Blog) => void; user: User; onUserChange: (user: User) => void; onWithdraw: () => void }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState(blog.name);
   const [description, setDescription] = useState(blog.description);
@@ -3148,9 +3258,17 @@ function ManageSettings({ blog, setBlog, user, onUserChange }: { blog: Blog; set
   const [preview, setPreview] = useState(blog.profileImageUrl ?? "");
   const [shopName, setShopName] = useState(blog.shopName ?? "취향을 나누는 상점");
   const [shopDescription, setShopDescription] = useState(blog.shopDescription ?? "직접 모으고 아껴온 물건을 다음 주인에게 건넵니다.");
+  const [nickname, setNickname] = useState(user.nickname);
+  const [nicknameBusy, setNicknameBusy] = useState(false);
   const [interests, setInterests] = useState<string[]>(user.interests ?? []);
   const [savedInterests, setSavedInterests] = useState<string[]>(user.interests ?? []);
   const [interestBusy, setInterestBusy] = useState(false);
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [withdrawPassword, setWithdrawPassword] = useState("");
+  const [withdrawConfirmation, setWithdrawConfirmation] = useState("");
+  const [withdrawBusy, setWithdrawBusy] = useState(false);
+  const [withdrawError, setWithdrawError] = useState("");
+  const nicknameDirty = nickname.trim() !== user.nickname;
   const interestDirty = interests.join("|") !== savedInterests.join("|");
   const toggleInterest = (interest: string) => setInterests((current) => (current.includes(interest) ? current.filter((item) => item !== interest) : current.length < 8 ? [...current, interest] : current));
   const saveInterests = async () => {
@@ -3171,6 +3289,22 @@ function ManageSettings({ blog, setBlog, user, onUserChange }: { blog: Blog; set
       setMessage((e as Error).message);
     } finally {
       setInterestBusy(false);
+    }
+  };
+  const saveNickname = async () => {
+    const nextNickname = nickname.trim();
+    if (nextNickname.length < 2 || nextNickname.length > 30) return setMessage("댓글 표시 이름은 2~30자로 입력해 주세요.");
+    setNicknameBusy(true);
+    setMessage("");
+    try {
+      const result = await request<{ user: User }>("/auth/profile", { method: "PATCH", body: JSON.stringify({ nickname: nextNickname }) });
+      onUserChange({ ...user, ...result.user });
+      setNickname(result.user.nickname);
+      setMessage("댓글 표시 이름을 저장했습니다.");
+    } catch (e) {
+      setMessage((e as Error).message);
+    } finally {
+      setNicknameBusy(false);
     }
   };
   const dirty = name.trim() !== blog.name || description.trim() !== blog.description || shopName.trim() !== (blog.shopName ?? "취향을 나누는 상점") || shopDescription.trim() !== (blog.shopDescription ?? "직접 모으고 아껴온 물건을 다음 주인에게 건넵니다.");
@@ -3247,6 +3381,21 @@ function ManageSettings({ blog, setBlog, user, onUserChange }: { blog: Blog; set
       setBusy(false);
     }
   };
+  const withdraw = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!withdrawPassword || withdrawConfirmation !== "회원탈퇴") return;
+    setWithdrawBusy(true);
+    setWithdrawError("");
+    try {
+      await request("/me", { method: "DELETE", body: JSON.stringify({ password: withdrawPassword, confirmation: withdrawConfirmation }) });
+      queryClient.clear();
+      clearClientAuthState();
+      onWithdraw();
+    } catch (e) {
+      setWithdrawError((e as Error).message);
+      setWithdrawBusy(false);
+    }
+  };
   return (
     <div className="manage-settings">
       <section className="manage-form-section">
@@ -3271,8 +3420,16 @@ function ManageSettings({ blog, setBlog, user, onUserChange }: { blog: Blog; set
       <section className="manage-form-section">
         <header>
           <h2 className="font-jua">기본 정보</h2>
-          <p>블로그 이름과 소개를 수정합니다.</p>
+          <p>댓글에 표시되는 이름과 블로그 정보를 수정합니다.</p>
         </header>
+        <label className="font-jua">
+          댓글 표시 이름
+          <input minLength={2} maxLength={30} value={nickname} onChange={(e) => setNickname(e.target.value)} />
+          <small>{nickname.length}/30 · 댓글 작성자 이름으로 표시됩니다.</small>
+        </label>
+        <button className="manage-primary" disabled={!nicknameDirty || nicknameBusy || nickname.trim().length < 2} onClick={saveNickname}>
+          {nicknameBusy ? "저장 중…" : "댓글 표시 이름 저장"}
+        </button>
         <label className="font-jua">
           블로그 주소
           <div className="manage-readonly">
@@ -3345,7 +3502,27 @@ function ManageSettings({ blog, setBlog, user, onUserChange }: { blog: Blog; set
           {busy ? "저장 중…" : "변경사항 저장"}
         </button>
       </section>
+      <section className="manage-withdraw-section" aria-labelledby="withdraw-heading">
+        <div>
+          <h2 className="font-jua" id="withdraw-heading">회원 탈퇴</h2>
+          <p>계정과 개인정보는 익명화되며 작성한 글과 상품은 공개 화면에서 숨겨집니다. 콘텐츠는 운영 확인을 위해 관리자 휴지통에 보관됩니다.</p>
+        </div>
+        <button className="manage-withdraw-button font-jua" type="button" onClick={() => { setWithdrawError(""); setWithdrawOpen(true); }}>회원 탈퇴</button>
+      </section>
       {cropSource && <CropModal source={cropSource} onClose={() => setCropSource("")} onDone={upload} />}
+      {withdrawOpen && <div className="manage-modal" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !withdrawBusy) setWithdrawOpen(false); }}>
+        <form className="withdraw-dialog" role="dialog" aria-modal="true" aria-labelledby="withdraw-dialog-title" onSubmit={withdraw}>
+          <header>
+            <div><p>ACCOUNT WITHDRAWAL</p><h2 className="font-jua" id="withdraw-dialog-title">정말 탈퇴하시겠습니까?</h2></div>
+            <button type="button" disabled={withdrawBusy} onClick={() => setWithdrawOpen(false)} aria-label="회원 탈퇴 창 닫기"><X size={18} /></button>
+          </header>
+          <div className="withdraw-warning"><strong>탈퇴 후에는 다시 로그인할 수 없습니다.</strong><span>작성 글과 마켓 상품은 즉시 비공개 처리되며 관리자 휴지통에 보관됩니다.</span></div>
+          <label className="font-jua">현재 비밀번호<input autoFocus type="password" autoComplete="current-password" value={withdrawPassword} onChange={(event) => setWithdrawPassword(event.target.value)} placeholder="현재 비밀번호" /></label>
+          <label className="font-jua">확인 문구<input value={withdrawConfirmation} onChange={(event) => setWithdrawConfirmation(event.target.value)} placeholder="회원탈퇴 입력" /><small>계속하려면 <b>회원탈퇴</b>를 정확히 입력하세요.</small></label>
+          {withdrawError && <p className="form-error" role="alert">{withdrawError}</p>}
+          <footer><button type="button" disabled={withdrawBusy} onClick={() => setWithdrawOpen(false)}>취소</button><button type="submit" disabled={withdrawBusy || !withdrawPassword || withdrawConfirmation !== "회원탈퇴"}>{withdrawBusy ? "탈퇴 처리 중…" : "계정 영구 탈퇴"}</button></footer>
+        </form>
+      </div>}
     </div>
   );
 }
@@ -3844,8 +4021,8 @@ const conditionLabel: Record<MarketItem["condition"], string> = {
 function MarketRow({ item, go }: { item: MarketItem; go: (to: string) => void }) {
   return (
     <article className="feed-row market-row">
-      {item.thumbnailUrl && <button className="market-row-thumbnail has-image" style={{ backgroundImage: `url(${item.thumbnailUrl})` }} onClick={() => go(`/market/${item.id}`)} aria-label={`${item.title} 이미지`} />}
-      <div>
+      <button className={`market-row-thumbnail${item.thumbnailUrl ? " has-image" : ""}`} style={item.thumbnailUrl ? { backgroundImage: `url(${item.thumbnailUrl})` } : undefined} onClick={() => go(`/market/${item.id}`)} aria-label={`${item.title} 이미지`} />
+      <div className="market-row-content">
         <p className="post-blog">
           {item.category} · {conditionLabel[item.condition]}
         </p>
@@ -3864,7 +4041,7 @@ function MarketRow({ item, go }: { item: MarketItem; go: (to: string) => void })
           {item.seller.nickname} · {item.status === "SELLING" ? "판매 중" : item.status}
         </small>
       </div>
-      <div className="row-stat">
+      <div className="row-stat market-row-price">
         <strong>{item.pricePoints.toLocaleString()} P</strong>
       </div>
     </article>
@@ -4814,7 +4991,7 @@ function StaticHub({ kind, go, user, onLogin }: { kind: "skin" | "ai"; go: (to: 
       <main id="main" className="page-main">
         <div className="section-inner">
           <div className="page-intro">
-            <p className="eyebrow">{skin ? "TISTORY SKIN" : "TISTORY AI"}</p>
+            <p className="eyebrow">{skin ? "JUNGLETORY SKIN" : "JUNGLETORY AI"}</p>
             <h1>{skin ? "내 블로그에 어울리는 스킨을 만나보세요." : "AI 미션을 시작해보세요."}</h1>
             <p className="muted">{skin ? "다양한 레이아웃의 스킨을 둘러보고 블로그에 적용할 수 있습니다." : "AI 기능은 준비 중입니다."}</p>
           </div>
@@ -4832,7 +5009,7 @@ function InterestMockup({ go }: { go: (to: string) => void }) {
       <section className="auth-panel interest-step-panel">
         <header className="interest-step-top">
           <button className="auth-brand" onClick={() => go("/")}>
-            티스토리
+            정글토리
           </button>
           <div>
             <span>01</span>
@@ -4878,7 +5055,7 @@ function InterestMockup({ go }: { go: (to: string) => void }) {
   );
 }
 
-const CHAT_BALL_POSITION_KEY = 'tistory.market-chat-ball.v1'
+const CHAT_BALL_POSITION_KEY = 'jungletory.market-chat-ball.v1'
 const CHAT_REACTIONS: { type: ChatReaction; emoji: string; label: string }[] = [
   { type: 'HEART', emoji: '❤️', label: '하트' },
   { type: 'CHECK', emoji: '✅', label: '확인' },
@@ -5184,6 +5361,9 @@ function App() {
     setAuthState("authenticated");
   }, [user]);
   useEffect(() => {
+    if (user?.passwordChangeRequired && path !== "/change-password") go("/change-password");
+  }, [user?.passwordChangeRequired, path]);
+  useEffect(() => {
     const updateProfile = (event: Event) => {
       const profileImageUrl = (event as CustomEvent<string | null>).detail;
       setUser((current) => (current?.blog ? { ...current, blog: { ...current.blog, profileImageUrl } } : current));
@@ -5194,9 +5374,10 @@ function App() {
   const onLogin = () => setLoginOpen(true);
   const authPending = authState === "loading" || authState === "degraded";
   const visibleUser = user ?? (authPending ? cachedUser : null);
-  const publicWhileAuthLoads = path === "/" || path === "/login" || path === "/signup" || path === "/interests/mockup" || path === "/notice/2702" || path === "/feed" || path === "/search" || path === "/skin" || path === "/market" || path === "/market/recent" || path === "/market/cart" || path === "/market/price-guide" || path === "/market/coupons" || /^\/market\/\d+$/.test(path) || /^\/post\/\d+$/.test(path) || (/^\/blog\/[^/]+$/.test(path) && path !== "/blog/new");
+  const publicWhileAuthLoads = path.startsWith("/adminpage") || path === "/" || path === "/login" || path === "/signup" || path === "/interests/mockup" || /^\/notice\/\d+$/.test(path) || path === "/feed" || path === "/search" || path === "/skin" || path === "/market" || path === "/market/recent" || path === "/market/cart" || path === "/market/price-guide" || path === "/market/coupons" || /^\/market\/\d+$/.test(path) || /^\/post\/\d+$/.test(path) || (/^\/blog\/[^/]+$/.test(path) && path !== "/blog/new");
   let content: React.ReactNode;
-  if ((authState === "loading" || authState === "degraded") && !publicWhileAuthLoads)
+  if (path.startsWith("/adminpage")) content = <AdminPage />;
+  else if ((authState === "loading" || authState === "degraded") && !publicWhileAuthLoads)
     content = (
       <Shell go={go} user={null} onLogin={onLogin}>
         <main id="main" className="page-main">
@@ -5230,6 +5411,8 @@ function App() {
         }}
       />
     );
+  else if (path === "/change-password")
+    content = user?.passwordChangeRequired ? <PasswordChange go={go} onDone={() => setUser((current) => current ? { ...current, passwordChangeRequired: false } : current)} /> : <Home go={go} user={visibleUser} onLogin={onLogin} />;
   else if (path === "/agreement/third-party-consent")
     content =
       user && requiresConsent ? (
@@ -5248,6 +5431,7 @@ function App() {
         />
       );
   else if (path === "/notice/2702") content = <NoticeArticle go={go} />;
+  else if (/^\/notice\/\d+$/.test(path)) content = <PostDetail id={path.split("/").pop()!} go={go} user={visibleUser} onLogin={onLogin} />;
   else if (path === "/blog/new")
     content = (
       <BlogSetup
@@ -5349,7 +5533,7 @@ function App() {
         }}
       />
     );
-  else if (path === "/blog/me/manage" || path.startsWith("/blog/me/manage/")) content = <Manage path={path} go={go} user={user} onLogin={onLogin} onUserChange={setUser} />;
+  else if (path === "/blog/me/manage" || path.startsWith("/blog/me/manage/")) content = <Manage path={path} go={go} user={user} onLogin={onLogin} onUserChange={setUser} onWithdraw={() => { setUser(null); setCachedUser(null); setAuthState("anonymous"); go("/"); }} />;
   else if (path.startsWith("/post/") && path.endsWith("/edit"))
     content = user ? (
       <Editor id={path.split("/")[2]} go={go} user={user} />
@@ -5371,7 +5555,7 @@ function App() {
     <AuthBootstrapContext.Provider value={{ pending: authPending, cachedUser }}>
       <div className={authPending ? "auth-verifying" : undefined} aria-busy={authPending}>
         {content}
-        <AiCompanionDock
+        {!path.startsWith("/adminpage") && <AiCompanionDock
           controller={aiMission}
           path={path}
           go={go}
@@ -5380,18 +5564,18 @@ function App() {
             if (user?.id) writeAiDockEnabled(user.id, false);
             setAiVisitedUserId(null);
           }}
-        />
-        <MarketChatDock user={visibleUser} onLogin={onLogin} />
+        />}
+        {!path.startsWith("/adminpage") && <MarketChatDock user={visibleUser} onLogin={onLogin} />}
       </div>
       {loginOpen && (
-        <div className="modal-backdrop tistory-login-backdrop" role="dialog" aria-modal="true" aria-label="티스토리 로그인" onMouseDown={() => setLoginOpen(false)}>
-          <div className="login-modal tistory-login-modal" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="modal-backdrop jungletory-login-backdrop" role="dialog" aria-modal="true" aria-label="정글토리 로그인" onMouseDown={() => setLoginOpen(false)}>
+          <div className="login-modal jungletory-login-modal" onMouseDown={(event) => event.stopPropagation()}>
             <button className="modal-close" onClick={() => setLoginOpen(false)} aria-label="닫기">
               <X size={20} />
             </button>
-            <strong className="login-wordmark">TISTORY</strong>
+            <strong className="login-wordmark">JUNGLETORY</strong>
             <p className="login-description">회원가입한 이메일과 비밀번호로 로그인하세요.</p>
-            <ProgressiveImage eager className="login-visual" src="https://t1.daumcdn.net/tistory_admin/static/top/pc/img_login.png" alt="" />
+            <ProgressiveImage eager className="login-visual" src={assetUrl("jungletory/login.png")} alt="" />
             <button
               className="kakao-login-button"
               onClick={() => {

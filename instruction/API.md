@@ -378,7 +378,7 @@ CSRF 토큰과 초기 세션 쿠키를 발급한다. 로그인 전 회원가입�
 ### GET `/health`
 
 ```json
-{ "status": "ok", "service": "tistory-api", "runtime": "supabase-edge-functions" }
+{ "status": "ok", "service": "jungletory-api", "runtime": "supabase-edge-functions" }
 ```
 
 ### GET `/openapi.json`

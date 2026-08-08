@@ -1,4 +1,4 @@
-import { apiError, corsHeaders, getSession, getSessionHash, json, requireCsrfSession, supabase, supabaseUrl } from './shared.ts'
+import { apiError, corsHeaders, getSession, getSessionHash, json, requireCsrfSession, sha256, supabase, supabaseUrl } from './shared.ts'
 import { handleAuthRoute } from './auth/auth.routes.ts'
 import { handleSystemRoute } from './system/system.routes.ts'
 import { handleMarketRoute } from './market/market.routes.ts'
@@ -8,8 +8,9 @@ import { handleHomeRoute } from './home.ts'
 import { handleNotificationRoute } from './notifications.ts'
 import { handleAiRoute, recordAiMissionActivity } from './ai.ts'
 import { claimPostImages, handlePostImageRoute, purgePostImages, validateRichDocument } from './post-images.ts'
+import { handleAdminRoute } from './admin/admin.routes.ts'
 
-const reservedSlugs = new Set(['api', 'login', 'signup', 'feed', 'post', 'blog', 'me', 'new', 'manage', 'ai'])
+const reservedSlugs = new Set(['api', 'login', 'signup', 'feed', 'post', 'blog', 'me', 'new', 'manage', 'ai', 'admin', 'adminpage'])
 const slugPattern = /^(?!.*--)[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$/
 
 const blogJson = (blog: Record<string, any>, owner?: Record<string, any>) => ({
@@ -24,6 +25,7 @@ const blogJson = (blog: Record<string, any>, owner?: Record<string, any>) => ({
   ...(owner ? { owner: { id: owner.id, nickname: owner.nickname } } : {}),
   createdAt: blog.created_at,
   updatedAt: blog.updated_at,
+  isOfficial: blog.slug === 'admin',
 })
 
 const validateSlug = (raw: string | null) => {
@@ -134,7 +136,8 @@ const positiveInteger = (value: string | null, fallback: number, max?: number) =
 }
 
 const getPublicBlog = async (request: Request, slugValue: string, url: URL) => {
-  const { slug, valid } = validateSlug(decodeURIComponent(slugValue))
+  const decodedSlug = decodeURIComponent(slugValue).trim().toLowerCase()
+  const { slug, valid } = decodedSlug === 'admin' ? { slug: 'admin', valid: true } : validateSlug(decodedSlug)
   if (!valid) return apiError(404, 'NOT_FOUND', '블로그를 찾을 수 없습니다.')
   const page = positiveInteger(url.searchParams.get('page'), 1)
   const size = positiveInteger(url.searchParams.get('size'), 10, 50)
@@ -153,6 +156,16 @@ const getPublicBlog = async (request: Request, slugValue: string, url: URL) => {
   }
   const payload = data as { found?: boolean; data?: Record<string, unknown> } | null
   if (!payload?.found) return apiError(404, 'NOT_FOUND', '블로그를 찾을 수 없습니다.')
+  const visitorId = request.headers.get('x-visitor-id')?.trim() ?? ''
+  const blog = payload.data?.blog as { id?: unknown } | undefined
+  const blogId = Number(blog?.id)
+  if (visitorId && visitorId.length <= 100 && Number.isSafeInteger(blogId) && blogId > 0) {
+    const { error: visitError } = await supabase.rpc('record_blog_visit', {
+      p_blog_id: blogId,
+      p_visitor_hash: await sha256(visitorId),
+    })
+    if (visitError) console.error('Failed to record blog visit', visitError)
+  }
   return json({ data: payload.data })
 }
 
@@ -317,6 +330,7 @@ const createPost = async (request: Request) => {
     blog_id: blog.id,
     title: values.title,
     content: values.content,
+    content_document: (values as Record<string, unknown>).content_document ?? null,
     status: values.status,
     published_at: publishedAt,
     category_id: values.category_id ?? null,
@@ -367,7 +381,10 @@ const readPost = async (request: Request, id: number) => {
   }
   const post = data?.[0]
   if (!post) return apiError(404, 'NOT_FOUND', '글을 찾을 수 없습니다.')
-  const [result] = await enrichPosts(request, [postJson(post, true)])
+  // Keep the detail response resilient when an older read_post RPC omits the
+  // rich document column. The source of truth is the posts row itself.
+  const { data: documentRow } = await supabase.from('posts').select('content,content_document').eq('id', id).maybeSingle()
+  const [result] = await enrichPosts(request, [postJson({ ...post, content: documentRow?.content ?? post.content, content_document: documentRow?.content_document ?? post.content_document }, true)])
   return json({ data: result })
 }
 
@@ -497,6 +514,9 @@ Deno.serve(async (request) => {
 
   const authResponse = handleAuthRoute(request, path)
   if (authResponse) return authResponse
+
+  const adminResponse = handleAdminRoute(request, path, url)
+  if (adminResponse) return adminResponse
 
   const systemResponse = handleSystemRoute(request, path)
   if (systemResponse) return systemResponse

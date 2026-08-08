@@ -17,7 +17,7 @@ export function getCorsHeaders(request?: Request): Record<string, string> {
   return {
     'Access-Control-Allow-Origin': allowed,
     'Access-Control-Allow-Credentials': 'true',
-    'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info, x-csrf-token',
+    'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info, x-csrf-token, x-visitor-id',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
     Vary: 'Origin',
   }
@@ -85,7 +85,7 @@ export type Session = {
   sessionHash: string
 }
 
-export const getSession = async (request: Request): Promise<Session | null> => {
+export const getSession = async (request: Request, allowPasswordChangeRequired = false): Promise<Session | null> => {
   const sessionId = readCookie(request, 'session_id')
   if (!sessionId) return null
   const sessionHash = await sha256(sessionId)
@@ -99,11 +99,16 @@ export const getSession = async (request: Request): Promise<Session | null> => {
     console.error('Failed to read session', error)
     return null
   }
-  return data ? { ...data, sessionId, sessionHash } : null
+  if (!data) return null
+  if (data.user_id) {
+    const { data: user } = await supabase.from('users').select('account_status,password_change_required').eq('id', data.user_id).maybeSingle()
+    if (!user || user.account_status !== 'ACTIVE' || (!allowPasswordChangeRequired && user.password_change_required)) return null
+  }
+  return { ...data, sessionId, sessionHash }
 }
 
-export const requireCsrfSession = async (request: Request) => {
-  const session = await getSession(request)
+export const requireCsrfSession = async (request: Request, allowPasswordChangeRequired = false) => {
+  const session = await getSession(request, allowPasswordChangeRequired)
   const csrfToken = request.headers.get('x-csrf-token')
   if (!session || !csrfToken || session.csrf_token !== csrfToken) return null
   return session
