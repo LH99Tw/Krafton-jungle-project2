@@ -1,6 +1,6 @@
 import { apiError } from '../shared.ts'
 import { changeMarketItemLike, createMarketItem, deleteMarketItem, listMarketItems, permanentlyDeleteMarketItem, readMarketItem, replaceMarketItemImages, restoreMarketItem, updateMarketItem } from './market.service.ts'
-import { changeMessageReaction, deleteMessage, leaveConversation, listConversations, listMessages, markConversationRead, sendMessage, startConversation } from './market-chat.service.ts'
+import { changeMessageReaction, deleteMessage, leaveConversation, leaveConversations, listConversations, listMessages, markConversationRead, pinConversation, sendMessage, startConversation } from './market-chat.service.ts'
 import { chargeWallet, completeOrder, listOrders, purchaseItem, readWallet } from './market-transaction.service.ts'
 
 export const handleMarketRoute = (request: Request, path: string, url: URL) => {
@@ -14,6 +14,11 @@ export const handleMarketRoute = (request: Request, path: string, url: URL) => {
     return completeOrder(request, orderId)
   }
   if (path === '/market/conversations' && request.method === 'GET') return listConversations(request)
+  if (path === '/market/conversations' && request.method === 'DELETE') return leaveConversations(request)
+  const conversationPinMatch = path.match(/^\/market\/conversations\/(\d+)\/pin$/)
+  if (conversationPinMatch && (request.method === 'PUT' || request.method === 'DELETE')) {
+    return pinConversation(request, Number(conversationPinMatch[1]), request.method === 'PUT')
+  }
   const conversationLeaveMatch = path.match(/^\/market\/conversations\/(\d+)$/)
   if (conversationLeaveMatch && request.method === 'DELETE') return leaveConversation(request, Number(conversationLeaveMatch[1]))
   const conversationReadMatch = path.match(/^\/market\/conversations\/(\d+)\/read$/)

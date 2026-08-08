@@ -62,6 +62,7 @@ export const listConversations = async (request: Request) => {
       createdAt: item.last_message_created_at,
     } : null,
     unreadCount: Number(item.unread_count ?? 0),
+    pinnedAt: item.pinned_at ?? null,
   })) })
 }
 
@@ -122,7 +123,7 @@ export const sendMessage = async (request: Request, conversationId: number) => {
     reply_to_message_id: replyToMessageId,
   }).select('id, conversation_id, sender_id, body, read_at, created_at, reply_to_message_id').single()
   if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '메시지를 보내지 못했습니다.')
-  await supabase.from('market_conversations').update({ updated_at: now }).eq('id', conversationId)
+  await supabase.from('market_conversations').update({ updated_at: now, buyer_left_at: null, seller_left_at: null }).eq('id', conversationId)
   return json({ data: {
     id: data.id,
     conversationId: data.conversation_id,
@@ -178,4 +179,37 @@ export const leaveConversation = async (request: Request, conversationId: number
   const { error } = await supabase.from('market_conversations').update({ [column]: new Date().toISOString() }).eq('id', conversationId)
   if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '채팅방에서 나가지 못했습니다.')
   return new Response(null, { status: 204 })
+}
+
+export const pinConversation = async (request: Request, conversationId: number, pinned: boolean) => {
+  const access = await requireParticipant(request, conversationId, true)
+  if (access.error) return access.error
+  const column = access.conversation!.buyer_id === access.session!.user_id ? 'buyer_pinned_at' : 'seller_pinned_at'
+  const { error } = await supabase.from('market_conversations').update({ [column]: pinned ? new Date().toISOString() : null }).eq('id', conversationId)
+  if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '채팅방 고정 상태를 저장하지 못했습니다.')
+  return new Response(null, { status: 204 })
+}
+
+export const leaveConversations = async (request: Request) => {
+  const session = await requireCsrfSession(request)
+  if (!session?.user_id) return apiError(401, 'UNAUTHENTICATED', '로그인이 필요합니다.')
+  const body = await request.json().catch(() => null)
+  const ids = Array.isArray(body?.conversationIds)
+    ? [...new Set(body.conversationIds.map(Number).filter((id: number) => Number.isSafeInteger(id) && id > 0))].slice(0, 100)
+    : []
+  if (!ids.length) return apiError(400, 'VALIDATION_ERROR', '삭제할 채팅방을 선택해 주세요.')
+  const { data, error } = await supabase.from('market_conversations').select('id, buyer_id, seller_id').in('id', ids)
+  if (error) return apiError(500, 'INTERNAL_SERVER_ERROR', '채팅방을 확인하지 못했습니다.')
+  const buyerIds = (data ?? []).filter((room) => room.buyer_id === session.user_id).map((room) => room.id)
+  const sellerIds = (data ?? []).filter((room) => room.seller_id === session.user_id).map((room) => room.id)
+  const now = new Date().toISOString()
+  if (buyerIds.length) {
+    const { error: buyerError } = await supabase.from('market_conversations').update({ buyer_left_at: now, buyer_pinned_at: null }).in('id', buyerIds)
+    if (buyerError) return apiError(500, 'INTERNAL_SERVER_ERROR', '채팅방을 삭제하지 못했습니다.')
+  }
+  if (sellerIds.length) {
+    const { error: sellerError } = await supabase.from('market_conversations').update({ seller_left_at: now, seller_pinned_at: null }).in('id', sellerIds)
+    if (sellerError) return apiError(500, 'INTERNAL_SERVER_ERROR', '채팅방을 삭제하지 못했습니다.')
+  }
+  return json({ data: { deletedCount: buyerIds.length + sellerIds.length } })
 }
