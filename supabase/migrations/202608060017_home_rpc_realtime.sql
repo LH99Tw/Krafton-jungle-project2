@@ -105,6 +105,7 @@ as $$
     select post.id, post.blog_id, post.view_count, post.published_at
     from public.post_details post
     where post.status = 'PUBLISHED' and post.deleted_at is null
+      and post.blog_slug <> 'admin'
     order by post.view_count desc, post.published_at desc, post.id desc
     limit 30
   ),

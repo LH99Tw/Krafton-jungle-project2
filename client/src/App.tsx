@@ -936,11 +936,13 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
     refetchInterval: 30_000,
   });
   const categories = ["전체", "애니메이션·만화", "게임", "버튜버", "웹툰·캐릭터"];
-  const recommendationCandidates = [...(home?.popularPosts ?? []), ...(home?.categoryPosts ?? [])];
+  const publicPopularPosts = (home?.popularPosts ?? []).filter((post) => post.blog.slug !== "admin");
+  const publicCategoryPosts = (home?.categoryPosts ?? []).filter((post) => post.blog.slug !== "admin");
+  const recommendationCandidates = [...publicPopularPosts, ...publicCategoryPosts];
   const recommendations = recommendationCandidates
     .filter((post, index, posts) => Boolean(post.thumbnailUrl) && posts.findIndex((candidate) => candidate.id === post.id) === index)
     .slice(0, 5);
-  const connectedCategoryPosts = (home?.categoryPosts ?? []).filter((post) => category === "전체" || post.category?.name === category || (category === "애니메이션·만화" && (post.category?.name === "애니메이션" || post.category?.name === "만화")));
+  const connectedCategoryPosts = publicCategoryPosts.filter((post) => category === "전체" || post.category?.name === category || (category === "애니메이션·만화" && (post.category?.name === "애니메이션" || post.category?.name === "만화")));
   const categoryPosts = connectedCategoryPosts.slice(0, 7);
   const categoryPagePosts = categoryPosts.length ? categoryPosts.map((_, index) => categoryPosts[(index + categoryPage - 1) % categoryPosts.length]) : [];
   const latestPosts = (home?.latestPosts ?? []).slice(0, 5);
@@ -2663,7 +2665,14 @@ function PostDetail({ id, go, user, onLogin }: { id: string; go: (to: string) =>
                 <p className="eyebrow">{post.blog.name}</p>
                 <h1>{post.title}</h1>
                 <div className="detail-info">
-                  <span>{post.author.nickname}</span>
+                  <button
+                    className="detail-author-link"
+                    type="button"
+                    onClick={() => go(`/blog/${post.blog.slug}`)}
+                    aria-label={`${post.author.nickname}님의 블로그로 이동`}
+                  >
+                    {post.author.nickname}
+                  </button>
                   <span>{new Date(post.publishedAt ?? post.updatedAt ?? "").toLocaleDateString("ko-KR")}</span>
                   <span>
                     <Eye size={14} /> {post.viewCount}
