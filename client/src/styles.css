@@ -458,6 +458,10 @@ body:has(.home-main) .home-editorial:not(.home-market-editorial) .editorial-list
 body:has(.home-main) .home-market-editorial .editorial-list article{height:224px;min-height:224px;overflow:hidden}
 body:has(.home-main) .home-market-editorial .editorial-list h3{height:21px;white-space:nowrap;-webkit-line-clamp:1}
 body:has(.home-main) .home-market-editorial .editorial-list article>p{height:17px;white-space:nowrap;-webkit-line-clamp:1}
+body:has(.home-main) .home-slot-placeholder{pointer-events:none}
+body:has(.home-main) .home-slot-placeholder .home-slot-space{height:104px}
+body:has(.home-main) .home-slot-placeholder .home-placeholder-image{background-color:#ecefeb!important;background-image:linear-gradient(110deg,transparent 28%,rgba(255,255,255,.76) 45%,transparent 62%)!important;background-position:200% 0!important;background-size:220% 100%!important;animation:image-placeholder-shimmer 1.35s linear infinite}
+body:has(.home-main) .home-slot-placeholder .home-placeholder-image:before{display:none}
 
 body:has(.home-main) .my-jungletory{height:95px;margin:0;padding:0;background:#fff}
 body:has(.home-main) .my-jungletory p{height:29px;margin:0;color:#666;font-size:11px;line-height:18px;white-space:nowrap}
@@ -994,6 +998,8 @@ body:has(.home-main) .my-jungletory button{width:375px;height:52px;margin:14px a
 .market-row-thumbnail{width:112px;aspect-ratio:1;flex:none;border-radius:3px;background-color:#ecefeb;background-image:linear-gradient(110deg,transparent 28%,rgba(255,255,255,.72) 45%,transparent 62%);background-position:center;background-size:cover;animation:image-placeholder-shimmer 1.35s linear infinite}
 .market-row-thumbnail.has-image{animation:none}
 .market-row{display:grid;grid-template-columns:112px minmax(0,1fr) minmax(96px,max-content);align-items:center;justify-content:initial;column-gap:28px}.market-row-content{min-width:0;text-align:left}.market-row-content h2,.market-row-content .excerpt{max-width:100%}.market-row-price{justify-self:end;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.market-row-placeholder{min-height:163px;pointer-events:none}
+.market-row-placeholder .market-row-content,.market-row-placeholder .market-row-price{min-height:1px}
 @media(max-width:700px){.market-row{grid-template-columns:82px minmax(0,1fr);align-items:start;column-gap:14px}.market-row-thumbnail{width:82px}.market-row-price{grid-column:2;justify-self:start;margin-top:8px;text-align:left}}
 .market-image-dots{display:flex;justify-content:center;gap:7px;margin-top:17px}
 .market-image-dots i,.market-image-dots b{width:7px;height:7px;border-radius:50%;background:#ddd}
@@ -1345,6 +1351,7 @@ button:not(.main-nav button):not(.category-tabs button):not(.feed-toolbar button
 @media(max-width:700px){.rich-editor-toolbar{margin-right:-18px;margin-left:-18px;padding-right:18px;padding-left:18px}.rich-editor-content{min-height:390px;padding-top:25px}.image-context-toolbar{margin-right:-18px;margin-left:-18px;padding-right:18px;padding-left:18px}.rich-editor-content [data-image-group-grid],.post-image-group>div{grid-template-columns:1fr;gap:18px}.rich-editor-content figure[data-rich-image],.post-rich-image{width:100%!important}.rich-editor-content h1,.detail-content h1{font-size:27px}.rich-editor-content h2,.detail-content h2{font-size:22px}.rich-editor-content h3,.detail-content h3{font-size:18px}}
 .rich-editor-content [data-image-group-grid],.post-image-group>div{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
 .editor-loading{min-height:480px;margin-top:16px;padding:34px 0;border-top:1px solid #e8e9e7;color:#9aa09b;font-size:12px}
+.rich-editor-content mark,.detail-content mark{padding:0 .12em;background:#fff0a8;color:inherit;box-decoration-break:clone;-webkit-box-decoration-break:clone}
 @media(max-width:700px){.rich-editor-content [data-image-group-grid],.post-image-group>div{grid-template-columns:1fr}}
 
 /* ==========================================================================

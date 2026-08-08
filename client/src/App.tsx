@@ -277,111 +277,6 @@ const interestGroups = [
 const interestCatalog = [...new Set(interestGroups.flatMap((group) => [...group.items]))];
 const solidColors = ["#9DB6AD", "#91A8B5", "#C79A7D", "#AAA982", "#C79A94", "#8FA3C2", "#C3A6B8", "#94B99B", "#C9AD78", "#92AEB0"];
 const solidColor = (index: number, offset = 0) => solidColors[(index + offset) % solidColors.length];
-const sampleMarketItems: MarketItem[] = [
-  {
-    id: "sample-1",
-    title: "최애 캐릭터 한정 아크릴 스탠드",
-    description: "개봉 후 진열만 한 상품입니다. 구성품은 본체와 받침대이며 눈에 띄는 흠집 없이 깨끗하게 보관했습니다.",
-    category: "애니메이션 굿즈",
-    tags: ["최애캐", "아크릴스탠드"],
-    condition: "LIKE_NEW",
-    pricePoints: 18000,
-    status: "SELLING",
-    seller: { id: "sample-seller-1", nickname: "굿즈수집가" },
-    likeCount: 18,
-    isLiked: false,
-  },
-  {
-    id: "sample-2",
-    title: "공식 캐릭터 봉제인형",
-    description: "미개봉 새 상품이며 태그가 포함되어 있습니다.",
-    category: "인형",
-    tags: ["공식굿즈", "봉제인형"],
-    condition: "NEW",
-    pricePoints: 32000,
-    status: "SELLING",
-    seller: { id: "sample-seller-2", nickname: "덕질하는정글러" },
-    likeCount: 12,
-    isLiked: false,
-  },
-  {
-    id: "sample-3",
-    title: "극장판 특전 포토카드 세트",
-    description: "슬리브에 보관해 상태가 좋습니다.",
-    category: "포토카드",
-    tags: ["극장판", "특전", "포토카드"],
-    condition: "LIKE_NEW",
-    pricePoints: 9500,
-    status: "SELLING",
-    seller: { id: "sample-seller-3", nickname: "애니기록소" },
-    likeCount: 9,
-    isLiked: false,
-  },
-  {
-    id: "sample-4",
-    title: "팝업스토어 랜덤 키링 세트",
-    description: "중복으로 나온 키링 두 개를 함께 판매합니다.",
-    category: "키링",
-    tags: ["팝업스토어", "랜덤굿즈"],
-    condition: "NEW",
-    pricePoints: 14000,
-    status: "SELLING",
-    seller: { id: "sample-seller-4", nickname: "오늘도덕질" },
-    likeCount: 6,
-    isLiked: false,
-  },
-  {
-    id: "sample-5",
-    title: "입문용 캐릭터 프라모델",
-    description: "한 번 조립했으며 부품과 설명서를 모두 보관했습니다.",
-    category: "프라모델",
-    tags: ["입문", "캐릭터굿즈"],
-    condition: "USED",
-    pricePoints: 22000,
-    status: "SELLING",
-    seller: { id: "sample-seller-5", nickname: "조립연구소" },
-    likeCount: 0,
-    isLiked: false,
-  },
-];
-const fallbackPost = (id: number, title: string, tags: string[], category: string): Post => ({
-  id: -id,
-  title,
-  status: "PUBLISHED",
-  category: { id, name: category },
-  classifications: tags.map((name, index) => ({ id: id * 10 + index, name })),
-  viewCount: Math.max(24, 120 - id * 4),
-  likeCount: Math.max(3, 20 - Math.floor(id / 2)),
-  bookmarkCount: Math.max(1, 10 - Math.floor(id / 4)),
-  commentCount: 4 + (id % 9),
-  isLiked: false,
-  isBookmarked: false,
-  author: { id: 0, nickname: "팬덤 에디터" },
-  blog: { id: 0, name: "팬덤 에디터", slug: "fandom-editor" },
-  publishedAt: new Date().toISOString(),
-});
-const fallbackPopular = [fallbackPost(1, "이번 달 가장 만족했던 최애 굿즈 TOP 5", ["애니메이션", "굿즈리뷰"], "애니메이션"), fallbackPost(2, "예약 전에 확인해야 할 여름 신작 피규어 정리", ["피규어", "신상품"], "애니메이션"), fallbackPost(3, "중복 포토카드 안전하게 교환하는 방법", ["포토카드", "교환팁"], "버튜버"), fallbackPost(4, "누이 먼지 없이 오래 보관하는 관리 루틴", ["봉제인형", "보관법"], "게임"), fallbackPost(5, "작은 책상에도 잘 어울리는 아크릴 굿즈 배치법", ["아크릴스탠드", "전시"], "웹툰·캐릭터"), fallbackPost(6, "오픈 첫날 다녀온 공식 팝업스토어 후기", ["팝업스토어", "방문후기"], "애니메이션"), fallbackPost(7, "포토카드와 특전을 안전하게 정리하는 방법", ["포토카드", "수납팁"], "버튜버")];
-const fallbackFocus = [fallbackPost(11, "극장판 한정 아크릴 스탠드 실물 후기", ["애니메이션", "아크릴스탠드"], "애니메이션"), fallbackPost(12, "공식 팝업스토어 마스코트 인형 비교", ["게임", "마스코트인형"], "게임"), fallbackPost(13, "시즌 한정 포토카드 3종 구성 정리", ["아이돌", "포토카드"], "버튜버"), fallbackPost(14, "랜덤 굿즈 중복을 줄이는 구매 방법", ["캐릭터", "랜덤굿즈"], "웹툰·캐릭터"), fallbackPost(15, "처음 조립하는 사람을 위한 프라모델과 공구 추천", ["프라모델", "입문정보"], "애니메이션")];
-const fallbackLatest = [fallbackPost(21, "오픈 첫날 구매한 굿즈를 전부 열어봤어요", ["하울후기", "팝업스토어"], "애니메이션"), fallbackPost(22, "포토카드와 특전을 한 번에 정리하는 방법", ["굿즈정리", "수납팁"], "버튜버"), fallbackPost(23, "처음 해본 굿즈 교환, 이것만은 확인하세요", ["교환후기", "안전거래"], "게임"), fallbackPost(24, "1년 동안 모은 최애 굿즈 컬렉션 공개", ["덕질기록", "최애캐"], "웹툰·캐릭터"), fallbackPost(25, "책상 위 작은 굿즈존을 꾸며봤어요", ["전시팁", "아크릴굿즈"], "애니메이션")];
-const fillPostSlots = (posts: Post[] | undefined, templates: Post[], count: number) => {
-  const actual = (posts ?? []).slice(0, count);
-  const actualTitles = new Set(actual.map((post) => post.title));
-  return [...actual, ...templates.filter((post) => !actualTitles.has(post.title)).slice(0, Math.max(0, count - actual.length))];
-};
-const fillMarketSlots = (items: MarketItem[] | undefined, count: number) => {
-  const actual = (items ?? []).slice(0, count);
-  const titles = new Set(actual.map((item) => item.title));
-  return [...actual, ...sampleMarketItems.filter((item) => !titles.has(item.title)).slice(0, Math.max(0, count - actual.length))];
-};
-const categoryTemplates = (category: string) =>
-  category === "전체"
-    ? fallbackPopular.slice(0, 7)
-    : fallbackPopular.slice(0, 7).map((post, index) => ({
-        ...post,
-        id: -(1000 + ["애니메이션·만화", "게임", "버튜버", "웹툰·캐릭터"].indexOf(category) * 10 + index),
-        category: { id: 100 + index, name: category },
-        classifications: [{ id: 1000 + index * 2, name: category }, post.classifications[1] ?? post.classifications[0]],
-      }));
 
 const sidebarTips = [
   ["첫 문장에 핵심을 담아\n제목 완성하기", "TITLE", "#f3ece3"],
@@ -1039,12 +934,15 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
     refetchInterval: 30_000,
   });
   const categories = ["전체", "애니메이션·만화", "게임", "버튜버", "웹툰·캐릭터"];
-  const recommendations = fillPostSlots(home?.popularPosts, fallbackPopular, 5);
+  const recommendationCandidates = [...(home?.popularPosts ?? []), ...(home?.categoryPosts ?? [])];
+  const recommendations = recommendationCandidates
+    .filter((post, index, posts) => Boolean(post.thumbnailUrl) && posts.findIndex((candidate) => candidate.id === post.id) === index)
+    .slice(0, 5);
   const connectedCategoryPosts = (home?.categoryPosts ?? []).filter((post) => category === "전체" || post.category?.name === category || (category === "애니메이션·만화" && (post.category?.name === "애니메이션" || post.category?.name === "만화")));
-  const categoryPosts = fillPostSlots(connectedCategoryPosts, categoryTemplates(category), 7);
-  const categoryPagePosts = categoryPosts.map((_, index) => categoryPosts[(index + categoryPage - 1) % categoryPosts.length]);
-  const latestPosts = fillPostSlots(home?.latestPosts, fallbackLatest, 5);
-  const popularMarketItems = fillMarketSlots(home?.marketItems, 5);
+  const categoryPosts = connectedCategoryPosts.slice(0, 7);
+  const categoryPagePosts = categoryPosts.length ? categoryPosts.map((_, index) => categoryPosts[(index + categoryPage - 1) % categoryPosts.length]) : [];
+  const latestPosts = (home?.latestPosts ?? []).slice(0, 5);
+  const popularMarketItems = (home?.marketItems ?? []).slice(0, 5);
   const shownTips = tipPage === 1 ? sidebarTips : [...sidebarTips].reverse();
   const bannerPlaceholders: HomeBanner[] = [
     { id:-1,eyebrow:"NOTICE · EVENT",title:"최애를 기록하고\n취향을 나누는 새로운 공간",description:"팬들이 함께 만드는 굿즈 이야기와 새로운 이벤트를 만나보세요.",imageUrl:null,ctaLabel:"이벤트 자세히 보기",ctaUrl:"/blog/admin",startsAt:"",position:0,isActive:true },
@@ -1121,27 +1019,29 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
               <div className="today-dots" role="tablist" aria-label="이벤트 페이지 선택">{bannerSlides.map((slide,index)=><button key={slide.id} role="tab" aria-selected={bannerPage===index} aria-label={`${index+1}번 이벤트`} className={bannerPage===index?"active":""} onClick={()=>setBannerPage(index)}/>)}</div>
             </section>
 
-            <section className="best-popularity" aria-label="추천글">
-              <div className="best-list">
-                {recommendations.map((post, index) => (
-                  <article className="best-row" key={post.id}>
-                    <b>{index + 1}/</b>
-                    <div className="best-copy">
-                      {tags(post)}
-                      <h3>
-                        <button onClick={() => openPost(post)}>{post.title}</button>
-                      </h3>
-                      <small>
-                        조회 {post.viewCount} · 좋아요 {post.likeCount} · 댓글 {post.commentCount}
-                      </small>
-                    </div>
-                    <div className={`post-thumb${post.thumbnailUrl ? " has-image" : ""}`} style={{ backgroundColor: solidColor(index, 1) }}>
-                      {post.thumbnailUrl && <ProgressiveImage src={post.thumbnailUrl} alt="" />}
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </section>
+            {recommendations.length > 0 && (
+              <section className="best-popularity" aria-label="추천글">
+                <div className="best-list">
+                  {recommendations.map((post, index) => (
+                    <article className="best-row" key={post.id}>
+                      <b>{index + 1}/</b>
+                      <div className="best-copy">
+                        {tags(post)}
+                        <h3>
+                          <button onClick={() => openPost(post)}>{post.title}</button>
+                        </h3>
+                        <small>
+                          조회 {post.viewCount} · 좋아요 {post.likeCount} · 댓글 {post.commentCount}
+                        </small>
+                      </div>
+                      <div className="post-thumb has-image" style={{ backgroundColor: solidColor(index, 1) }}>
+                        <ProgressiveImage src={post.thumbnailUrl!} alt="" />
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            )}
 
             <section className="category-popularity">
               <div className="category-tabs" role="tablist">
@@ -1184,9 +1084,7 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
                       </div>
                     </article>
                   ))
-                ) : (
-                  <div className="home-empty">이 카테고리의 글을 준비하고 있습니다.</div>
-                )}
+                ) : Array.from({ length: 3 }, (_, index) => <HomeCategoryPlaceholder key={`category-placeholder-${index}`} />)}
               </div>
               <Pager page={categoryPage} total={7} onChange={setCategoryPage} label="카테고리 추천글 페이지" />
             </section>
@@ -1256,7 +1154,7 @@ function HomeEditorial({ title, description, posts, go }: { title: string; descr
         </div>
       </div>
       <div className="editorial-list">
-        {posts.map((post, index) => (
+        {posts.length ? posts.map((post, index) => (
           <article key={post.id}>
             <span className="home-post-tags">
               {post.classifications
@@ -1275,7 +1173,7 @@ function HomeEditorial({ title, description, posts, go }: { title: string; descr
               조회 {post.viewCount}　♡ {post.likeCount}　댓글 {post.commentCount}
             </small>
           </article>
-        ))}
+        )) : Array.from({ length: 5 }, (_, index) => <HomeEditorialPlaceholder key={`post-placeholder-${index}`} />)}
       </div>
     </section>
   );
@@ -1291,7 +1189,7 @@ function HomeMarketEditorial({ items, go }: { items: MarketItem[]; go: (to: stri
         </div>
       </div>
       <div className="editorial-list">
-        {items.map((item, index) => (
+        {items.length ? items.map((item, index) => (
           <article className="home-market-card" key={item.id}>
             <span className="home-post-tags">
               {item.tags
@@ -1314,9 +1212,26 @@ function HomeMarketEditorial({ items, go }: { items: MarketItem[]; go: (to: stri
               {item.thumbnailUrl ? <ProgressiveImage src={item.thumbnailUrl} alt="" /> : <span>{item.category}</span>}
             </button>
           </article>
-        ))}
+        )) : Array.from({ length: 5 }, (_, index) => <HomeEditorialPlaceholder key={`market-placeholder-${index}`} market />)}
       </div>
     </section>
+  );
+}
+
+function HomeCategoryPlaceholder() {
+  return (
+    <article className="home-slot-placeholder" aria-hidden="true">
+      <div className="home-slot-space" />
+      <div className="post-thumb home-placeholder-image" />
+    </article>
+  );
+}
+
+function HomeEditorialPlaceholder({ market = false }: { market?: boolean }) {
+  return (
+    <article className={`home-slot-placeholder${market ? " home-market-card" : ""}`} aria-hidden="true">
+      <div className="editorial-thumb home-placeholder-image" />
+    </article>
   );
 }
 function Feed({ go, user, onLogin }: { go: (to: string) => void; user: User | null; onLogin: () => void }) {
@@ -4046,6 +3961,16 @@ function MarketRow({ item, go }: { item: MarketItem; go: (to: string) => void })
   );
 }
 
+function MarketRowPlaceholder() {
+  return (
+    <article className="feed-row market-row market-row-placeholder" aria-hidden="true">
+      <div className="market-row-thumbnail" />
+      <div className="market-row-content" />
+      <div className="market-row-price" />
+    </article>
+  );
+}
+
 function MarketSavedList({ kind, go, user, onLogin }: { kind: "recent" | "wishlist"; go: (to: string) => void; user: User | null; onLogin: () => void }) {
   const recent = kind === "recent";
   const [items, setItems] = useState<MarketItem[]>(() => (recent ? readRecentMarketItems() : []));
@@ -4139,7 +4064,7 @@ function Market({ go, user, onLogin }: { go: (to: string) => void; user: User | 
   });
   const items = marketQuery.data ?? [];
   const error = marketQuery.error instanceof Error ? marketQuery.error.message : "";
-  const shown = items.length ? items : sampleMarketItems.filter((item) => !query || `${item.title} ${item.description} ${item.category} ${item.tags.join(" ")}`.toLowerCase().includes(query.replace(/^#/, "").toLowerCase()));
+  const shown = items;
   return (
     <Shell go={go} user={user} onLogin={onLogin}>
       <main id="main" className="page-main">
@@ -4178,11 +4103,11 @@ function Market({ go, user, onLogin }: { go: (to: string) => void; user: User | 
               <button onClick={() => (user ? go("/market/new") : onLogin())}>상품 등록</button>
             </div>
           </div>
-          {error && <p className="form-error">API 연결 전이라 샘플 상품을 표시하고 있습니다. {error}</p>}
+          {error && <p className="form-error">상품을 불러오지 못했습니다. {error}</p>}
           <div className="feed-list">
-            {shown.map((item) => (
-              <MarketRow key={item.id} item={item} go={go} />
-            ))}
+            {shown.length
+              ? shown.map((item) => <MarketRow key={item.id} item={item} go={go} />)
+              : Array.from({ length: 6 }, (_, index) => <MarketRowPlaceholder key={`market-placeholder-${index}`} />)}
           </div>
         </div>
       </main>
@@ -4468,7 +4393,7 @@ function MarketEditor({ go, id }: { go: (to: string) => void; id?: string }) {
 }
 
 function MarketDetail({ id, go, user, onLogin }: { id: string; go: (to: string) => void; user: User | null; onLogin: () => void }) {
-  const [item, setItem] = useState<MarketItem | null>(() => sampleMarketItems.find((entry) => String(entry.id) === id) ?? null);
+  const [item, setItem] = useState<MarketItem | null>(null);
   const [likeBusy, setLikeBusy] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [conversation, setConversation] = useState<Conversation | null>(null);
@@ -4477,13 +4402,12 @@ function MarketDetail({ id, go, user, onLogin }: { id: string; go: (to: string) 
   const [error, setError] = useState("");
   const [buying, setBuying] = useState(false);
   useEffect(() => {
-    if (!id.startsWith("sample-"))
-      request<MarketItem>(`/market/items/${id}`)
-        .then((nextItem) => {
-          setItem(nextItem);
-          emitAiActivity({ type: "market_detail_viewed", itemId: id });
-        })
-        .catch((e) => setError(e.message));
+    request<MarketItem>(`/market/items/${id}`)
+      .then((nextItem) => {
+        setItem(nextItem);
+        emitAiActivity({ type: "market_detail_viewed", itemId: id });
+      })
+      .catch((e) => setError(e.message));
   }, [id]);
   useEffect(() => {
     if (item) rememberMarketItem(item);
