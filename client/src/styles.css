@@ -415,7 +415,7 @@ body:has(.home-main) .best-popularity .best-row>b:after{content:'.';font-size:20
 body:has(.home-main) .best-copy{align-self:center;min-width:0}
 body:has(.home-main) .best-copy>button{display:block;color:#999;font-size:10px}
 body:has(.home-main) .best-copy h3{margin:7px 0 0;font-size:13px;line-height:1.35;font-weight:500}
-body:has(.home-main) .best-copy h3{height:18px;overflow:hidden}
+body:has(.home-main) .best-copy h3{height:26px;overflow:hidden}
 body:has(.home-main) .best-copy h3 button{display:block;width:100%;overflow:hidden;text-align:left;text-overflow:ellipsis;white-space:nowrap}
 body:has(.home-main) .best-popularity .post-thumb{width:65px;height:65px;border-radius:3px}
 body:has(.home-main) .best-popularity .post-thumb{justify-self:end}
@@ -828,6 +828,9 @@ body:has(.home-main) .today-card:not(.has-image){background-image:none!important
 body:has(.home-main) .post-thumb,body:has(.home-main) .editorial-thumb{background-image:none!important}
 body:has(.home-main) .post-thumb:not(.has-image),body:has(.home-main) .editorial-thumb:not(.has-image){background-color:#fff!important}
 body:has(.home-main) .post-thumb:not(.has-image):before{display:none}
+body:has(.home-main) .category-grid article:nth-of-type(3n+1) .post-thumb:not(.has-image){background-color:#9db6ad!important}
+body:has(.home-main) .category-grid article:nth-of-type(3n+2) .post-thumb:not(.has-image){background-color:#91a8b5!important}
+body:has(.home-main) .category-grid article:nth-of-type(3n) .post-thumb:not(.has-image){background-color:#c79a7d!important}
 body:has(.home-main) .creator-color{display:block;width:100px;height:66px;border-radius:3px}
 body:has(.home-main) .rising-card{background-image:none!important;background-color:#8fa3c2}
 body:has(.home-main) .store-preview{background:#c3a6b8}
@@ -870,7 +873,7 @@ body:has(.home-main) .account-dashboard dd button b{color:#222;font-weight:700}
 body:has(.home-main) .account-dashboard+.story-creator{margin-top:45px}
 
 /* Recommendation rows keep breathing room above and below 65px thumbnails. */
-body:has(.home-main) .best-popularity .best-row{min-height:82px;padding:8px 0;align-items:center}
+body:has(.home-main) .best-popularity .best-row{min-height:88px;padding:8px 0;align-items:center}
 body:has(.home-main) .best-popularity .best-row>b{align-self:flex-start;padding-top:5px}
 body:has(.home-main) .best-copy{align-self:center;padding-top:0}
 
