@@ -37,7 +37,9 @@ as $$
   ) unread on true
   where (conversation.buyer_id = p_user_id and conversation.buyer_left_at is null)
      or (conversation.seller_id = p_user_id and conversation.seller_left_at is null)
-  order by pinned_at desc nulls last, conversation.updated_at desc;
+  order by
+    (case when conversation.buyer_id = p_user_id then conversation.buyer_pinned_at else conversation.seller_pinned_at end) desc nulls last,
+    conversation.updated_at desc;
 $$;
 
 revoke all on function public.get_market_chat_conversations(bigint) from public, anon, authenticated;
