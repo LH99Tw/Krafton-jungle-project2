@@ -1,7 +1,9 @@
 import { Node, mergeAttributes, type JSONContent } from "@tiptap/core";
 import CharacterCount from "@tiptap/extension-character-count";
+import Highlight from "@tiptap/extension-highlight";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
+import TextAlign from "@tiptap/extension-text-align";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { TextSelection } from "@tiptap/pm/state";
@@ -14,6 +16,7 @@ import {
   Heading1,
   Heading2,
   Heading3,
+  Highlighter,
   ImagePlus,
   Italic,
   Link2,
@@ -112,6 +115,8 @@ const extensions = [
     placeholder:
       "여기에 이야기를 적어보세요. 이미지를 끌어다 놓을 수도 있어요.",
   }),
+  Highlight.configure({ multicolor: false }),
+  TextAlign.configure({ types: ["heading", "paragraph"] }),
   CharacterCount.configure({ limit: 20000 }),
   RichImage,
   ImageGroup,
@@ -252,6 +257,11 @@ export function RichTextEditor({
   }, [editor, onDocumentReady]);
 
   if (!editor) return null;
+
+  const activeTextAlign =
+    editor.getAttributes("paragraph").textAlign ||
+    editor.getAttributes("heading").textAlign ||
+    "left";
 
   async function addFiles(files: File[]) {
     setError("");
@@ -487,6 +497,28 @@ export function RichTextEditor({
         </Tool>
         <span className="tool-separator" />
         <Tool
+          label="왼쪽 정렬"
+          active={activeTextAlign === "left"}
+          onClick={() => editor.chain().focus().setTextAlign("left").run()}
+        >
+          <AlignLeft />
+        </Tool>
+        <Tool
+          label="가운데 정렬"
+          active={activeTextAlign === "center"}
+          onClick={() => editor.chain().focus().setTextAlign("center").run()}
+        >
+          <AlignCenter />
+        </Tool>
+        <Tool
+          label="오른쪽 정렬"
+          active={activeTextAlign === "right"}
+          onClick={() => editor.chain().focus().setTextAlign("right").run()}
+        >
+          <AlignRight />
+        </Tool>
+        <span className="tool-separator" />
+        <Tool
           label="굵게 (Ctrl+B)"
           active={editor.isActive("bold")}
           onClick={() => editor.chain().focus().toggleBold().run()}
@@ -506,6 +538,13 @@ export function RichTextEditor({
           onClick={() => editor.chain().focus().toggleStrike().run()}
         >
           <Strikethrough />
+        </Tool>
+        <Tool
+          label="하이라이트"
+          active={editor.isActive("highlight")}
+          onClick={() => editor.chain().focus().toggleHighlight().run()}
+        >
+          <Highlighter />
         </Tool>
         <Tool
           label="인라인 코드"
@@ -677,6 +716,7 @@ const marks = (node: JSONContent, content: ReactNode) =>
     if (mark.type === "bold") return <strong key={index}>{result}</strong>;
     if (mark.type === "italic") return <em key={index}>{result}</em>;
     if (mark.type === "strike") return <s key={index}>{result}</s>;
+    if (mark.type === "highlight") return <mark key={index}>{result}</mark>;
     if (mark.type === "code") return <code key={index}>{result}</code>;
     if (
       mark.type === "link" &&
@@ -700,13 +740,28 @@ const renderNode = (node: JSONContent, key: number | string): ReactNode => {
   const children = node.content?.map((child, index) =>
     renderNode(child, index),
   );
+  const textAlign = ["left", "center", "right", "justify"].includes(
+    String(node.attrs?.textAlign),
+  )
+    ? (node.attrs?.textAlign as CSSProperties["textAlign"])
+    : undefined;
+  const textStyle = textAlign ? { textAlign } : undefined;
   if (node.type === "text")
     return <Fragment key={key}>{marks(node, node.text)}</Fragment>;
-  if (node.type === "paragraph") return <p key={key}>{children}</p>;
+  if (node.type === "paragraph")
+    return (
+      <p key={key} style={textStyle}>
+        {children}
+      </p>
+    );
   if (node.type === "heading") {
     const Tag =
       `h${[1, 2, 3].includes(Number(node.attrs?.level)) ? node.attrs?.level : 2}` as "h1";
-    return <Tag key={key}>{children}</Tag>;
+    return (
+      <Tag key={key} style={textStyle}>
+        {children}
+      </Tag>
+    );
   }
   if (node.type === "bulletList") return <ul key={key}>{children}</ul>;
   if (node.type === "orderedList") return <ol key={key}>{children}</ol>;

@@ -7,7 +7,7 @@ export type RichDocument = { type: 'doc'; content?: RichNode[] }
 type RichNode = { type: string; attrs?: Record<string, unknown>; content?: RichNode[]; text?: string; marks?: Array<{ type: string; attrs?: Record<string, unknown> }> }
 
 const allowedNodes = new Set(['doc', 'paragraph', 'heading', 'text', 'bulletList', 'orderedList', 'listItem', 'blockquote', 'codeBlock', 'horizontalRule', 'hardBreak', 'richImage', 'imageGroup'])
-const allowedMarks = new Set(['bold', 'italic', 'strike', 'code', 'link'])
+const allowedMarks = new Set(['bold', 'italic', 'strike', 'highlight', 'code', 'link'])
 
 export const validateRichDocument = (value: unknown) => {
   const imageIds: string[] = []
