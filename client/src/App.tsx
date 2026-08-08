@@ -936,8 +936,9 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
     refetchInterval: 30_000,
   });
   const categories = ["전체", "애니메이션·만화", "게임", "버튜버", "웹툰·캐릭터"];
-  const publicPopularPosts = (home?.popularPosts ?? []).filter((post) => post.blog.slug !== "admin");
-  const publicCategoryPosts = (home?.categoryPosts ?? []).filter((post) => post.blog.slug !== "admin");
+  const isPublicPost = (post: Post) => post.blog.slug !== "admin";
+  const publicPopularPosts = (home?.popularPosts ?? []).filter(isPublicPost);
+  const publicCategoryPosts = (home?.categoryPosts ?? []).filter(isPublicPost);
   const recommendationCandidates = [...publicPopularPosts, ...publicCategoryPosts];
   const recommendations = recommendationCandidates
     .filter((post, index, posts) => Boolean(post.thumbnailUrl) && posts.findIndex((candidate) => candidate.id === post.id) === index)
@@ -945,7 +946,7 @@ function Home({ go, user, onLogin }: { go: (to: string) => void; user: User | nu
   const connectedCategoryPosts = publicCategoryPosts.filter((post) => category === "전체" || post.category?.name === category || (category === "애니메이션·만화" && (post.category?.name === "애니메이션" || post.category?.name === "만화")));
   const categoryPosts = connectedCategoryPosts.slice(0, 7);
   const categoryPagePosts = categoryPosts.length ? categoryPosts.map((_, index) => categoryPosts[(index + categoryPage - 1) % categoryPosts.length]) : [];
-  const latestPosts = (home?.latestPosts ?? []).slice(0, 5);
+  const latestPosts = (home?.latestPosts ?? []).filter(isPublicPost).slice(0, 5);
   const popularMarketItems = (home?.marketItems ?? []).slice(0, 5);
   const shownTips = tipPage === 1 ? sidebarTips : [...sidebarTips].reverse();
   const bannerPlaceholders: HomeBanner[] = [
@@ -2662,7 +2663,6 @@ function PostDetail({ id, go, user, onLogin }: { id: string; go: (to: string) =>
                     <span key={item.id}>#{item.name}</span>
                   ))}
                 </div>
-                <p className="eyebrow">{post.blog.name}</p>
                 <h1>{post.title}</h1>
                 <div className="detail-info">
                   <button

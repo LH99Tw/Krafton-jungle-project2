@@ -9,7 +9,7 @@ const bannerDto = (banner: Record<string, any>) => ({
 
 const activeBanners = async () => {
   const now = new Date().toISOString()
-  const { data, error } = await supabase.from('home_banners').select('*').eq('is_active', true).lte('starts_at', now)
+  const { data, error } = await supabase.from('home_banners').select('*').is('post_id', null).eq('is_active', true).lte('starts_at', now)
     .or(`ends_at.is.null,ends_at.gt.${now}`).order('position').order('id')
   return { data: (data ?? []).map((banner: Record<string, any>) => bannerDto(banner)), error }
 }
