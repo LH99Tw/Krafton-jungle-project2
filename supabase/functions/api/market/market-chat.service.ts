@@ -107,8 +107,16 @@ export const sendMessage = async (request: Request, conversationId: number) => {
   const body = await request.json().catch(() => null)
   const message = body && typeof body === 'object' && !Array.isArray(body) && typeof body.body === 'string' ? body.body.trim() : ''
   if (!message || message.length > 1000) return apiError(400, 'VALIDATION_ERROR', '메시지는 1~1,000자로 입력해 주세요.', { body: '메시지 길이를 확인해 주세요.' })
-  const replyToMessageId = body && typeof body === 'object' && !Array.isArray(body) && Number.isSafeInteger(Number(body.replyToMessageId))
-    ? Number(body.replyToMessageId)
+  const rawReplyToMessageId = body && typeof body === 'object' && !Array.isArray(body)
+    ? body.replyToMessageId
+    : null
+  const parsedReplyToMessageId = Number(rawReplyToMessageId)
+  const replyToMessageId = rawReplyToMessageId !== null
+    && rawReplyToMessageId !== undefined
+    && rawReplyToMessageId !== ''
+    && Number.isSafeInteger(parsedReplyToMessageId)
+    && parsedReplyToMessageId > 0
+    ? parsedReplyToMessageId
     : null
   if (replyToMessageId) {
     const { data: replied } = await supabase.from('market_messages').select('id')
